@@ -57,7 +57,7 @@ desktop.ini
 run_with_logs.py
 
 # Poppler (binarios del sistema, no versionar)
-# assets/poppler/bin/ se puede incluir si es necesario para distribución
+assets/poppler/bin/
 
 # Informes y análisis (opcional - descomentar si no quieres versionarlos)
 # INFORMES/
