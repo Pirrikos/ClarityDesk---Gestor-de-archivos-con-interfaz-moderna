@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="64" height="64"
+     viewBox="0 0 64 64">
+
+  <!-- Fondo marrón elegante -->
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#6C4F3D"/>
+
+  <!-- Documento -->
+  <path d="
+      M18 10
+      H36
+      L46 20
+      V50
+      Q46 54 42 54
+      H22
+      Q18 54 18 50
+      Z
+    "
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="2.5"
+    stroke-linejoin="round"
+  />
+
+  <!-- Esquina doblada -->
+  <path d="M36 10 V20 H46"
+        fill="none"
+        stroke="#ffffff"
+        stroke-width="2.5"/>
+
+  <!-- Cremallera -->
+  <g stroke="#ffffff" stroke-width="2" stroke-linecap="round">
+
+      <!-- Cadena de dientes -->
+      <path d="
+        M32 18
+        V42
+      " stroke-dasharray="3 3"/>
+
+      <!-- Cursor de la cremallera -->
+      <path d="
+        M28 42
+        H36
+        V48
+        H28
+        Z"
+        fill="#ffffff"
+        stroke="none"/>
+  </g>
+
+</svg>

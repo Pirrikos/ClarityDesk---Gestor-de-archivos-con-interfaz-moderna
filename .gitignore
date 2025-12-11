@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Build y distribución
+build/
+dist/
+*.spec
+*.exe
+*.pyd
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# Base de datos y almacenamiento local
+*.db
+storage/claritydesk.db
+storage/tabs.json
+storage/trash/
+storage/dock_files/
+
+# Logs
+*.log
+app_logs.txt
+*.log.*
+
+# Archivos temporales
+*.tmp
+*.bak
+*.backup
+*.cache
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+*.lnk
+
+# Archivos de configuración local
+run_with_logs.py
+
+# Poppler (binarios del sistema, no versionar)
+# assets/poppler/bin/ se puede incluir si es necesario para distribución
+
+# Informes y análisis (opcional - descomentar si no quieres versionarlos)
+# INFORMES/
+

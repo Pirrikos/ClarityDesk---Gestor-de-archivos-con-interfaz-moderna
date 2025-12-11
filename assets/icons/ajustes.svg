@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="64" height="64"
+     viewBox="0 0 64 64">
+
+  <!-- Fondo gris elegante -->
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="#3F444B"/>
+
+  <!-- Engranaje moderno -->
+  <g transform="translate(32 32)" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+
+      <!-- Círculo exterior -->
+      <circle r="16"/>
+
+      <!-- Círculo interior -->
+      <circle r="7"/>
+
+      <!-- Dientes integrados minimalistas -->
+      <path d="
+        M0 -22 L0 -16
+        M11 -19 L8 -14
+        M19 -11 L14 -8
+        M22 0 L16 0
+        M19 11 L14 8
+        M11 19 L8 14
+        M0 22 L0 16
+        M-11 19 L-8 14
+        M-19 11 L-14 8
+        M-22 0 L-16 0
+        M-19 -11 L-14 -8
+        M-11 -19 L-8 -14
+      "/>
+
+  </g>
+</svg>
+
