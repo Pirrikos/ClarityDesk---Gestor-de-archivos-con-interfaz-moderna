@@ -66,6 +66,7 @@ class TabManager(QObject):
             if self._active_index != old_index and self._active_index >= 0:
                 if self._active_index < len(self._tabs):
                     self._watch_and_emit_internal(self._tabs[self._active_index])
+            self._save_full_app_state()
         return success
 
     def remove_tab(self, index: int) -> bool:
@@ -78,6 +79,8 @@ class TabManager(QObject):
         if success:
             self._tabs = new_tabs
             self._active_index = new_index
+            self._save_state()
+            self._save_full_app_state()
         return success
     
     def remove_tab_by_path(self, folder_path: str) -> bool:
@@ -90,6 +93,8 @@ class TabManager(QObject):
         if success:
             self._tabs = new_tabs
             self._active_index = new_index
+            self._save_state()
+            self._save_full_app_state()
         return success
 
     def select_tab(self, index: int) -> bool:
@@ -102,6 +107,7 @@ class TabManager(QObject):
         if success:
             self._tabs = new_tabs
             self._active_index = new_index
+            self._save_full_app_state()
         return success
 
     def get_active_folder(self) -> Optional[str]:
@@ -140,6 +146,21 @@ class TabManager(QObject):
     def _save_state(self) -> None:
         """Save tabs and active index to JSON storage."""
         save_state(self._state_manager, self._tabs, self._active_index)
+    
+    def _save_full_app_state(self) -> None:
+        """Save complete application state (open_tabs, active_tab, history) to JSON."""
+        try:
+            state = self._state_manager.build_app_state(
+                tabs=self._tabs,
+                active_tab_path=self.get_active_folder(),
+                history=self.get_history(),
+                history_index=self.get_history_index(),
+                focus_tree_paths=[],
+                expanded_nodes=[]
+            )
+            self._state_manager.save_app_state(state)
+        except Exception:
+            pass
 
     def _on_folder_changed(self, folder_path: str) -> None:
         """Handle folder change event from watcher."""
@@ -147,6 +168,13 @@ class TabManager(QObject):
 
     def _watch_and_emit_internal(self, folder_path: str) -> None:
         """Start watching folder and emit active tab changed signal."""
+        try:
+            from app.services.tab_finder import find_tab_index
+            idx = find_tab_index(self._tabs, folder_path)
+            if idx is not None:
+                self._active_index = idx
+        except Exception:
+            pass
         signal_watch_and_emit(folder_path, self._active_index, self._watcher, self.activeTabChanged)
     
     def get_watcher(self):

@@ -192,9 +192,12 @@ class DesktopWindow(QMainWindow):
         This method is called via QTimer.singleShot(0, ...) after show()
         to ensure the window appears immediately without blocking.
         """
-        # Create TabManager instances for Desktop and Trash
-        self._desktop_tab_manager = TabManager()
-        self._trash_tab_manager = TabManager()
+        # Create TabManager instances for Desktop and Trash using separate storage to avoid collision
+        from pathlib import Path as PathLib
+        dock_storage = PathLib(__file__).parent.parent.parent / 'storage' / 'dock_tabs.json'
+        trash_storage = PathLib(__file__).parent.parent.parent / 'storage' / 'trash_tabs.json'
+        self._desktop_tab_manager = TabManager(str(dock_storage))
+        self._trash_tab_manager = TabManager(str(trash_storage))
         
         # Set Desktop and Trash as active tabs
         desktop_path = get_desktop_path()
@@ -376,4 +379,3 @@ class DesktopWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         """Handle window close event."""
         super().closeEvent(event)
-

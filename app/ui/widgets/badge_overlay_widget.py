@@ -17,7 +17,7 @@ class BadgeOverlayWidget(QWidget):
         """Initialize badge overlay widget."""
         super().__init__(parent)
         self._count = 0
-        self._badge_size = 22
+        self._badge_size = 20
         
         # Configure widget attributes
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -34,9 +34,9 @@ class BadgeOverlayWidget(QWidget):
         # Calculate badge size based on count
         badge_size = self._badge_size
         if count >= 100:
-            badge_size = 26
-        elif count >= 10:
             badge_size = 24
+        elif count >= 10:
+            badge_size = 22
         
         # Update widget size
         self.setFixedSize(badge_size, badge_size)
@@ -53,16 +53,15 @@ class BadgeOverlayWidget(QWidget):
         painter = QPainter(self)
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            
             # Calculate badge size based on count
             badge_size = self._badge_size
             if self._count >= 100:
-                badge_size = 26
-            elif self._count >= 10:
                 badge_size = 24
+            elif self._count >= 10:
+                badge_size = 22
             
-            # Calculate font size
-            font_size = 11 if self._count < 10 else 10 if self._count < 100 else 9
+            # Calculate font size (más pequeño para un look más sutil)
+            font_size = 9 if self._count < 10 else 8 if self._count < 100 else 7
             
             # Draw white circular background
             rect = self.rect()
@@ -84,7 +83,7 @@ class BadgeOverlayWidget(QWidget):
             # Draw count text
             painter.setPen(QPen(QColor(26, 26, 26, 255)))
             font = QFont('Segoe UI', font_size)
-            font.setWeight(QFont.Weight.Black)  # Use enum instead of integer
+            font.setWeight(QFont.Weight.Medium)
             painter.setFont(font)
             
             text = str(self._count)

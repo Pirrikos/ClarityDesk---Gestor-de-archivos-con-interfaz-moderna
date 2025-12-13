@@ -1,10 +1,10 @@
-"""Tests for FilesController."""
+"""Tests para FilesManager (sustituye al antiguo FilesController)."""
 
-from app.controllers.files_controller import FilesController
+from app.managers.files_manager import FilesManager
 
 
 class StubRenameService:
-    """Stub for RenameService."""
+    """Stub para RenameService."""
     
     def __init__(self):
         self._apply_rename_called = False
@@ -13,7 +13,7 @@ class StubRenameService:
         self._should_raise = False
     
     def apply_rename(self, paths: list[str], names: list[str], watcher=None) -> None:
-        """Track apply_rename calls."""
+        """Registra llamadas a apply_rename."""
         self._apply_rename_called = True
         self._apply_rename_paths = paths
         self._apply_rename_names = names
@@ -22,58 +22,58 @@ class StubRenameService:
 
 
 class StubDeleteService:
-    """Stub for delete_file function."""
+    """Stub para la función delete_file."""
     _called_paths = []
     _called_with_trash = False
     
     @classmethod
     def reset(cls):
-        """Reset call tracking."""
+        """Reinicia el seguimiento de llamadas."""
         cls._called_paths = []
         cls._called_with_trash = False
     
     @classmethod
     def delete_file(cls, path: str, watcher=None, is_trash_focus: bool = False):
-        """Track delete calls."""
+        """Registra llamadas a delete."""
         cls._called_paths.append(path)
         cls._called_with_trash = is_trash_focus
         return type('Result', (), {'success': True})()
 
 
 class StubMoveService:
-    """Stub for move_file function."""
+    """Stub para la función move_file."""
     _called_paths = []
     _called_targets = []
     
     @classmethod
     def reset(cls):
-        """Reset call tracking."""
+        """Reinicia el seguimiento de llamadas."""
         cls._called_paths = []
         cls._called_targets = []
     
     @classmethod
     def move_file(cls, source: str, destination_folder: str, watcher=None):
-        """Track move calls."""
+        """Registra llamadas a move."""
         cls._called_paths.append(source)
         cls._called_targets.append(destination_folder)
         return type('Result', (), {'success': True})()
 
 
 def test_delete_files_calls_service(monkeypatch):
-    """Test that delete_files() calls delete service."""
+    """Verifica que delete_files() invoca el servicio de borrado."""
     StubDeleteService.reset()
     
     def mock_delete_file(path, watcher=None, is_trash_focus=False):
         return StubDeleteService.delete_file(path, watcher, is_trash_focus)
     
-    import app.controllers.files_controller as fc_module
-    monkeypatch.setattr(fc_module, 'delete_file', mock_delete_file)
+    import app.managers.files_manager as fm_module
+    monkeypatch.setattr(fm_module, 'delete_file', mock_delete_file)
     
     rename_service = StubRenameService()
-    controller = FilesController(rename_service)
+    manager = FilesManager(rename_service)
     
     paths = ["/file1.txt", "/file2.txt"]
-    controller.delete_files(paths)
+    manager.delete_files(paths)
     
     assert len(StubDeleteService._called_paths) == 2
     assert "/file1.txt" in StubDeleteService._called_paths
@@ -81,32 +81,32 @@ def test_delete_files_calls_service(monkeypatch):
 
 
 def test_delete_files_with_trash_focus(monkeypatch):
-    """Test that delete_files() passes is_trash_focus flag."""
+    """Verifica que delete_files() pasa el flag is_trash_focus."""
     StubDeleteService.reset()
     
     def mock_delete_file(path, watcher=None, is_trash_focus=False):
         return StubDeleteService.delete_file(path, watcher, is_trash_focus)
     
-    import app.controllers.files_controller as fc_module
-    monkeypatch.setattr(fc_module, 'delete_file', mock_delete_file)
+    import app.managers.files_manager as fm_module
+    monkeypatch.setattr(fm_module, 'delete_file', mock_delete_file)
     
     rename_service = StubRenameService()
-    controller = FilesController(rename_service)
+    manager = FilesManager(rename_service)
     
-    controller.delete_files(["/file.txt"], is_trash_focus=True)
+    manager.delete_files(["/file.txt"], is_trash_focus=True)
     
     assert StubDeleteService._called_with_trash is True
 
 
 def test_rename_batch_executes_without_exception():
-    """Test that rename_batch() executes without exception."""
+    """Verifica que rename_batch() se ejecuta sin excepciones."""
     rename_service = StubRenameService()
-    controller = FilesController(rename_service)
+    manager = FilesManager(rename_service)
     
     paths = ["/file1.txt", "/file2.txt"]
     names = ["new1.txt", "new2.txt"]
     
-    result = controller.rename_batch(paths, names)
+    result = manager.rename_batch(paths, names)
     
     assert result is True
     assert rename_service._apply_rename_called is True
@@ -115,33 +115,33 @@ def test_rename_batch_executes_without_exception():
 
 
 def test_rename_batch_handles_exception():
-    """Test that rename_batch() handles exceptions."""
+    """Verifica que rename_batch() maneja excepciones correctamente."""
     rename_service = StubRenameService()
     rename_service._should_raise = True
-    controller = FilesController(rename_service)
+    manager = FilesManager(rename_service)
     
-    result = controller.rename_batch(["/file.txt"], ["new.txt"])
+    result = manager.rename_batch(["/file.txt"], ["new.txt"])
     
     assert result is False
 
 
 def test_move_files_executes_movements(monkeypatch):
-    """Test that move_files() executes movements."""
+    """Verifica que move_files() ejecuta los movimientos."""
     StubMoveService.reset()
     
     def mock_move_file(source, destination_folder, watcher=None):
         return StubMoveService.move_file(source, destination_folder, watcher)
     
-    import app.controllers.files_controller as fc_module
-    monkeypatch.setattr(fc_module, 'move_file', mock_move_file)
+    import app.managers.files_manager as fm_module
+    monkeypatch.setattr(fm_module, 'move_file', mock_move_file)
     
     rename_service = StubRenameService()
-    controller = FilesController(rename_service)
+    manager = FilesManager(rename_service)
     
     paths = ["/file1.txt", "/file2.txt"]
     target = "/target/folder"
     
-    controller.move_files(paths, target)
+    manager.move_files(paths, target)
     
     assert len(StubMoveService._called_paths) == 2
     assert "/file1.txt" in StubMoveService._called_paths

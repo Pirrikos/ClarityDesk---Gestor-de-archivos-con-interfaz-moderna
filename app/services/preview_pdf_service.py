@@ -65,9 +65,12 @@ class PreviewPdfService:
             on_finished: Callback called with QPixmap when rendering completes.
             on_error: Optional callback called with error message on failure.
         """
-        # Cancel any existing worker
         if self._active_pdf_worker:
-            self._active_pdf_worker.terminate()
+            try:
+                self._active_pdf_worker.cancel()
+            except Exception:
+                pass
+            self._active_pdf_worker.quit()
             self._active_pdf_worker.wait()
         
         worker = PdfRenderWorker(pdf_path, max_size, page_num)
@@ -110,9 +113,12 @@ class PreviewPdfService:
             on_finished: Callback called with PDF path when conversion completes.
             on_error: Optional callback called with error message on failure.
         """
-        # Cancel any existing worker
         if self._active_docx_worker:
-            self._active_docx_worker.terminate()
+            try:
+                self._active_docx_worker.cancel()
+            except Exception:
+                pass
+            self._active_docx_worker.quit()
             self._active_docx_worker.wait()
         
         worker = DocxConvertWorker(docx_path)
@@ -166,4 +172,22 @@ class PreviewPdfService:
     def clear_cache(self) -> None:
         """Clear temporary PDF cache directory."""
         self._docx_converter.clear_cache()
+    
+    def stop_workers(self) -> None:
+        if self._active_pdf_worker:
+            try:
+                self._active_pdf_worker.cancel()
+            except Exception:
+                pass
+            self._active_pdf_worker.quit()
+            self._active_pdf_worker.wait()
+            self._active_pdf_worker = None
+        if self._active_docx_worker:
+            try:
+                self._active_docx_worker.cancel()
+            except Exception:
+                pass
+            self._active_docx_worker.quit()
+            self._active_docx_worker.wait()
+            self._active_docx_worker = None
 

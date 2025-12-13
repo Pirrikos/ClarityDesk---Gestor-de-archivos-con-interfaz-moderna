@@ -7,7 +7,7 @@ Handles tree node insertion, removal, and parent finding logic.
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtGui import QStandardItem, QStandardItemModel, QIcon
 
 
 def add_focus_path_to_model(
@@ -39,15 +39,14 @@ def add_focus_path_to_model(
     if normalized_path in path_to_item:
         return None
     
-    # Create item
     folder_name = os.path.basename(normalized_path) or normalized_path
     item = QStandardItem(folder_name)
-    # Añadir icono de carpeta
-    from PySide6.QtWidgets import QFileIconProvider
-    from PySide6.QtCore import QFileInfo
-    icon_provider = QFileIconProvider()
-    folder_icon = icon_provider.icon(QFileInfo(normalized_path))
-    item.setIcon(folder_icon)
+    try:
+        from pathlib import Path as PathLib
+        svg_path = PathLib(__file__).resolve().parents[2] / 'assets' / 'icons' / 'folder_sidebar.svg'
+        item.setIcon(QIcon(str(svg_path)))
+    except Exception:
+        item.setIcon(QIcon())
     item.setData(normalized_path, Qt.ItemDataRole.UserRole)
     item.setEditable(False)
     

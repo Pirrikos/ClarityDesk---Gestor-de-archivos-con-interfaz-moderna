@@ -9,6 +9,7 @@ import os
 from PySide6.QtCore import QModelIndex, QPoint, Qt
 from PySide6.QtGui import QStandardItemModel
 from PySide6.QtWidgets import QFileDialog, QMenu, QTreeView
+from app.services.tab_validator import validate_folder
 
 
 def handle_tree_click(
@@ -16,17 +17,6 @@ def handle_tree_click(
     model: QStandardItemModel,
     tree_view: QTreeView
 ) -> str:
-    """
-    Handle tree item click - expand node and return folder path.
-    
-    Args:
-        index: Clicked model index.
-        model: QStandardItemModel instance.
-        tree_view: QTreeView instance.
-        
-    Returns:
-        Folder path if valid, None otherwise.
-    """
     if not index.isValid():
         return None
     
@@ -41,10 +31,21 @@ def handle_tree_click(
         else:
             tree_view.expand(index)
     
+    return None
+
+
+def resolve_folder_path(
+    index: QModelIndex,
+    model: QStandardItemModel
+) -> str:
+    if not index.isValid():
+        return None
+    item = model.itemFromIndex(index)
+    if not item:
+        return None
     folder_path = item.data(Qt.ItemDataRole.UserRole)
-    if folder_path and os.path.isdir(folder_path):
+    if folder_path and validate_folder(folder_path):
         return folder_path
-    
     return None
 
 

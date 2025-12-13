@@ -5,6 +5,7 @@ Handles tab operations: add, remove, select, and get files.
 """
 
 from typing import List, Optional
+import os
 
 from app.services.file_extensions import SUPPORTED_EXTENSIONS
 from app.services.file_list_service import get_files
@@ -121,9 +122,17 @@ def remove_tab(
             active_tab_changed_signal.emit(-1, "")
         else:
             # There are more tabs - activate the next one
+            try:
+                manager._active_index = new_active_index
+            except Exception:
+                pass
             watch_and_emit_callback(new_tabs[new_active_index])
     elif new_active_index >= 0:
         # Not the active tab was removed - continue normally
+        try:
+            manager._active_index = new_active_index
+        except Exception:
+            pass
         watch_and_emit_callback(new_tabs[new_active_index])
     else:
         # Edge case: inactive tab removed and no tabs remain
@@ -147,7 +156,7 @@ def remove_tab_by_path(
     focus_cleared_signal=None
 ) -> tuple[bool, List[str], int]:
     """
-    Remove a tab by folder path.
+    Remove a tab by folder path, also removing any child tabs under that path.
     
     Args:
         manager: TabManager instance
@@ -164,12 +173,32 @@ def remove_tab_by_path(
     Returns:
         Tuple of (success, new_tabs, new_active_index)
     """
-    tab_index = find_tab_index(tabs, folder_path)
+    norm_removed = normalize_path(folder_path)
+    # Remove children of the removed path from the tabs list first (but keep the parent for the final removal)
+    filtered_tabs = []
+    for t in tabs:
+        nt = normalize_path(t)
+        if nt == norm_removed:
+            filtered_tabs.append(t)  # keep parent for now; will be removed via remove_tab()
+        elif nt.startswith(norm_removed + os.sep):
+            continue  # drop child tab
+        else:
+            filtered_tabs.append(t)
+    # Recompute indices in filtered list
+    tab_index = find_tab_index(filtered_tabs, norm_removed)
     if tab_index is None:
-        return False, tabs, active_index
+        return False, filtered_tabs, active_index
+    
+    # Map active_index from original tabs to filtered tabs, if still present
+    filtered_active_index = -1
+    if 0 <= active_index < len(tabs):
+        active_path = tabs[active_index]
+        idx_in_filtered = find_tab_index(filtered_tabs, active_path)
+        if idx_in_filtered is not None:
+            filtered_active_index = idx_in_filtered
     
     return remove_tab(
-        manager, tab_index, tabs, active_index, watcher,
+        manager, tab_index, filtered_tabs, filtered_active_index, watcher,
         save_state_callback, watch_and_emit_callback,
         tabs_changed_signal, active_tab_changed_signal, focus_cleared_signal
     )
@@ -196,6 +225,11 @@ def select_tab(
     folder_path = tabs[index]
     new_active_index = index
     history_manager.update_on_navigate(folder_path, normalize_path)
+    # Update manager active index BEFORE emitting, to ensure correct index in signal
+    try:
+        manager._active_index = new_active_index
+    except Exception:
+        pass
     save_state_callback()
     watch_and_emit_callback(folder_path)
     return True, tabs, new_active_index
@@ -219,4 +253,3 @@ def activate_tab(manager, index: int, get_tabs_callback, select_tab_callback) ->
     if not (0 <= index < len(tabs)):
         return
     select_tab_callback(index)
-

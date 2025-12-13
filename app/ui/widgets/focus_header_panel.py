@@ -5,7 +5,7 @@ Shows rename button that activates when 1+ files are selected.
 """
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 
 class FocusHeaderPanel(QWidget):
@@ -32,7 +32,16 @@ class FocusHeaderPanel(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(20, 0, 20, 0)
         layout.setSpacing(8)
-        layout.addStretch()
+        
+        # Breadcrumb simple: etiqueta de ruta actual con el nombre del tab
+        self._path_label = QLabel("")
+        self._path_label.setStyleSheet("""
+            QLabel {
+                color: #1f1f1f;
+                font-size: 13px;
+            }
+        """)
+        layout.addWidget(self._path_label, 1)
         
         self._rename_button = QPushButton("📝 Renombrar")
         self._rename_button.setFixedHeight(36)
@@ -56,7 +65,7 @@ class FocusHeaderPanel(QWidget):
             }
         """)
         self._rename_button.clicked.connect(self.rename_clicked.emit)
-        layout.addWidget(self._rename_button)
+        layout.addWidget(self._rename_button, 0)
     
     def update_selection_count(self, count: int) -> None:
         """
@@ -66,4 +75,7 @@ class FocusHeaderPanel(QWidget):
             count: Number of selected files.
         """
         self._rename_button.setEnabled(count >= 1)
-
+    
+    def update_path(self, path: str) -> None:
+        """Actualizar texto de breadcrumb con la ruta actual."""
+        self._path_label.setText(path or "")

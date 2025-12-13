@@ -67,6 +67,10 @@ class FileViewContainer(QWidget):
         setup_ui(self)
         connect_tab_signals(self, tab_manager)
         self._setup_selection_timer()
+        # Umbral anti-doble clic (ms) para prevenir aperturas repetidas
+        # en interacciones rápidas o manos temblorosas
+        self._last_open_ts_ms: int = 0
+        self._open_threshold_ms: int = 350
         update_files(self)
         update_nav_buttons_state(self)
 
@@ -119,6 +123,41 @@ class FileViewContainer(QWidget):
     def _update_files(self) -> None:
         """Update both views with files from active tab."""
         update_files(self)
+    
+    def _on_open_file(self, file_path: str) -> None:
+        """Aplicar prevención de doble clic y feedback visual, luego emitir open_file."""
+        from time import perf_counter
+        now_ms = int(perf_counter() * 1000)
+        if self._last_open_ts_ms and (now_ms - self._last_open_ts_ms) < self._open_threshold_ms:
+            # Ignorar doble clics dentro del umbral para evitar ejecuciones duplicadas
+            return
+        self._last_open_ts_ms = now_ms
+        # Feedback visual: cursor ocupado breve para indicar acción en curso
+        from PySide6.QtWidgets import QApplication
+        QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+        QTimer.singleShot(180, QApplication.restoreOverrideCursor)
+        self.open_file.emit(file_path)
+    
+    def _animate_content_transition(self) -> None:
+        """Aplicar animación de opacidad breve al área de contenido."""
+        try:
+            from PySide6.QtWidgets import QWidget
+            from PySide6.QtCore import QPropertyAnimation
+            from PySide6.QtWidgets import QGraphicsOpacityEffect
+            target = self._stacked
+            if not isinstance(target, QWidget):
+                return
+            effect = QGraphicsOpacityEffect(target)
+            target.setGraphicsEffect(effect)
+            anim = QPropertyAnimation(effect, b"opacity", self)
+            anim.setDuration(220)
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.start()
+            # Limpiar efecto tras la animación
+            QTimer.singleShot(250, lambda: target.setGraphicsEffect(None))
+        except Exception:
+            pass
     
     def _check_if_desktop_window(self) -> bool:
         """Check if this container is inside a DesktopWindow."""

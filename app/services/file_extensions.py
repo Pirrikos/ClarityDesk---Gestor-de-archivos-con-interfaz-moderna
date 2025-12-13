@@ -15,6 +15,8 @@ SUPPORTED_EXTENSIONS = {
     '.mp3', '.wav', '.mp4', '.mov', '.mkv', '.flac',
     # Images
     '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.ico', '.svg', '.webp',
+    # Books
+    '.epub', '.mobi', '.azw3',
     # Code & Text
     '.py', '.js', '.ts', '.html', '.css',
     '.txt', '.md', '.json', '.xml', '.yaml', '.yml', '.ini', '.log',

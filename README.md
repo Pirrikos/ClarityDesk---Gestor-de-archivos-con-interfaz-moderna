@@ -116,6 +116,11 @@ pyinstaller main.spec
 
 Ver `requirements.txt` para la lista completa.
 
+## 🤖 Reglas de interacción con la IA
+
+- No mostrar código en pantalla salvo que el usuario lo solicite explícitamente.
+- Mantener respuestas en español y cumplir los estándares de claridad y profesionalidad.
+
 ## 📝 Notas
 
 - Los datos de la aplicación se almacenan en `storage/` (no versionado)

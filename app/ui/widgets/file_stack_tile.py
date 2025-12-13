@@ -228,8 +228,9 @@ class FileStackTile(QWidget):
             badge_height = self._badge_overlay.height()
             
             # Offset badge to float above the corner
-            badge_x = parent_pos.x() - (badge_width // 2) - 2
-            badge_y = parent_pos.y() - (badge_height // 2) - 2
+            badge_x = parent_pos.x() - (badge_width // 2) - 3
+            # Ajuste sutil: bajar el badge un poco para mejor alineación visual
+            badge_y = parent_pos.y() - (badge_height // 2) + 1
             
             self._badge_overlay.move(int(badge_x), int(badge_y))
             self._badge_overlay.raise_()

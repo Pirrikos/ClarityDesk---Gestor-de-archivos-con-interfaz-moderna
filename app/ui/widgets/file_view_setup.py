@@ -7,10 +7,8 @@ Handles initial UI construction and widget connections.
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QStackedWidget, QVBoxLayout
 
-from app.ui.widgets.dock_separator import DockSeparator
 from app.ui.widgets.file_grid_view import FileGridView
 from app.ui.widgets.file_list_view import FileListView
-from app.ui.widgets.focus_dock_widget import FocusDockWidget
 from app.ui.widgets.focus_header_panel import FocusHeaderPanel
 from app.ui.widgets.view_toolbar import ViewToolbar
 
@@ -18,9 +16,9 @@ from app.ui.widgets.view_toolbar import ViewToolbar
 def setup_ui(container) -> None:
     """Build the UI layout with view switcher."""
     is_desktop_window = container._check_if_desktop_window()
-    
+    # Fondo transparente para unificar estilo entre Grid y Lista
+    container.setStyleSheet("QWidget { background-color: transparent; }")
     if is_desktop_window:
-        container.setStyleSheet("QWidget { background-color: transparent; }")
         container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
     
     layout = QVBoxLayout(container)
@@ -57,36 +55,16 @@ def _setup_focus_panel(container, layout: QVBoxLayout, is_desktop_window: bool) 
     """Setup focus header panel."""
     container._focus_panel = FocusHeaderPanel(container)
     container._focus_panel.rename_clicked.connect(container._on_rename_clicked)
-    
-    if is_desktop_window:
-        container._focus_panel.hide()
-    else:
-        layout.addWidget(container._focus_panel)
+    # Ocultar siempre el panel de encabezado para eliminar el "cuadrado blanco" visual,
+    # manteniendo la lógica de ruta y selección disponible para uso futuro.
+    container._focus_panel.hide()
 
 
 def _setup_views(container, layout: QVBoxLayout) -> None:
-    """Setup grid and list views with dock outside stacked widget."""
-    # Create Focus dock widget outside stacked widget (always visible)
-    is_desktop_window = container._check_if_desktop_window()
-    container._focus_dock = None
-    container._dock_separator = None
-    
-    # No crear FocusDockWidget en Focus mode (se usa sidebar)
-    if False and not is_desktop_window and container._tab_manager:
-        container._focus_dock = FocusDockWidget(
-            container._tab_manager,
-            container._icon_service,
-            container
-        )
-        # Connect signals for file drops
-        container._focus_dock.files_dropped_on_focus.connect(
-            container._on_files_dropped_on_focus
-        )
-        
-        container._dock_separator = DockSeparator(container)
-    
+    """Setup grid y list views sin panel dock."""
     # Create stacked widget with grid and list views
     container._stacked = QStackedWidget()
+    container._stacked.setStyleSheet("QStackedWidget { background-color: transparent; }")
     container._grid_view = FileGridView(
         container._icon_service, None, container, container._tab_manager, container._state_manager
     )
@@ -97,16 +75,10 @@ def _setup_views(container, layout: QVBoxLayout) -> None:
     container._stacked.addWidget(container._grid_view)
     container._stacked.addWidget(container._list_view)
     
-    # Use horizontal layout: Dock | Separator | StackedWidget
+    # Use horizontal layout: solo contenido
     views_layout = QHBoxLayout()
     views_layout.setContentsMargins(0, 0, 0, 0)
     views_layout.setSpacing(0)
-    
-    # Add dock and separator if not desktop window
-    if container._focus_dock:
-        views_layout.addWidget(container._focus_dock)
-        if container._dock_separator:
-            views_layout.addWidget(container._dock_separator)
     
     # Add stacked widget (takes remaining space)
     views_layout.addWidget(container._stacked, 1)
@@ -116,8 +88,11 @@ def _setup_views(container, layout: QVBoxLayout) -> None:
 
 def _connect_view_signals(container) -> None:
     """Connect signals from grid and list views."""
-    container._grid_view.open_file.connect(container.open_file.emit)
-    container._list_view.open_file.connect(container.open_file.emit)
+    # Enrutar por método centralizado:
+    # - Aplica umbral anti-doble clic para evitar aperturas accidentales
+    # - Muestra feedback visual breve (cursor ocupado) para mejorar UX
+    container._grid_view.open_file.connect(container._on_open_file)
+    container._list_view.open_file.connect(container._on_open_file)
     
     container._grid_view.file_dropped.connect(container._handlers.handle_file_dropped)
     container._list_view.file_dropped.connect(container._handlers.handle_file_dropped)
