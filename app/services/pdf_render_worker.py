@@ -29,10 +29,17 @@ class PdfRenderWorker(QThread):
         self.pdf_path = pdf_path
         self.max_size = max_size
         self.page_num = page_num
+        self._cancel_requested = False
+    
+    def cancel(self) -> None:
+        self._cancel_requested = True
     
     def run(self) -> None:
         """Execute PDF rendering in background thread."""
         try:
+            if self._cancel_requested:
+                self.error.emit("Cancelled")
+                return
             result = PdfRenderer.render_page(self.pdf_path, self.max_size, self.page_num)
             if result.isNull():
                 self.error.emit("Failed to render PDF page")

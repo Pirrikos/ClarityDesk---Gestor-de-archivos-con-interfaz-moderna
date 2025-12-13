@@ -7,7 +7,8 @@ Only shows folders that have been opened as Focus.
 
 import os
 
-from PySide6.QtCore import QModelIndex, QPoint, QSize, Qt, Signal
+from PySide6.QtCore import QModelIndex, QPoint, QSize, Qt, Signal, QTimer
+from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -29,6 +30,7 @@ from app.ui.widgets.folder_tree_handlers import (
     handle_add_button_click,
     handle_context_menu,
     handle_tree_click,
+    resolve_folder_path,
 )
 from app.ui.widgets.folder_tree_model import (
     add_focus_path_to_model,
@@ -36,6 +38,7 @@ from app.ui.widgets.folder_tree_model import (
     remove_focus_path_from_model,
 )
 from app.ui.widgets.folder_tree_styles import get_complete_stylesheet
+from app.ui.widgets.folder_tree_delegate import FolderTreeSectionDelegate
 
 
 class FolderTreeSidebar(QWidget):
@@ -61,6 +64,19 @@ class FolderTreeSidebar(QWidget):
         self._setup_model()
         self._setup_ui()
         self._apply_styling()
+        self._click_expand_timer = QTimer(self)
+        self._click_expand_timer.setSingleShot(True)
+        try:
+            app = QApplication.instance()
+            interval = app.doubleClickInterval() if app else 500
+        except Exception:
+            interval = 500
+        self._click_expand_timer.setInterval(interval)
+        self._click_expand_timer.timeout.connect(self._on_single_click_timeout)
+        self._pending_click_index = QModelIndex()
+        # Habilitar arrastre para mover la ventana principal al arrastrar el área del sidebar
+        # Evita interferir con interacciones internas del árbol (drag & drop, selección)
+        self._drag_start_position = None
     
     def _setup_model(self) -> None:
         """Setup QStandardItemModel for navigation history."""
@@ -91,24 +107,42 @@ class FolderTreeSidebar(QWidget):
         self._tree_view.setRootIsDecorated(False)  # Sin flechas expand/collapse
         self._tree_view.setIndentation(24)  # Arc-style (era 12)
         self._tree_view.setUniformRowHeights(True)  # Optimización
-        self._tree_view.setIconSize(QSize(22, 22))  # Iconos Arc-style
+        self._tree_view.setIconSize(QSize(24, 24))
         self._tree_view.setWordWrap(False)  # Prevent text wrapping, use ellipsis
+        # Delegate visual para dibujar bloque tipo tarjeta en la sección activa
+        self._tree_view.setItemDelegate(FolderTreeSectionDelegate(self._tree_view))
+        self._tree_view.setMouseTracking(True)
         
         # Enable drag & drop
         self._tree_view.setAcceptDrops(True)
         self._tree_view.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
         
         self._tree_view.clicked.connect(self._on_tree_clicked)
+        self._tree_view.doubleClicked.connect(self._on_tree_double_clicked)
         self._tree_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree_view.customContextMenuRequested.connect(self._on_context_menu)
         
         layout.addWidget(self._tree_view, 1)  # Stretch factor to fill space
     
     def _on_tree_clicked(self, index: QModelIndex) -> None:
-        """Handle tree item click - expand node and emit folder_selected signal."""
-        folder_path = handle_tree_click(index, self._model, self._tree_view)
+        if self._click_expand_timer.isActive():
+            return
+        self._pending_click_index = index
+        self._click_expand_timer.start()
+    
+    def _on_tree_double_clicked(self, index: QModelIndex) -> None:
+        if self._click_expand_timer.isActive():
+            self._click_expand_timer.stop()
+        target_index = self._pending_click_index if self._pending_click_index.isValid() else index
+        self._pending_click_index = QModelIndex()
+        folder_path = resolve_folder_path(target_index, self._model)
         if folder_path:
             self.folder_selected.emit(folder_path)
+    
+    def _on_single_click_timeout(self) -> None:
+        if self._pending_click_index and self._pending_click_index.isValid():
+            handle_tree_click(self._pending_click_index, self._model, self._tree_view)
+        self._pending_click_index = QModelIndex()
     
     def _on_add_clicked(self) -> None:
         """Handle + button click - open folder picker."""
@@ -123,7 +157,24 @@ class FolderTreeSidebar(QWidget):
             return
         
         menu = QMenu(self)
-        remove_action = menu.addAction("Eliminar del árbol")
+        menu.setStyleSheet("""
+            QMenu {
+                background: rgba(23, 26, 31, 240);
+                border: 1px solid rgba(255, 255, 255, 25);
+                border-radius: 10px;
+                padding: 6px 8px;
+                color: #E6E7EA;
+            }
+            QMenu::item {
+                padding: 6px 12px;
+                border-radius: 6px;
+                background: transparent;
+            }
+            QMenu::item:selected {
+                background: #1F2228;
+            }
+        """)
+        remove_action = menu.addAction("Quitar del sidebar")
         remove_action.triggered.connect(
             lambda: self.focus_remove_requested.emit(folder_path)
         )
@@ -203,6 +254,41 @@ class FolderTreeSidebar(QWidget):
     def _apply_styling(self) -> None:
         """Apply Arc Browser stylesheet to sidebar."""
         self.setStyleSheet(get_complete_stylesheet())
+    
+    def mousePressEvent(self, event) -> None:
+        """Iniciar arrastre si el clic es en fondo/botón, no dentro del árbol."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            child_widget = self.childAt(event.pos())
+            # No iniciar arrastre si se pulsa dentro del QTreeView (para no romper DnD)
+            if child_widget is not None:
+                # Comparar contra el propio árbol o su viewport
+                if child_widget == self._tree_view or child_widget == self._tree_view.viewport():
+                    return
+            self._drag_start_position = event.globalPos()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event) -> None:
+        """Mover la ventana principal mientras se arrastra."""
+        if self._drag_start_position is not None:
+            delta = event.globalPos() - self._drag_start_position
+            main_window = self.window()
+            if main_window:
+                new_pos = main_window.pos() + delta
+                main_window.move(new_pos)
+                self._drag_start_position = event.globalPos()
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event) -> None:
+        """Finalizar arrastre al soltar el botón."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_position = None
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
     
     def get_focus_tree_paths(self) -> list[str]:
         """

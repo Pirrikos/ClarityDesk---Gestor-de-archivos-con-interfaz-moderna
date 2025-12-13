@@ -32,6 +32,10 @@ class IconBatchWorker(QThread):
         self.file_paths = file_paths
         self.size = size
         self.icon_provider = icon_provider
+        self._cancel_requested = False
+    
+    def cancel(self) -> None:
+        self._cancel_requested = True
     
     def run(self) -> None:
         """Execute batch icon generation in background thread."""
@@ -41,6 +45,8 @@ class IconBatchWorker(QThread):
             
             for idx, file_path in enumerate(self.file_paths):
                 try:
+                    if self._cancel_requested:
+                        break
                     pixmap = get_file_preview(file_path, self.size, self.icon_provider)
                     results.append((file_path, pixmap))
                     

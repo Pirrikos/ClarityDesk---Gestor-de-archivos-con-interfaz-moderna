@@ -35,12 +35,18 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+    vheader = view.verticalHeader()
+    vheader.setVisible(False)
+    vheader.setDefaultSectionSize(56)
+    vheader.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
     
     # Enable sorting
     view.setSortingEnabled(True)
     
     view.setItemDelegateForColumn(1, ListIconDelegate(view))
     view.setStyleSheet(LIST_VIEW_STYLESHEET)
+    # Asegurar transparencia del viewport para evitar panel blanco
+    view.viewport().setStyleSheet("background-color: transparent;")
     view.itemDoubleClicked.connect(double_click_callback)
     view.setDragEnabled(True)
     view.setAcceptDrops(True)

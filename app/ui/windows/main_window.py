@@ -70,6 +70,12 @@ class MainWindow(QMainWindow):
     def _load_app_state(self) -> None:
         """Load complete application state and restore UI."""
         load_app_state(self, self._tab_manager)
+        try:
+            # Fallback: asegurar que el sidebar refleja los tabs actuales tras la carga
+            for tab_path in self._tab_manager.get_tabs():
+                self._sidebar.add_focus_path(tab_path)
+        except Exception:
+            pass
 
     def _on_tabs_changed(self, tabs: list) -> None:
         """Handle tabs list change from TabManager."""
@@ -108,25 +114,44 @@ class MainWindow(QMainWindow):
         """
         import os
         if os.path.isdir(file_path):
-            # Check if this folder is already a Focus in the Dock
+            # Validar permisos de lectura antes de navegar
+            import os
+            if not os.access(file_path, os.R_OK):
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self,
+                    "Permiso requerido",
+                    "No se puede acceder a esta carpeta. Verifica permisos."
+                )
+                return
+            
+            # Navegar: si la carpeta ya es un tab, seleccionarlo; si no, añadir como nuevo tab
             tabs = self._tab_manager.get_tabs()
             normalized_path = file_path.replace('\\', '/').strip()
-            
-            # Normalize all tabs for comparison
             for idx, tab_path in enumerate(tabs):
                 normalized_tab = tab_path.replace('\\', '/').strip()
                 if normalized_tab.lower() == normalized_path.lower():
-                    # Folder is already a Focus - switch to it
                     self._tab_manager.select_tab(idx)
                     return
-            
-            # Folder is NOT a Focus - do NOT add it
-            # User must manually add Focus using "+" button in Dock
-            # This keeps Dock stable and prevents automatic Focus creation from navigation
+            # Añadir nueva ubicación como tab y activar (actualiza historial y vista)
+            self._tab_manager.add_tab(file_path)
             return
         else:
-            # Open file with default system application
-            open_file_with_system(file_path)
+            # Abrir archivo con la aplicación predeterminada y manejar errores
+            from PySide6.QtWidgets import QApplication, QMessageBox
+            # Feedback visual breve a nivel de ventana (cursor ocupado)
+            QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(180, QApplication.restoreOverrideCursor)
+            success = open_file_with_system(file_path)
+            if not success:
+                # Aviso amigable si el sistema no tiene asociación para el tipo de archivo
+                QMessageBox.warning(
+                    self,
+                    "No se puede abrir",
+                    "No hay aplicación asociada o el archivo no es reconocible.\n"
+                    "Intenta abrirlo manualmente desde el sistema."
+                )
 
     def _setup_shortcuts(self) -> None:
         """Setup keyboard shortcuts."""
@@ -178,6 +203,8 @@ class MainWindow(QMainWindow):
         
         if self._current_preview_window:
             self._current_preview_window.close()
+        if hasattr(self._preview_service, "stop_workers"):
+            self._preview_service.stop_workers()
         self._preview_service.clear_cache()
         event.accept()
     
@@ -203,9 +230,43 @@ class MainWindow(QMainWindow):
         """Handle focus removal request from sidebar."""
         self._tab_manager.remove_tab_by_path(path)
         self._sidebar.remove_focus_path(path)
+        try:
+            import os
+            active = self._tab_manager.get_active_folder()
+            if active:
+                norm_removed = os.path.normpath(path)
+                norm_active = os.path.normpath(active)
+                if norm_active == norm_removed or norm_active.startswith(norm_removed + os.sep):
+                    self._file_view_container.clear_current_focus()
+        except Exception:
+            pass
+        try:
+            state_manager = self._tab_manager.get_state_manager()
+            tabs = self._tab_manager.get_tabs()
+            active_tab = self._tab_manager.get_active_folder()
+            history = self._tab_manager.get_history()
+            history_index = self._tab_manager.get_history_index()
+            focus_tree_paths = self._sidebar.get_focus_tree_paths()
+            expanded_nodes = self._sidebar.get_expanded_paths()
+            state = state_manager.build_app_state(
+                tabs=tabs,
+                active_tab_path=active_tab,
+                history=history,
+                history_index=history_index,
+                focus_tree_paths=focus_tree_paths,
+                expanded_nodes=expanded_nodes
+            )
+            state_manager.save_app_state(state)
+        except Exception:
+            pass
+        try:
+            from PySide6.QtWidgets import QToolTip
+            from PySide6.QtGui import QCursor
+            QToolTip.showText(QCursor.pos(), "Quitado del sidebar")
+        except Exception:
+            pass
     
     def _on_tabs_changed_sync_sidebar(self, tabs: list) -> None:
         """Sync sidebar with current tabs."""
         for tab_path in tabs:
             self._sidebar.add_focus_path(tab_path)
-

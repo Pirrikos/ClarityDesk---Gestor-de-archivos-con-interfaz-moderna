@@ -1,78 +1,106 @@
-"""FolderTreeStyles - Arc Browser inspired stylesheet for FolderTreeSidebar."""
+"""FolderTreeStyles - Skin oscuro tipo Raycast para FolderTreeSidebar."""
+
+# Variables "CSS" simuladas en Python (Qt no soporta variables CSS nativas)
+# Paleta oscura con bajo contraste, estilo Raycast
+BG_GRADIENT_TOP = "#16181D"
+BG_GRADIENT_BOTTOM = "#13161B"
+SIDEBAR_TINT_TOP = "#1A1D22"
+SIDEBAR_TINT_BOTTOM = "#171A1F"
+TEXT_PRIMARY = "#E6E7EA"
+TEXT_SECONDARY = "#B8BBC2"
+HOVER_BG = "#1F2228"
+SELECT_BG = "#22262C"
+SELECT_LINE = "#3B82F6"  # Azul sobrio, poco saturado
+SCROLL_HANDLE = "#2A2E35"
+SCROLL_HANDLE_HOVER = "#343943"
+FONT_FAMILY = '"Inter", "SF Pro Display", "Segoe UI", -apple-system, system-ui'
+FONT_SIZE_BASE = "13px"
+FONT_SIZE_L1 = "14px"          # Nivel 1 semibold
+ICON_SIZE_PX = 16              # Iconos 16x16
+ITEM_HEIGHT = 36               # Altura base de ítem
+ITEM_V_SPACING = 12            # Espaciado vertical entre elementos
+ITEM_H_PADDING = 16            # Padding horizontal
 
 def get_base_stylesheet() -> str:
-    """Get base widget stylesheet (Arc-style)."""
+    """Estilo base del contenedor del sidebar (fondo con gradiente, sin líneas duras)."""
     return """
         QWidget#FolderTreeSidebar {
-            background-color: #FAFAFA;
-            border-right: 1px solid #E5E5E5;
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                        stop:0 """ + SIDEBAR_TINT_TOP + """, stop:1 """ + SIDEBAR_TINT_BOTTOM + """);
+            border: none;
         }
         
+        /* Botón superior (+) con tipografía y medidas pedidas */
         QPushButton#AddButton {
             background-color: transparent;
             border: none;
-            font-size: 20px;
-            font-weight: 600;
-            color: #1A1A1A;
-            padding: 8px 12px;
+            font-size: """ + FONT_SIZE_BASE + """;
+            font-weight: 600; /* semibold para principal */
+            font-family: """ + FONT_FAMILY + """;
+            color: """ + TEXT_PRIMARY + """;
+            padding: 8px """ + str(ITEM_H_PADDING) + """px;
             text-align: left;
             border-radius: 6px;
-            margin: 8px 8px 4px 8px;
+            margin: 8px """ + str(ITEM_H_PADDING) + """px 4px """ + str(ITEM_H_PADDING) + """px;
             min-width: 50px;
         }
         
         QPushButton#AddButton:hover {
-            background-color: #F0F0F0;
+            background-color: """ + HOVER_BG + """;
         }
         
         QPushButton#AddButton:pressed {
-            background-color: #E8E8E8;
+            background-color: #262A31;
         }
     """
 
 def get_tree_base_stylesheet() -> str:
-    """Get QTreeView base stylesheet (Arc-style)."""
+    """Estilo base del QTreeView: tipografía, color, espaciado y estados (oscuro sobrio)."""
     return """
         QTreeView {
-            background-color: transparent;
-            color: #1A1A1A;
+            background: transparent;
+            color: """ + TEXT_PRIMARY + """;
             border: none;
             outline: none;
-            font-size: 13px;
-            font-family: "Segoe UI", -apple-system, system-ui;
-            font-weight: 500;
-            padding: 0px 4px;
+            font-size: """ + FONT_SIZE_BASE + """;
+            font-family: """ + FONT_FAMILY + """;
+            font-weight: 400;
+            padding: 0px """ + str(max(0, ITEM_H_PADDING - 4)) + """px;
+            selection-background-color: rgba(0,0,0,0);
+            selection-color: """ + TEXT_PRIMARY + """;
+        }
+        
+        QTreeView::viewport {
+            background: transparent;
         }
         
         QTreeView::item {
-            height: 36px;
-            min-height: 36px;
-            padding: 8px 12px;
+            height: """ + str(ITEM_HEIGHT) + """px;
+            min-height: """ + str(ITEM_HEIGHT) + """px;
+            padding: 8px """ + str(ITEM_H_PADDING) + """px;
             border-radius: 6px;
-            margin: 2px 4px;
+            margin: 6px """ + str(max(0, ITEM_H_PADDING - 8)) + """px; /* ~12px espaciamiento vertical total */
             border: none;
             background-color: transparent;
         }
         
         QTreeView::item:hover {
-            background-color: #F0F0F0;
+            background-color: transparent;
         }
         
         QTreeView::item:selected {
-            background-color: #E8E8E8;
-            color: #000000;
-            border-left: 3px solid #0066FF;
-            padding-left: 12px;
-            margin-left: 0px;
+            background-color: transparent;
+            color: """ + TEXT_PRIMARY + """;
+            border: none;
         }
         
-        QTreeView::item:selected:hover {
-            background-color: #E0E0E0;
-        }
+        QTreeView::item:selected:hover { background-color: transparent; }
+        QTreeView::item:selected:active { background-color: transparent; }
+        QTreeView::item:selected:!active { background-color: transparent; }
     """
 
 def get_tree_branch_stylesheet() -> str:
-    """Get QTreeView branch stylesheet (Arc-style chevrons)."""
+    """Estilo para ramas: sin chevrons personalizados (minimalista)."""
     return """
         QTreeView::branch {
             background-color: transparent;
@@ -105,7 +133,7 @@ def get_tree_branch_stylesheet() -> str:
     """
 
 def get_scrollbar_stylesheet() -> str:
-    """Get scrollbar stylesheet (Arc-style thin scrollbar)."""
+    """Scrollbar delgado y discreto en oscuro."""
     return """
         QScrollBar:vertical {
             background: transparent;
@@ -115,13 +143,13 @@ def get_scrollbar_stylesheet() -> str:
         }
         
         QScrollBar::handle:vertical {
-            background: #D1D1D6;
+            background: """ + SCROLL_HANDLE + """;
             border-radius: 4px;
             min-height: 30px;
         }
         
         QScrollBar::handle:vertical:hover {
-            background: #AEAEB2;
+            background: """ + SCROLL_HANDLE_HOVER + """;
         }
         
         QScrollBar::add-line:vertical,
@@ -137,31 +165,32 @@ def get_scrollbar_stylesheet() -> str:
     """
 
 def get_button_stylesheet() -> str:
-    """Get button-only stylesheet (for direct application to button)."""
+    """Estilos del botón (+) para aplicación directa (oscuro)."""
     return """
         QPushButton#AddButton {
             background-color: transparent;
             border: none;
-            font-size: 16px;
-            font-weight: 500;
-            color: #1A1A1A;
-            padding: 8px 12px;
+            font-size: """ + FONT_SIZE_BASE + """;
+            font-weight: 600;
+            font-family: """ + FONT_FAMILY + """;
+            color: """ + TEXT_PRIMARY + """;
+            padding: 8px """ + str(ITEM_H_PADDING) + """px;
             text-align: left;
             border-radius: 6px;
-            margin: 8px 8px 4px 8px;
+            margin: 8px """ + str(ITEM_H_PADDING) + """px 4px """ + str(ITEM_H_PADDING) + """px;
         }
         
         QPushButton#AddButton:hover {
-            background-color: #F0F0F0;
+            background-color: """ + HOVER_BG + """;
         }
         
         QPushButton#AddButton:pressed {
-            background-color: #E8E8E8;
+            background-color: #262A31;
         }
     """
 
 def get_complete_stylesheet() -> str:
-    """Get complete Arc-style stylesheet."""
+    """Construye el stylesheet completo (skin oscuro tipo Raycast)."""
     return (
         get_base_stylesheet() +
         get_tree_base_stylesheet() +

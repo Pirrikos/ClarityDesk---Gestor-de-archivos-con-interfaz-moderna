@@ -137,8 +137,20 @@ def save_app_state(storage_path: Path, state: dict) -> None:
             - expanded_nodes: List of expanded node paths
     """
     try:
+        # Backwards compatibility: incluir también 'tabs' y 'active_index'
+        data = dict(state)
+        open_tabs = data.get('open_tabs', [])
+        active_tab = data.get('active_tab')
+        active_index = -1
+        if open_tabs and active_tab in open_tabs:
+            try:
+                active_index = open_tabs.index(active_tab)
+            except ValueError:
+                active_index = -1
+        data['tabs'] = open_tabs
+        data['active_index'] = active_index
         with open(storage_path, 'w', encoding='utf-8') as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
+            json.dump(data, f, indent=2, ensure_ascii=False)
     except (IOError, OSError):
         # Silently fail if we can't write (permissions, disk full, etc.)
         pass

@@ -28,12 +28,14 @@ class ListIconDelegate(QStyledItemDelegate):
     
     def _draw_background(self, painter: QPainter, option, is_selected: bool) -> None:
         """Draw background for item."""
+        # Mantener fondo transparente para coherencia con Grid; usar overlays sutiles
         if is_selected:
-            painter.fillRect(option.rect, QColor(255, 255, 255, 0))
+            painter.fillRect(option.rect, QColor(255, 255, 255, 18))
         elif option.state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(option.rect, QColor(245, 248, 255))
+            painter.fillRect(option.rect, QColor(255, 255, 255, 10))
         else:
-            painter.fillRect(option.rect, QColor(255, 255, 255))
+            # Transparente: no dibujar bloque blanco
+            pass
     
     def _draw_icon_with_shadow(self, painter: QPainter, option, icon: QIcon, is_selected: bool) -> None:
         """Draw icon with blue shadow if selected."""
@@ -82,6 +84,7 @@ class ListIconDelegate(QStyledItemDelegate):
             option.rect.width() - text_x,
             option.rect.height()
         )
-        painter.setPen(QColor(43, 43, 43))
+        # Texto en claro para fondo oscuro
+        painter.setPen(QColor(230, 231, 234))
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
 

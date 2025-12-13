@@ -22,8 +22,16 @@ def on_active_tab_changed(container, index: int, path: str) -> None:
     if index < 0 or not path:
         container.clear_current_focus()
     else:
+        # Reset views before loading new folder to avoid residual selections/expansions
+        container.clear_current_focus()
         # ÚNICA ruta de refresco al cambiar de tab
+        # Actualizar breadcrumb con la ruta activa
+        if hasattr(container, "_focus_panel") and hasattr(container._focus_panel, "update_path"):
+            container._focus_panel.update_path(path)
         container._update_files()
+        # Animación de transición suave (<300ms)
+        if hasattr(container, "_animate_content_transition"):
+            container._animate_content_transition()
     container._update_nav_buttons_state()
 
 

@@ -16,7 +16,7 @@ class FileSystemWatcherService(QObject):
 
     filesystem_changed = Signal(str)  # Emitted when folder changes (folder path)
 
-    def __init__(self, parent=None, debounce_delay: int = 200):
+    def __init__(self, parent=None, debounce_delay: int = 400):
         """
         Initialize FileSystemWatcherService.
         
@@ -201,4 +201,3 @@ class FileSystemWatcherService(QObject):
         if self._previous_snapshot and not self._snapshots_equal(self._previous_snapshot, current_snapshot):
             self._previous_snapshot = current_snapshot
             self.filesystem_changed.emit(self._watched_folder)
-

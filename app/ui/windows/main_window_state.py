@@ -29,6 +29,7 @@ def load_app_state(window, tab_manager) -> None:
             history=validated_state['history'],
             history_index=validated_state['history_index']
         )
+        # Sidebar se reconstruirá desde open_tabs al abrir MainWindow
 
 
 def save_app_state(window, tab_manager) -> None:
@@ -46,10 +47,9 @@ def save_app_state(window, tab_manager) -> None:
         active_tab_path=active_tab,
         history=history,
         history_index=history_index,
-        focus_tree_paths=[],  # Not used anymore
-        expanded_nodes=[]     # Not used anymore
+        focus_tree_paths=[],
+        expanded_nodes=[]
     )
     
     # Save state
     state_manager.save_app_state(state)
-
