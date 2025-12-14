@@ -37,10 +37,14 @@ def main() -> int:
         if main_window is None:
             from app.managers.focus_manager import FocusManager
             from app.managers.tab_manager import TabManager
+            from app.managers.workspace_manager import WorkspaceManager
+            
+            # Crear WorkspaceManager antes de TabManager
+            workspace_manager = WorkspaceManager()
             
             tab_manager = TabManager()
             focus_manager = FocusManager(tab_manager)
-            main_window = MainWindow(tab_manager, focus_manager)
+            main_window = MainWindow(tab_manager, focus_manager, workspace_manager)
         
         if not main_window.isVisible():
             main_window.show()

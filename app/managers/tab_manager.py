@@ -52,9 +52,19 @@ class TabManager(QObject):
     def __init__(self, storage_path: Optional[str] = None):
         """Initialize TabManager and load saved state."""
         super().__init__()
+        self._workspace_manager = None
         _, _, self._watcher = initialize_tab_manager(
             self, storage_path, self._load_state, self._watch_and_emit_internal
         )
+    
+    def set_workspace_manager(self, workspace_manager) -> None:
+        """
+        Set WorkspaceManager instance for state coordination.
+        
+        Args:
+            workspace_manager: WorkspaceManager instance.
+        """
+        self._workspace_manager = workspace_manager
 
     def add_tab(self, folder_path: str) -> bool:
         """Add a folder as a tab and make it active."""
@@ -144,6 +154,14 @@ class TabManager(QObject):
 
     def _load_state(self) -> None:
         """Load tabs and active index from JSON storage."""
+        # Si hay WorkspaceManager, NO cargar desde archivo antiguo
+        # El estado se cargará desde el workspace activo en MainWindow
+        if self._workspace_manager:
+            self._tabs = []
+            self._active_index = -1
+            return
+        
+        # Backward compatibility: cargar desde archivo antiguo si no hay WorkspaceManager
         self._tabs, self._active_index, needs_save = load_state(
             self._state_manager, self._history_manager
         )
@@ -156,6 +174,13 @@ class TabManager(QObject):
     
     def _save_full_app_state(self) -> None:
         """Save complete application state (open_tabs, active_tab, history) to JSON."""
+        # Si hay WorkspaceManager, notificarle para que guarde en el workspace activo
+        if self._workspace_manager:
+            # WorkspaceManager recopilará el estado cuando sea necesario
+            # No guardamos directamente aquí
+            return
+        
+        # Fallback: guardar directamente si no hay WorkspaceManager (backward compatibility)
         try:
             state = self._state_manager.build_app_state(
                 tabs=self._tabs,
@@ -168,6 +193,51 @@ class TabManager(QObject):
             self._state_manager.save_app_state(state)
         except Exception as e:
             logger.error(f"Failed to save full app state: {e}", exc_info=True)
+    
+    def get_current_state(self) -> dict:
+        """
+        Get current state (tabs and active_tab, without history).
+        
+        Returns:
+            Dict with keys: tabs, active_tab
+        """
+        return {
+            'tabs': self._tabs.copy(),
+            'active_tab': self.get_active_folder()
+        }
+    
+    def load_workspace_state(self, state: dict, emit_signals: bool = True) -> None:
+        """
+        Load workspace state (tabs and active_tab, without history).
+        
+        Args:
+            state: Dict with keys: tabs, active_tab
+            emit_signals: If True, emit signals after loading. If False, only update internal state.
+        """
+        tabs = state.get('tabs', [])
+        active_tab = state.get('active_tab')
+        
+        # Detener watcher ANTES de cambiar estado (igual que en restore_state)
+        if self._watcher:
+            self._watcher.stop_watching()
+        
+        # Restaurar tabs sin crear entradas de historial
+        self._tabs = tabs.copy() if tabs else []
+        
+        # Encontrar índice del tab activo
+        if active_tab and active_tab in self._tabs:
+            self._active_index = self._tabs.index(active_tab)
+        elif self._tabs:
+            self._active_index = 0
+        else:
+            self._active_index = -1
+        
+        # Emitir señales solo si se solicita
+        if emit_signals:
+            self.tabsChanged.emit(self._tabs.copy())
+            if self._active_index >= 0 and self._active_index < len(self._tabs):
+                # _watch_and_emit_internal emite activeTabChanged e inicia el watcher
+                self._watch_and_emit_internal(self._tabs[self._active_index])
 
     def _on_folder_changed(self, folder_path: str) -> None:
         """Handle folder change event from watcher."""

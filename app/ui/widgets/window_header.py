@@ -56,13 +56,7 @@ class WindowHeader(QWidget):
         layout.addWidget(self._btn_close, 0)
         layout.addWidget(self._btn_min, 0)
         layout.addWidget(self._btn_max, 0)
-
-        # Título centrado opcional
-        title = QLabel("ClarityDesk Pro", self)
-        title.setStyleSheet("color: #1f1f1f; font-size: 13px;")
         layout.addStretch(1)
-        layout.addWidget(title, 0)
-        layout.addStretch(10)
 
     def mousePressEvent(self, event) -> None:
         """Iniciar arrastre al pulsar en zona libre del header."""

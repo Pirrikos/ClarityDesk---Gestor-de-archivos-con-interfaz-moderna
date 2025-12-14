@@ -51,8 +51,21 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         if index in self._animations:
             anim_data = self._animations[index]
             for anim in anim_data.get('animations', []):
-                anim.stop()
-                anim.deleteLater()
+                try:
+                    if anim:  # Verificar que el objeto aún existe
+                        anim.stop()
+                        anim.deleteLater()
+                except RuntimeError:
+                    # El objeto C++ ya fue eliminado, ignorar
+                    pass
+            # Limpiar entrada del diccionario
+            del self._animations[index]
+    
+    def clear_all_animations(self) -> None:
+        """Limpiar todas las animaciones activas."""
+        for index in list(self._animations.keys()):
+            self._cancel_existing_animations(index)
+        self._animations.clear()
     
     def _create_animation(
         self,

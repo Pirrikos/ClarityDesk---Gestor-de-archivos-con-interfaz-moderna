@@ -8,12 +8,15 @@ Focus Dock is now integrated directly in FileViewContainer.
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout, QWidget
 
+from app.ui.widgets.app_header import AppHeader
 from app.ui.widgets.file_view_container import FileViewContainer
 from app.ui.widgets.folder_tree_sidebar import FolderTreeSidebar
 from app.ui.widgets.raycast_panel import RaycastPanel
+from app.ui.widgets.window_header import WindowHeader
+from app.ui.widgets.workspace_selector import WorkspaceSelector
 
 
-def setup_ui(window, tab_manager, icon_service) -> tuple[FileViewContainer, FolderTreeSidebar]:
+def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, WorkspaceSelector]:
     """Build the UI layout with Focus Dock integrated in content area."""
     central_widget = RaycastPanel()
     window.setCentralWidget(central_widget)
@@ -21,10 +24,16 @@ def setup_ui(window, tab_manager, icon_service) -> tuple[FileViewContainer, Fold
     root_layout = QVBoxLayout(central_widget)
     root_layout.setContentsMargins(0, 0, 0, 0)
     root_layout.setSpacing(0)
-    # Espacio superior vacío para separar el borde superior de los botones
-    root_layout.addSpacing(16)
     
-    # Splitter redimensionable entre sidebar y file view
+    # WindowHeader: barra superior técnica (arrastre y botones de ventana)
+    window_header = WindowHeader(central_widget)
+    root_layout.addWidget(window_header, 0)
+    
+    # AppHeader: header de aplicación (muestra workspace activo)
+    app_header = AppHeader(central_widget)
+    root_layout.addWidget(app_header, 0)
+    
+    # Splitter principal con 3 widgets: selector, sidebar, file_view
     splitter = QSplitter(Qt.Orientation.Horizontal, central_widget)
     splitter.setChildrenCollapsible(False)  # No permitir colapsar completamente
     splitter.setHandleWidth(3)  # Ancho del separador (más visible)
@@ -42,6 +51,11 @@ def setup_ui(window, tab_manager, icon_service) -> tuple[FileViewContainer, Fold
         }
     """)
     
+    # Workspace selector (izquierda)
+    workspace_selector = WorkspaceSelector(splitter)
+    workspace_selector.set_workspace_manager(workspace_manager)
+    workspace_selector.show()
+    
     # Sidebar de navegación (Arc-style)
     sidebar = FolderTreeSidebar(splitter)
     sidebar.show()  # Fuerza visibilidad antes de añadir al layout
@@ -54,15 +68,17 @@ def setup_ui(window, tab_manager, icon_service) -> tuple[FileViewContainer, Fold
         splitter
     )
     
-    # Agregar widgets al splitter
+    # Agregar widgets al splitter en orden: selector, sidebar, file_view
+    splitter.addWidget(workspace_selector)
     splitter.addWidget(sidebar)
     splitter.addWidget(file_view_container)
     
-    # Configurar proporciones iniciales (sidebar ~22%, file_view ~78%)
-    # Para ventana de 1100px: sidebar=240px, file_view=860px
-    splitter.setStretchFactor(0, 0)  # Sidebar no se estira
-    splitter.setStretchFactor(1, 1)  # File view se estira
-    splitter.setSizes([240, 860])  # Tamaños iniciales
+    # Configurar proporciones iniciales (selector ~10%, sidebar ~22%, file_view ~68%)
+    # Para ventana de 1100px: selector=120px, sidebar=240px, file_view=740px
+    splitter.setStretchFactor(0, 0)  # Selector no se estira
+    splitter.setStretchFactor(1, 0)  # Sidebar no se estira
+    splitter.setStretchFactor(2, 1)  # File view se estira
+    splitter.setSizes([120, 240, 740])  # Tamaños iniciales
     
     root_layout.addWidget(splitter, 1)
 
@@ -79,4 +95,4 @@ def setup_ui(window, tab_manager, icon_service) -> tuple[FileViewContainer, Fold
         Qt.WindowType.FramelessWindowHint
     )
     
-    return file_view_container, sidebar
+    return file_view_container, sidebar, window_header, app_header, workspace_selector

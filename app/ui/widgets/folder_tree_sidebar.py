@@ -8,6 +8,9 @@ Only shows folders that have been opened as Focus.
 import os
 
 from app.core.constants import SIDEBAR_MAX_WIDTH
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 from PySide6.QtCore import QModelIndex, QMimeData, QPoint, QRect, QSize, Qt, Signal, QTimer
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QDrag, QDragMoveEvent, QDropEvent, QMouseEvent, QStandardItem, QStandardItemModel
@@ -37,6 +40,7 @@ from app.ui.widgets.folder_tree_model import (
     find_parent_item,
     get_root_folder_paths,
     remove_focus_path_from_model,
+    collect_expanded_paths,
 )
 from app.ui.widgets.folder_tree_reorder_handler import (
     handle_reorder_drag_move,
@@ -469,6 +473,27 @@ class FolderTreeSidebar(QWidget):
         root = self._model.invisibleRootItem()
         return collect_expanded_paths(self._model, self._path_to_item, self._tree_view, root)
     
+    def get_current_state(self) -> tuple[list[str], list[str]]:
+        """
+        Get current sidebar state (paths and expanded nodes).
+        
+        Returns:
+            Tuple of (paths list, expanded_nodes list).
+        """
+        paths = self.get_focus_tree_paths()
+        expanded = self.get_expanded_paths()
+        return (paths, expanded)
+    
+    def load_workspace_state(self, paths: list[str], expanded: list[str]) -> None:
+        """
+        Load workspace state (paths and expanded nodes).
+        
+        Args:
+            paths: List of folder paths to add to tree.
+            expanded: List of paths that should be expanded.
+        """
+        self.restore_tree(paths, expanded)
+    
     def restore_tree(self, paths: list[str], expanded_paths: list[str]) -> None:
         """
         Restore tree state from saved paths and expanded nodes.
@@ -480,6 +505,26 @@ class FolderTreeSidebar(QWidget):
             paths: List of folder paths to add to tree (root folders first, then children).
             expanded_paths: List of paths that should be expanded.
         """
+        # Bloquear señales del widget para evitar parpadeo visual
+        self._tree_view.blockSignals(True)
+        
+        # Limpiar animaciones del delegate antes de restaurar
+        delegate = self._tree_view.itemDelegate()
+        if delegate and hasattr(delegate, 'clear_all_animations'):
+            delegate.clear_all_animations()
+        
+        # Limpiar explícitamente la selección
+        self._tree_view.clearSelection()
+        
+        # Resetear el selection model completamente
+        selection_model = self._tree_view.selectionModel()
+        if selection_model:
+            selection_model.clearSelection()
+            selection_model.clearCurrentIndex()
+        
+        # Resetear índice actual
+        self._tree_view.setCurrentIndex(QModelIndex())
+        
         # Clear current tree
         self._model.clear()
         self._model.setHorizontalHeaderLabels(["Folders"])
@@ -513,11 +558,17 @@ class FolderTreeSidebar(QWidget):
         # Expand specified nodes
         expanded_set = set(expanded_paths)
         for path in expanded_set:
-            if path in self._path_to_item:
-                item = self._path_to_item[path]
-                index = self._model.indexFromItem(item)
-                if index.isValid():
-                    self._tree_view.expand(index)
+            try:
+                if path in self._path_to_item:
+                    item = self._path_to_item[path]
+                    index = self._model.indexFromItem(item)
+                    if index.isValid():
+                        self._tree_view.expand(index)
+            except Exception as e:
+                logger.warning(f"Error expanding path {path}: {e}")
+        
+        # Desbloquear señales después de cargar contenido completo
+        self._tree_view.blockSignals(False)
     
     def showEvent(self, event) -> None:
         """Asegurar que el botón sea visible cuando se muestra el widget."""

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QMainWindow, QMessageBox
 
 from app.managers.focus_manager import FocusManager
 from app.managers.tab_manager import TabManager
+from app.managers.workspace_manager import WorkspaceManager
 from app.services.desktop_path_helper import is_desktop_focus
 from app.services.file_open_service import open_file_with_system
 from app.services.icon_service import IconService
@@ -31,41 +32,58 @@ logger = get_logger(__name__)
 class MainWindow(QMainWindow):
     """Main application window with Focus Dock and content area."""
 
-    def __init__(self, tab_manager: TabManager, focus_manager: FocusManager, parent=None):
-        """Initialize MainWindow with TabManager and FocusManager."""
+    def __init__(self, tab_manager: TabManager, focus_manager: FocusManager, workspace_manager: WorkspaceManager, parent=None):
+        """Initialize MainWindow with TabManager, FocusManager, and WorkspaceManager."""
         super().__init__(parent)
         self._tab_manager = tab_manager
         self._focus_manager = focus_manager
+        self._workspace_manager = workspace_manager
         self._icon_service = IconService()
         self._preview_service = PreviewService(self._icon_service)
         self._current_preview_window = None
+        self._is_initializing = True
+        
+        # Configurar TabManager para usar WorkspaceManager
+        self._tab_manager.set_workspace_manager(workspace_manager)
+        
         self._setup_ui()
         self._connect_signals()
-        # Sincronizar sidebar con tabs existentes
-        for tab_path in self._tab_manager.get_tabs():
-            self._sidebar.add_focus_path(tab_path)
         self._setup_shortcuts()
-        self._load_app_state()
+        self._load_workspace_state()
+        # AppHeader ya se actualiza en _load_workspace_state() con el nombre del workspace
+        self._is_initializing = False
 
     def _setup_ui(self) -> None:
         """Build the UI layout with Focus Dock integrated."""
-        self._file_view_container, self._sidebar = setup_ui(
-            self, self._tab_manager, self._icon_service
+        self._file_view_container, self._sidebar, self._window_header, self._app_header, self._workspace_selector = setup_ui(
+            self, self._tab_manager, self._icon_service, self._workspace_manager
         )
 
     def _connect_signals(self) -> None:
         """Connect UI signals to TabManager and FocusManager."""
+        # WindowHeader -> MainWindow (botones de ventana)
+        self._window_header.request_close.connect(self.close)
+        self._window_header.request_minimize.connect(self.showMinimized)
+        self._window_header.request_toggle_maximize.connect(self._toggle_maximize)
+        
         # NOTE: FocusManager is not currently used - Dock calls TabManager directly
         # Keeping FocusManager connection commented for potential future use
         # self._focus_manager.focus_opened.connect(
         #     lambda path: self._tab_manager.add_tab(path)
         # )
         
-        # TabManager -> UI
-        self._tab_manager.tabsChanged.connect(self._on_tabs_changed)
-        self._tab_manager.activeTabChanged.connect(self._on_active_tab_changed)
-        # Actualizar flechas cuando cambia el tab activo
-        self._tab_manager.activeTabChanged.connect(self._on_active_tab_changed_update_nav)
+        # TabManager -> UI (centralizar conexiones para disconnect/reconnect)
+        self._tab_manager_connections = [
+            (self._tab_manager.tabsChanged, self._on_tabs_changed),
+            (self._tab_manager.tabsChanged, self._on_tabs_changed_sync_sidebar),
+            (self._tab_manager.activeTabChanged, self._on_active_tab_changed),
+            (self._tab_manager.activeTabChanged, self._on_active_tab_changed_update_nav),
+            (self._tab_manager.activeTabChanged, self._on_active_tab_changed_update_app_header),
+        ]
+        
+        # Conectar todas las señales
+        for signal, slot in self._tab_manager_connections:
+            signal.connect(slot)
         
         # FileViewContainer -> file open handler
         self._file_view_container.open_file.connect(self._on_file_open)
@@ -77,8 +95,6 @@ class MainWindow(QMainWindow):
         self._sidebar.folder_selected.connect(self._on_sidebar_folder_selected)
         self._sidebar.focus_remove_requested.connect(self._on_sidebar_remove_focus)
         
-        # TabManager -> Sidebar (sincronización)
-        self._tab_manager.tabsChanged.connect(self._on_tabs_changed_sync_sidebar)
         
         # Watcher -> Sidebar (rename externo detectado)
         watcher = self._tab_manager.get_watcher()
@@ -87,19 +103,96 @@ class MainWindow(QMainWindow):
             watcher.folder_disappeared.connect(self._on_folder_disappeared)
             # Resincronización estructural cuando hay moves entre padres
             watcher.structural_change_detected.connect(self._on_structural_change_detected)
+        
+        # WorkspaceSelector -> WorkspaceManager (delegar)
+        self._workspace_selector.workspace_selected.connect(self._on_workspace_selected)
+        
+        # WorkspaceManager -> MainWindow (actualizar UI)
+        self._workspace_manager.workspace_changed.connect(self._on_workspace_changed)
 
     def _load_app_state(self) -> None:
         """Load complete application state and restore UI."""
-        load_app_state(self, self._tab_manager)
-        try:
-            # Fallback: asegurar que el sidebar refleja los tabs actuales tras la carga
-            for tab_path in self._tab_manager.get_tabs():
-                self._sidebar.add_focus_path(tab_path)
-        except Exception as e:
-            logger.warning(f"Failed to sync sidebar after loading app state: {e}")
+        # Backward compatibility: si no hay WorkspaceManager, cargar estado antiguo
+        if not self._workspace_manager:
+            load_app_state(self, self._tab_manager)
+    
+    def _load_workspace_state(self) -> None:
+        """Load workspace state and restore UI."""
+        if not self._workspace_manager:
+            self._load_app_state()
+            return
+        
+        active_workspace = self._workspace_manager.get_active_workspace()
+        if not active_workspace:
+            return
+        
+        # Obtener estado del workspace (puede ser None si es workspace nuevo)
+        state = self._workspace_manager.get_workspace_state(active_workspace.id)
+        
+        if state:
+            # Cargar estado en TabManager (sin historial)
+            self._tab_manager.load_workspace_state({
+                'tabs': state.get('tabs', []),
+                'active_tab': state.get('active_tab')
+            })
+            
+            # Cargar estado en Sidebar
+            self._sidebar.load_workspace_state(
+                state.get('focus_tree_paths', []),
+                state.get('expanded_nodes', [])
+            )
+        else:
+            # Workspace nuevo sin estado - inicializar vacío
+            self._tab_manager.load_workspace_state({
+                'tabs': [],
+                'active_tab': None
+            })
+            self._sidebar.load_workspace_state([], [])
+        
+        # Actualizar AppHeader con nombre del workspace (siempre, incluso si está vacío)
+        self._app_header.update_workspace(active_workspace.name)
+    
+    def _on_workspace_selected(self, workspace_id: str) -> None:
+        """Handle workspace selection - delegar a WorkspaceManager."""
+        if self._workspace_manager:
+            self._workspace_manager.switch_workspace(
+                workspace_id,
+                self._tab_manager,
+                self._sidebar,
+                signal_controller=self
+            )
+    
+    def disconnect_signals(self) -> None:
+        """Temporarily disconnect TabManager signals during workspace switch."""
+        for signal, slot in self._tab_manager_connections:
+            signal.disconnect(slot)
+    
+    def reconnect_signals(self) -> None:
+        """Reconnect TabManager signals after workspace switch."""
+        for signal, slot in self._tab_manager_connections:
+            signal.connect(slot)
+    
+    def clear_file_view(self) -> None:
+        """Explicitly clear file view when workspace has no active tab."""
+        self._file_view_container.clear_current_focus()
+    
+    def _on_workspace_changed(self, workspace_id: str) -> None:
+        """Handle workspace change - actualizar UI con nuevo estado."""
+        if not self._workspace_manager:
+            return
+        
+        workspace = self._workspace_manager.get_workspace(workspace_id)
+        if not workspace:
+            return
+        
+        # El estado ya fue cargado en switch_workspace(), solo actualizar AppHeader
+        # Esto evita recargar el estado dos veces
+        self._app_header.update_workspace(workspace.name)
 
     def _on_tabs_changed(self, tabs: list) -> None:
         """Handle tabs list change from TabManager."""
+        if self._is_initializing:
+            return
         # Focus Dock handles this automatically via its own TabManager connection
         # Schedule sidebar sync with debounce
         self._schedule_sidebar_sync()
@@ -109,8 +202,23 @@ class MainWindow(QMainWindow):
         # FileViewContainer will auto-update via its own TabManager connection
         pass
     
+    def _on_active_tab_changed_update_app_header(self, index: int, path: str) -> None:
+        """Update AppHeader when active tab changes."""
+        if self._is_initializing:
+            return
+        self._app_header.update_workspace(path)
+    
+    def _toggle_maximize(self) -> None:
+        """Toggle window maximize/restore state."""
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+    
     def _on_active_tab_changed_update_nav(self, index: int, path: str) -> None:
         """Update navigation buttons state when active tab changes."""
+        if self._is_initializing:
+            return
         self._file_view_container._update_nav_buttons_state()
     
     def _on_nav_back_shortcut(self) -> None:
@@ -381,8 +489,12 @@ class MainWindow(QMainWindow):
             if watcher:
                 watcher.stop_watching()
         
-        # Save complete application state
-        self._save_app_state()
+        # Delegar guardado final a WorkspaceManager (MainWindow NO guarda directamente)
+        if self._workspace_manager:
+            self._workspace_manager.save_current_state(self._tab_manager, self._sidebar)
+        else:
+            # Backward compatibility: guardar estado antiguo si no hay WorkspaceManager
+            self._save_app_state()
         
         if self._current_preview_window:
             self._current_preview_window.close()
@@ -392,7 +504,7 @@ class MainWindow(QMainWindow):
         event.accept()
     
     def _save_app_state(self) -> None:
-        """Save complete application state before closing."""
+        """Save complete application state before closing (backward compatibility only)."""
         save_app_state(self, self._tab_manager)
     
     def _on_sidebar_new_focus(self, path: str) -> None:
@@ -517,6 +629,8 @@ class MainWindow(QMainWindow):
     
     def _on_tabs_changed_sync_sidebar(self, tabs: list) -> None:
         """Sync sidebar with current tabs."""
+        if self._is_initializing:
+            return
         # Deshabilitar actualizaciones durante sincronización batch para mayor velocidad
         self._sidebar._tree_view.setUpdatesEnabled(False)
         try:
