@@ -42,7 +42,12 @@ class FilesManager:
         return result.success
     
     def rename_batch(self, file_paths: list[str], new_names: list[str]) -> bool:
-        """Apply batch rename to multiple files."""
+        """
+        Apply batch rename to multiple files.
+        
+        Note: For better UX with progress feedback, use rename_file() in a loop
+        instead of this method when processing multiple files.
+        """
         watcher = self._get_watcher()
         try:
             self._rename_service.apply_rename(file_paths, new_names, watcher=watcher)

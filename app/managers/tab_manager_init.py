@@ -7,7 +7,6 @@ Handles TabManager initialization and setup.
 from typing import Optional
 
 from app.services.tab_history_manager import TabHistoryManager
-from app.services.tab_navigation_handler import TabNavigationHandler
 from app.services.tab_state_manager import TabStateManager
 
 
@@ -16,12 +15,12 @@ def initialize_tab_manager(
     storage_path: Optional[str] = None,
     load_state_callback=None,
     watch_and_emit_callback=None
-) -> tuple[TabHistoryManager, TabStateManager, TabNavigationHandler, object]:
+) -> tuple[TabHistoryManager, TabStateManager, object]:
     """
     Initialize TabManager components.
     
     Returns:
-        Tuple of (history_manager, state_manager, nav_handler, watcher)
+        Tuple of (history_manager, state_manager, watcher)
     """
     manager._tabs: list = []
     manager._active_index: int = -1
@@ -38,15 +37,6 @@ def initialize_tab_manager(
     manager._state_manager = state_manager
     manager._watcher = watcher  # Assign watcher BEFORE calling watch_and_emit_callback
     
-    # Initialize navigation handler
-    nav_handler = TabNavigationHandler(
-        history_manager,
-        manager._tabs,
-        watcher,
-        manager._save_state,
-        watch_and_emit_callback
-    )
-    
     # Load basic state (tabs and active_index) - will be overridden by MainWindow if full state exists
     load_state_callback()
     
@@ -56,4 +46,4 @@ def initialize_tab_manager(
         if active_folder:
             watch_and_emit_callback(active_folder)
     
-    return history_manager, state_manager, nav_handler, watcher
+    return history_manager, state_manager, watcher

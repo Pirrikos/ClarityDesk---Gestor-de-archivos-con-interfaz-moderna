@@ -4,8 +4,11 @@ GridTilePositions - Tile position calculation for grid layouts.
 Handles column calculation, row/col positioning, and layout offsets.
 """
 
+from typing import List, Tuple, Union
+
 from PySide6.QtWidgets import QGridLayout
 
+from app.ui.widgets.category_section_header import CategorySectionHeader
 from app.ui.widgets.grid_tile_builder import create_file_tile, create_stack_tile
 
 
@@ -73,7 +76,7 @@ def calculate_expanded_file_position(
 
 def add_tile_to_normal_grid(
     view,
-    items_to_render: list,
+    items_to_render: Union[list, List[Tuple[str, List[str]]]],
     grid_layout: QGridLayout,
     columns: int,
     col_offset: int
@@ -83,22 +86,47 @@ def add_tile_to_normal_grid(
     
     Args:
         view: FileGridView instance.
-        items_to_render: List of items (files or stacks) to render.
+        items_to_render: List of items (files or stacks) OR list of (category_label, files) tuples.
         grid_layout: Grid layout to add tiles to.
         columns: Number of columns in grid.
         col_offset: Column offset for positioning.
     """
-    for idx, item in enumerate(items_to_render):
-        if view._stacks:
-            tile = create_stack_tile(item, view, view._icon_service)
-            tile.stack_clicked.connect(view._on_stack_clicked)
-            tile.open_file.connect(view.open_file.emit)
-        else:
-            tile = create_file_tile(
-                item, view, view._icon_service, view._state_manager,
-                dock_style=True
-            )
-        row = idx // columns
-        col = (idx % columns) + col_offset
-        grid_layout.addWidget(tile, row, col)
+    current_row = 0
+    
+    # Si items_to_render es una lista de tuplas (categorías), renderizar con secciones
+    if items_to_render and isinstance(items_to_render[0], tuple):
+        for category_label, files in items_to_render:
+            # Agregar header de sección
+            header = CategorySectionHeader(category_label, view._content_widget)
+            grid_layout.addWidget(header, current_row, col_offset, 1, columns)
+            current_row += 1
+            
+            # Agregar tiles de archivos de esta categoría
+            for idx, file_path in enumerate(files):
+                tile = create_file_tile(
+                    file_path, view, view._icon_service, view._state_manager,
+                    dock_style=view._is_desktop_window
+                )
+                file_row = idx // columns
+                file_col = (idx % columns) + col_offset
+                grid_layout.addWidget(tile, current_row + file_row, file_col)
+            
+            # Avanzar a la siguiente fila después de esta categoría
+            files_rows = (len(files) + columns - 1) // columns  # Ceiling division
+            current_row += files_rows
+    else:
+        # Renderizado normal sin categorías
+        for idx, item in enumerate(items_to_render):
+            if view._stacks:
+                tile = create_stack_tile(item, view, view._icon_service)
+                tile.stack_clicked.connect(view._on_stack_clicked)
+                tile.open_file.connect(view.open_file.emit)
+            else:
+                tile = create_file_tile(
+                    item, view, view._icon_service, view._state_manager,
+                    dock_style=view._is_desktop_window
+                )
+            row = idx // columns
+            col = (idx % columns) + col_offset
+            grid_layout.addWidget(tile, row, col)
 

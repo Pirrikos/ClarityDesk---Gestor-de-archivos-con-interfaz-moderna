@@ -1,7 +1,10 @@
-from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QEasingCurve, QTimer, QVariantAnimation
+from PySide6.QtGui import QBrush, QColor, QFont, QMouseEvent, QPainter, QPen, QPolygon, QTransform
 from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QTreeView, QStyle
-import os
+
+from app.ui.widgets.folder_tree_menu_utils import calculate_menu_rect_viewport
+from app.ui.widgets.folder_tree_widget_utils import find_sidebar
+
 
 
 class FolderTreeSectionDelegate(QStyledItemDelegate):
@@ -17,10 +20,248 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         self._text_color = QColor("#E6E7EA")
         self._radius = 12  # Bordes redondeados amplios
         self._padding = 6  # Aire alrededor del contenido
+        
+        # Animation state tracking
+        # Para hijos: {opacity, icon_rotation, animations}
+        # Para nodos padre (chevron): {chevron_rotation, chevron_opacity, bg_highlight_opacity, animations}
+        self._animations: dict[object, dict] = {}
+        self._setup_animation_tracking()
+    
+    def _setup_animation_tracking(self) -> None:
+        """Setup animation tracking for expansion/collapse."""
+        if not self._view:
+            return
+        
+        # Track expansion state changes
+        self._view.expanded.connect(self._on_expanded)
+        self._view.collapsed.connect(self._on_collapsed)
+    
+    def _create_animation_updater(self, index, key: str, anim_data: dict):
+        """Crear función de actualización para animaciones que repinta el viewport."""
+        def update_value(value):
+            anim_data[key] = float(value)
+            if self._view:
+                visual_rect = self._view.visualRect(index)
+                if visual_rect.isValid():
+                    self._view.viewport().update(visual_rect)
+        return update_value
+    
+    def _cancel_existing_animations(self, index) -> None:
+        """Cancelar animaciones existentes para un índice."""
+        if index in self._animations:
+            anim_data = self._animations[index]
+            for anim in anim_data.get('animations', []):
+                anim.stop()
+                anim.deleteLater()
+    
+    def _create_animation(
+        self,
+        index,
+        anim_data: dict,
+        duration: int,
+        easing: QEasingCurve.Type,
+        start_value: float,
+        end_value: float,
+        key: str,
+        on_finished=None
+    ) -> QVariantAnimation:
+        """Helper para crear animaciones con configuración común."""
+        anim = QVariantAnimation(self._view)
+        anim.setDuration(duration)
+        anim.setEasingCurve(easing)
+        anim.setStartValue(start_value)
+        anim.setEndValue(end_value)
+        anim.valueChanged.connect(self._create_animation_updater(index, key, anim_data))
+        if on_finished:
+            anim.finished.connect(on_finished)
+        anim_data['animations'].append(anim)
+        return anim
+    
+    def _animate_chevron_expand(self, index) -> None:
+        """Animate chevron rotation + fade on expansion (140ms, OutCubic)."""
+        if not index.isValid():
+            return
+        
+        self._cancel_existing_animations(index)
+        
+        anim_data = {
+            'chevron_rotation': 90.0,
+            'chevron_opacity': 0.7,
+            'bg_highlight_opacity': 0.0,
+            'animations': []
+        }
+        self._animations[index] = anim_data
+        
+        rotation_anim = self._create_animation(
+            index, anim_data, 140, QEasingCurve.Type.OutCubic,
+            90.0, 0.0, 'chevron_rotation'
+        )
+        
+        fade_anim = self._create_animation(
+            index, anim_data, 140, QEasingCurve.Type.OutCubic,
+            0.7, 1.0, 'chevron_opacity'
+        )
+        
+        highlight_anim = self._create_animation(
+            index, anim_data, 120, QEasingCurve.Type.OutCubic,
+            0.0, 0.04, 'bg_highlight_opacity',
+            lambda: self._start_highlight_fadeout(index, anim_data)
+        )
+        
+        rotation_anim.start()
+        fade_anim.start()
+        highlight_anim.start()
+    
+    def _animate_chevron_collapse(self, index) -> None:
+        """Animate chevron rotation on collapse (140ms, OutCubic)."""
+        if not index.isValid():
+            return
+        
+        self._cancel_existing_animations(index)
+        
+        anim_data = {
+            'chevron_rotation': 0.0,
+            'chevron_opacity': 1.0,
+            'bg_highlight_opacity': 0.0,
+            'animations': []
+        }
+        self._animations[index] = anim_data
+        
+        rotation_anim = self._create_animation(
+            index, anim_data, 140, QEasingCurve.Type.OutCubic,
+            0.0, 90.0, 'chevron_rotation',
+            lambda: self._cleanup_animation(index, is_chevron=True)
+        )
+        
+        rotation_anim.start()
+    
+    def _start_highlight_fadeout(self, index, anim_data: dict) -> None:
+        """Iniciar fadeout del highlight después de la expansión."""
+        fadeout_anim = self._create_animation(
+            index, anim_data, 120, QEasingCurve.Type.InCubic,
+            anim_data.get('bg_highlight_opacity', 0.04), 0.0, 'bg_highlight_opacity',
+            lambda: self._cleanup_animation(index, is_chevron=True)
+        )
+        fadeout_anim.start()
+    
+    def _cleanup_animation(self, index, is_chevron: bool = False) -> None:
+        """Clean up animation data after completion."""
+        if index in self._animations:
+            anim_data = self._animations[index]
+            if is_chevron and 'chevron_rotation' not in anim_data:
+                return
+            for anim in anim_data.get('animations', []):
+                anim.deleteLater()
+            QTimer.singleShot(200, lambda idx=index: self._animations.pop(idx, None))
+    
+    def _iterate_children(self, index, callback) -> None:
+        """Iterar sobre hijos de un índice y aplicar callback."""
+        model = self._view.model()
+        if not model:
+            return
+        child_count = model.rowCount(index)
+        for i in range(child_count):
+            child_index = model.index(i, 0, index)
+            if child_index.isValid():
+                callback(child_index)
+    
+    def _on_expanded(self, index) -> None:
+        """Handle node expansion - animate chevron + highlight, then fade-in for children."""
+        if not index.isValid():
+            return
+        self._animate_chevron_expand(index)
+        self._iterate_children(index, self._animate_child_expand)
+    
+    def _on_collapsed(self, index) -> None:
+        """Handle node collapse - animate chevron, then fade-out for children."""
+        if not index.isValid():
+            return
+        self._animate_chevron_collapse(index)
+        self._iterate_children(index, self._animate_child_collapse)
+    
+    def _animate_child_expand(self, index) -> None:
+        """Animate child item expansion with fade-in and icon pivot (180ms)."""
+        self._cancel_existing_animations(index)
+        
+        anim_data = {
+            'opacity': 0.0,
+            'icon_rotation': -12.0,
+            'animations': []
+        }
+        self._animations[index] = anim_data
+        
+        opacity_anim = self._create_animation(
+            index, anim_data, 180, QEasingCurve.Type.OutCubic,
+            0.0, 1.0, 'opacity',
+            lambda: self._cleanup_animation(index, is_chevron=False)
+        )
+        
+        icon_anim = self._create_animation(
+            index, anim_data, 180, QEasingCurve.Type.OutCubic,
+            -12.0, 0.0, 'icon_rotation'
+        )
+        
+        opacity_anim.start()
+        icon_anim.start()
+    
+    def _animate_child_collapse(self, index) -> None:
+        """Animate child item collapse - limpio y seco, sin efectos adicionales."""
+        if index not in self._animations:
+            self._animations[index] = {'opacity': 1.0, 'icon_rotation': 0.0, 'animations': []}
+        
+        anim_data = self._animations[index]
+        
+        for anim in anim_data.get('animations', []):
+            anim.stop()
+            anim.deleteLater()
+        anim_data['animations'] = []
+        anim_data['icon_rotation'] = 0.0
+        
+        opacity_anim = self._create_animation(
+            index, anim_data, 150, QEasingCurve.Type.InCubic,
+            anim_data.get('opacity', 1.0), 0.0, 'opacity',
+            lambda: self._cleanup_animation(index, is_chevron=False)
+        )
+        
+        opacity_anim.start()
+    
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
+        # Apply animation effects
+        anim_data = self._animations.get(index)
+        opacity = 1.0
+        icon_rotation = 0.0
+        chevron_rotation = None
+        chevron_opacity = 1.0
+        bg_highlight_opacity = 0.0
+        
+        # Detectar si es animación de chevron (nodo padre) o de hijo
+        is_chevron_anim = anim_data and 'chevron_rotation' in anim_data
+        is_child_anim = anim_data and 'opacity' in anim_data and 'chevron_rotation' not in anim_data
+        
+        if is_chevron_anim:
+            chevron_rotation = anim_data.get('chevron_rotation', None)
+            chevron_opacity = anim_data.get('chevron_opacity', 1.0)
+            bg_highlight_opacity = anim_data.get('bg_highlight_opacity', 0.0)
+        elif is_child_anim:
+            opacity = anim_data.get('opacity', 1.0)
+            icon_rotation = anim_data.get('icon_rotation', 0.0)
+        
         painter.save()
         try:
+            # Pintar highlight del fondo (solo para nodo padre en expansión)
+            if bg_highlight_opacity > 0.0:
+                highlight_color = QColor(255, 255, 255, int(bg_highlight_opacity * 255))
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(highlight_color))
+                painter.drawRoundedRect(option.rect, 6, 6)
+            
+            # Aplicar opacidad (solo para hijos)
+            if is_child_anim and opacity < 1.0:
+                painter.setOpacity(opacity)
+            
+            # Pintar hover background si es necesario
             if option.state & QStyle.State.State_MouseOver:
                 style = self._view.style()
                 # Compute exact rects for icon (decoration) and text
@@ -43,100 +284,189 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                     painter.setPen(Qt.PenStyle.NoPen)
                     painter.setBrush(QBrush(self._hover_bg))
                     painter.drawRoundedRect(hover_rect, 6, 6)
+            
+            # Aplicar rotación del icono (solo al icono, después de pintar el fondo)
+            if abs(icon_rotation) > 0.01:
+                # Guardar estado antes de rotar el icono
+                painter.save()
+                style = self._view.style()
+                deco_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemDecoration, option, self._view)
+                if deco_rect.isValid():
+                    icon_center_x = deco_rect.center().x()
+                    icon_center_y = deco_rect.center().y()
+                    # Aplicar rotación solo al icono
+                    icon_transform = QTransform()
+                    icon_transform.translate(icon_center_x, icon_center_y)
+                    icon_transform.rotate(icon_rotation * 0.5)
+                    icon_transform.translate(-icon_center_x, -icon_center_y)
+                    painter.setTransform(icon_transform, combine=True)
+            
+            # Pintar el contenido (icono y texto) primero para tener las dimensiones correctas
+            super().paint(painter, option, index)
+            
+            # Pintar chevron DESPUÉS del contenido para usar las dimensiones correctas
+            # (animado o estático, solo si el nodo tiene hijos)
+            model = index.model()
+            if model and model.rowCount(index) > 0:
+                if chevron_rotation is not None:
+                    # Chevron animado
+                    self._paint_chevron(painter, option, index, chevron_rotation, chevron_opacity)
+                else:
+                    # Chevron estático según estado expandido/colapsado
+                    is_expanded = self._view.isExpanded(index)
+                    static_rotation = 0.0 if is_expanded else 90.0
+                    self._paint_chevron(painter, option, index, static_rotation, 1.0)
+            
+            # Pintar tres puntitos solo en carpetas raíz (sin padre)
+            if not index.parent().isValid():
+                self._paint_menu_button(painter, option, index)
+            
+            # Restaurar estado del icono si se aplicó rotación
+            if abs(icon_rotation) > 0.01:
+                painter.restore()
         finally:
             painter.restore()
-        super().paint(painter, option, index)
+    
+    def _paint_menu_button(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
+        """Pintar botón de tres puntitos solo en carpetas raíz."""
+        menu_rect = self._get_menu_button_rect(option, index)
+        if not menu_rect.isValid():
+            return
+        
+        menu_rect_abs = calculate_menu_rect_viewport(menu_rect, option.rect)
+        
+        painter.save()
+        try:
+            sidebar = find_sidebar(self._view)
+            is_hovered = sidebar and sidebar._hovered_menu_index == index if sidebar else False
+            
+            dot_color = QColor(self._text_color)
+            dot_color.setAlpha(255 if is_hovered else 180)
+            
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(dot_color))
+            
+            dot_radius = 2.0
+            dot_spacing = 4
+            center_y = menu_rect_abs.center().y() - 2
+            start_x = menu_rect_abs.center().x() - dot_spacing
+            
+            for i in range(3):
+                x = start_x + (i * dot_spacing)
+                painter.drawEllipse(QPoint(int(x), int(center_y)), int(dot_radius), int(dot_radius))
+        finally:
+            painter.restore()
+    
+    def _get_menu_button_rect(self, option: QStyleOptionViewItem, index) -> QRect:
+        """Obtener rectángulo del botón de menú (tres puntitos) dentro del contenedor del item.
+        
+        IMPORTANTE: Retorna coordenadas RELATIVAS a option.rect (no absolutas del viewport).
+        """
+        # Obtener rectángulo del texto para posicionar el botón al lado del texto
+        style = self._view.style()
+        text_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, self._view)
+        
+        # Calcular posición del botón de forma más robusta
+        button_size = 24  # Área de clic más grande
+        padding = 4
+        
+        # Calcular right en coordenadas absolutas primero
+        if text_rect.isValid():
+            right_abs = text_rect.right() - padding
+        else:
+            # Fallback: calcular basado en el rect del item
+            right_abs = option.rect.right() - padding - 8
+        
+        # Asegurar que no se salga del rect del item
+        right_abs = min(right_abs, option.rect.right() - padding)
+        
+        # Convertir a coordenadas RELATIVAS a option.rect
+        left_rel = right_abs - button_size - option.rect.left()
+        left_rel = max(0, left_rel)  # No salirse por la izquierda
+        
+        # Posición vertical: centrado pero un poco más arriba (RELATIVA)
+        item_height = option.rect.height()
+        center_y_rel = (item_height // 2) - 2  # Subido 2px desde el centro
+        top_rel = center_y_rel - button_size // 2
+        top_rel = max(0, top_rel)  # No salirse por arriba
+        bottom_rel = min(item_height, top_rel + button_size)  # No salirse por abajo
+        
+        # Ajustar height si se recortó
+        height = bottom_rel - top_rel
+        
+        # Retornar coordenadas RELATIVAS a option.rect
+        return QRect(left_rel, top_rel, button_size, height)
+    
+    def _paint_chevron(self, painter: QPainter, option: QStyleOptionViewItem, index, rotation: float, opacity: float) -> None:
+        """Pintar chevron con rotación y fade (sin modificar geometría)."""
+        style = self._view.style()
+        deco_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemDecoration, option, self._view)
+        
+        if not deco_rect.isValid():
+            icon_left = option.rect.left() + 16
+        else:
+            icon_left = deco_rect.left()
+        
+        chevron_size = 10  # Tamaño del chevron (10px, más grande)
+        spacing = 4  # Espacio entre chevron e icono
+        
+        # Posicionar chevron a la izquierda del icono
+        center_x = icon_left - spacing - chevron_size // 2
+        center_y = option.rect.center().y()
+        
+        painter.save()
+        try:
+            # Aplicar opacidad del chevron
+            if opacity < 1.0:
+                painter.setOpacity(opacity)
+            
+            # Aplicar rotación centrada en el chevron
+            chevron_transform = QTransform()
+            chevron_transform.translate(center_x, center_y)
+            chevron_transform.rotate(rotation)
+            chevron_transform.translate(-center_x, -center_y)
+            painter.setTransform(chevron_transform, combine=True)
+            
+            # Pintar chevron como triángulo (▶ cuando colapsado, ▼ cuando expandido)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(self._text_color, 1.5))
+            painter.setBrush(QBrush(self._text_color))
+            
+            # Triángulo apuntando a la derecha (▶), rotado según el estado
+            # Base: triángulo pequeño que apunta a la derecha
+            half_size = chevron_size * 0.5
+            points = [
+                (center_x - half_size * 0.4, center_y - half_size),  # Izquierda arriba
+                (center_x - half_size * 0.4, center_y + half_size),  # Izquierda abajo
+                (center_x + half_size * 0.6, center_y)  # Punta derecha
+            ]
+            
+            polygon = QPolygon([QPoint(int(p[0]), int(p[1])) for p in points])
+            painter.drawPolygon(polygon)
+        finally:
+            painter.restore()
 
     def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:
         """Mantener tamaño estándar; delegar en comportamiento por defecto."""
         return super().sizeHint(option, index)
-
-    def _compute_group_block_rect_immediate_children(self, top_index) -> QRect:
-        """Unir rects visibles del título y de hijos inmediatos, con padding, recortando margen izquierdo."""
-        view = self._view
-        if view is None:
-            return QRect()
-        rect = view.visualRect(top_index)
-        model = top_index.model()
-        union_rect = QRect(rect)
-        viewport_rect = view.viewport().rect()
-        min_label_left = rect.left() + 8
-        if view.isExpanded(top_index):
-            rows = model.rowCount(top_index)
-            for r in range(rows):
-                child = model.index(r, 0, top_index)
-                child_rect = view.visualRect(child)
-                if child_rect.isValid() and viewport_rect.intersects(child_rect):
-                    union_rect = union_rect.united(child_rect)
-                    label_left = child_rect.left() + 8
-                    if label_left < min_label_left:
-                        min_label_left = label_left
-        # Añadir padding y redondeo
-        union_rect.adjust(-self._padding, -self._padding, self._padding, self._padding)
-        union_rect.setLeft(min_label_left)
-        # Asegurar que el bloque no sobresale del viewport
-        return union_rect.intersected(viewport_rect)
-
-    def _get_active_parent_index(self):
-        """Item padre activo según la carpeta abierta; si no se determina, devolver None."""
-        view = self._view
-        # Buscar TabManager en la cadena de padres del sidebar
-        parent = view.parent()
-        tab_manager = None
-        while parent:
-            if hasattr(parent, "_tab_manager"):
-                tab_manager = parent._tab_manager
-                break
-            parent = parent.parent()
-        if not tab_manager or not hasattr(tab_manager, "get_active_folder"):
-            return None
-        active_path = tab_manager.get_active_folder()
-        if not active_path:
-            return None
-        normalized_active = os.path.normpath(active_path)
-        # Buscar en el modelo el top-level item cuyo UserRole coincide con la ruta activa
-        model = view.model()
-        if not model or not hasattr(model, "invisibleRootItem"):
-            return None
-        root = model.invisibleRootItem()
-        for i in range(root.rowCount()):
-            item = root.child(i)
-            if not item:
-                continue
-            item_path = item.data(Qt.ItemDataRole.UserRole)
-            if item_path and os.path.normpath(item_path) == normalized_active:
-                return model.indexFromItem(item)
-        return None
-
-    def _is_direct_child_of(self, index, top_index) -> bool:
-        """Comprobar si index es hijo inmediato de top_index."""
-        return index.parent().isValid() and (index.parent() == top_index)
-
-    def _indent_for(self, index) -> int:
-        depth = 0
-        i = index
-        while i.parent().isValid():
-            depth += 1
-            i = i.parent()
-        return self._view.indentation() * depth
-
-    def _get_top_level_ancestor(self, index):
-        """Subir hasta el ancestro de nivel 1 (sin padre)."""
-        i = index
-        while i.parent().isValid():
-            i = i.parent()
-        return i
-
-    def _is_descendant_of(self, index, ancestor) -> bool:
-        """Comprobar si index pertenece al subárbol de ancestor."""
-        i = index
-        while i.isValid():
-            if i == ancestor:
-                return True
-            i = i.parent()
-        return False
-
-    def _preferred_font_family(self) -> str:
-        """Familia de fuente preferida según disponibilidad del sistema."""
-        # Nota: Qt elegirá la primera fuente disponible; mantener orden profesional
-        return "Inter"
+    
+    def editorEvent(self, event: QEvent, model, option: QStyleOptionViewItem, index) -> bool:
+        """Interceptar eventos de mouse para detectar clic en botón de menú (tres puntitos)."""
+        if event.type() == QEvent.Type.MouseButtonPress:
+            mouse_event = event
+            if isinstance(mouse_event, QMouseEvent) and mouse_event.button() == Qt.MouseButton.LeftButton:
+                if not index.parent().isValid():
+                    menu_rect = self._get_menu_button_rect(option, index)
+                    if menu_rect.isValid():
+                        menu_rect_viewport = calculate_menu_rect_viewport(menu_rect, option.rect)
+                        
+                        if menu_rect_viewport.contains(mouse_event.pos()):
+                            sidebar = find_sidebar(self._view)
+                            if sidebar:
+                                folder_path = index.data(Qt.ItemDataRole.UserRole)
+                                if folder_path:
+                                    sidebar._show_root_menu(folder_path, mouse_event.globalPos())
+                            return True
+        
+        return super().editorEvent(event, model, option, index)

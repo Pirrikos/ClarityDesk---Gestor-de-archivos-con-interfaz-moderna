@@ -66,6 +66,7 @@ def get_tree_base_stylesheet() -> str:
             font-family: """ + FONT_FAMILY + """;
             font-weight: 400;
             padding: 0px """ + str(max(0, ITEM_H_PADDING - 4)) + """px;
+            padding-left: 16px; /* Espacio adicional para chevron de raíz */
             selection-background-color: rgba(0,0,0,0);
             selection-color: """ + TEXT_PRIMARY + """;
         }
@@ -188,6 +189,27 @@ def get_button_stylesheet() -> str:
             background-color: #262A31;
         }
     """
+
+def get_menu_stylesheet() -> str:
+    """Estilos del menú contextual (tres puntitos)."""
+    return """
+        QMenu {
+            background: rgba(23, 26, 31, 240);
+            border: 1px solid rgba(255, 255, 255, 25);
+            border-radius: 10px;
+            padding: 6px 8px;
+            color: #E6E7EA;
+        }
+        QMenu::item {
+            padding: 6px 12px;
+            border-radius: 6px;
+            background: transparent;
+        }
+        QMenu::item:selected {
+            background: #1F2228;
+        }
+    """
+
 
 def get_complete_stylesheet() -> str:
     """Construye el stylesheet completo (skin oscuro tipo Raycast)."""

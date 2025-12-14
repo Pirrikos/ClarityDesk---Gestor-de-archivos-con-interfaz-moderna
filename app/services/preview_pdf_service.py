@@ -158,8 +158,10 @@ class PreviewPdfService:
                 if not pdf_pixmap.isNull():
                     return pdf_pixmap
 
-        # Otros tipos → usar lógica existente (IconService)
-        base = self._icon_service.get_file_preview(path, max_size)
+        # Otros tipos → usar IconRenderService para previews con normalización
+        from app.services.icon_render_service import IconRenderService
+        render_service = IconRenderService(self._icon_service)
+        base = render_service.get_file_preview(path, max_size)
         if base.isNull():
             return QPixmap()
 

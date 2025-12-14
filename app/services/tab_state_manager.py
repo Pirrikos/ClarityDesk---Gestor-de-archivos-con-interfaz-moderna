@@ -6,9 +6,9 @@ Handles loading and saving tab state and complete application state.
 
 from typing import List, Optional, Tuple
 
-from app.services.tab_path_normalizer import normalize_path
+from app.services.path_utils import normalize_path
+from app.services.tab_helpers import validate_folder
 from app.services.tab_storage_service import load_app_state, load_state, save_app_state, save_state
-from app.services.tab_validator import validate_folder
 
 
 class TabStateManager:

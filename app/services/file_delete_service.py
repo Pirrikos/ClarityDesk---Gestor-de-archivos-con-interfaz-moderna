@@ -9,11 +9,14 @@ import os
 from typing import Optional
 from ctypes import windll, wintypes
 
+from app.core.logger import get_logger
 from app.models.file_operation_result import FileOperationResult
 from app.services.desktop_path_helper import is_desktop_focus
 from app.services.file_path_utils import validate_file, validate_path
 from app.services.trash_operations import delete_permanently, move_to_trash
 from app.services.trash_storage import TRASH_FOCUS_PATH
+
+logger = get_logger(__name__)
 
 
 def delete_file(
@@ -54,12 +57,22 @@ def delete_file(
         # SHFileOperationW with FO_DELETE and FOF_ALLOWUNDO
         result = _send_to_recycle_bin(file_path)
         if result:
+            logger.info(f"Deleted file to recycle bin: {file_path}")
             return FileOperationResult.ok()
         else:
             # Fallback to regular delete if recycle bin fails
+            logger.warning(f"Recycle bin failed, using regular delete: {file_path}")
             os.remove(file_path)
+            logger.info(f"Deleted file permanently: {file_path}")
             return FileOperationResult.ok()
-    except (OSError, PermissionError) as e:
+    except PermissionError as e:
+        logger.error(f"Permission denied deleting {file_path}: {e}")
+        return FileOperationResult.error(f"Failed to delete file: {str(e)}")
+    except OSError as e:
+        logger.error(f"OS error deleting {file_path}: {e}")
+        return FileOperationResult.error(f"Failed to delete file: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error deleting {file_path}: {e}", exc_info=True)
         return FileOperationResult.error(f"Failed to delete file: {str(e)}")
 
 

@@ -41,24 +41,20 @@ def create_state_buttons(
     except ImportError:
         return state_buttons
 
-    # Add separator
-    separator = QWidget()
-    separator.setFixedWidth(1)
-    separator.setStyleSheet("background-color: #e5e5e7;")
-    layout.addWidget(separator)
-    layout.addSpacing(8)
+    # Sin separador de línea entre grupos; mantener espaciado mínimo
+    layout.addSpacing(6)
 
     # State buttons configuration
     state_configs = [
-        (STATE_PENDING, "🟡", "Pendiente"),
-        (STATE_DELIVERED, "🔵", "Entregado"),
-        (STATE_CORRECTED, "✅", "Corregido"),
-        (STATE_REVIEW, "🔴", "Revisar"),
+        (STATE_PENDING, "🟡", "Marcar archivos seleccionados como Pendiente"),
+        (STATE_DELIVERED, "🔵", "Marcar archivos seleccionados como Entregado"),
+        (STATE_CORRECTED, "✅", "Marcar archivos seleccionados como Corregido"),
+        (STATE_REVIEW, "🔴", "Marcar archivos seleccionados como Revisar"),
     ]
 
     for state, emoji, tooltip in state_configs:
         btn = QPushButton(emoji)
-        btn.setFixedSize(36, 36)
+        btn.setFixedSize(30, 30)
         btn.setToolTip(tooltip)
         btn.setStyleSheet(get_state_button_style())
         btn.clicked.connect(lambda checked, s=state: state_button_clicked_signal(s))
@@ -68,8 +64,8 @@ def create_state_buttons(
     # Add "Clear state" button
     layout.addSpacing(8)
     clear_btn = QPushButton("✕")
-    clear_btn.setFixedSize(36, 36)
-    clear_btn.setToolTip("Quitar estado")
+    clear_btn.setFixedSize(30, 30)
+    clear_btn.setToolTip("Quitar estado de archivos seleccionados")
     clear_btn.setStyleSheet(get_clear_button_style())
     clear_btn.clicked.connect(lambda: state_button_clicked_signal(None))
     layout.addWidget(clear_btn)

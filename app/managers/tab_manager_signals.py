@@ -4,7 +4,7 @@ Signal handlers for TabManager.
 Handles folder change events and watch/emit operations.
 """
 
-from app.services.tab_path_normalizer import normalize_path
+from app.services.path_utils import normalize_path
 
 
 def on_folder_changed(

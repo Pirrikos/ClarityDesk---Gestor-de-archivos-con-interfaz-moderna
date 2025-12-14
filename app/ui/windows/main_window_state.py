@@ -29,7 +29,11 @@ def load_app_state(window, tab_manager) -> None:
             history=validated_state['history'],
             history_index=validated_state['history_index']
         )
-        # Sidebar se reconstruirá desde open_tabs al abrir MainWindow
+        
+        # Restore sidebar tree with preserved root folder order
+        if hasattr(window, '_sidebar') and validated_state.get('focus_tree_paths'):
+            expanded_paths = validated_state.get('expanded_nodes', [])
+            window._sidebar.restore_tree(validated_state['focus_tree_paths'], expanded_paths)
 
 
 def save_app_state(window, tab_manager) -> None:
@@ -40,15 +44,22 @@ def save_app_state(window, tab_manager) -> None:
     history = tab_manager.get_history()
     history_index = tab_manager.get_history_index()
     
-    # Build state dict (no folder tree state needed)
+    # Get sidebar tree state (with preserved root folder order)
+    focus_tree_paths = []
+    expanded_nodes = []
+    if hasattr(window, '_sidebar'):
+        focus_tree_paths = window._sidebar.get_focus_tree_paths()
+        expanded_nodes = window._sidebar.get_expanded_paths()
+    
+    # Build state dict
     state_manager = tab_manager.get_state_manager()
     state = state_manager.build_app_state(
         tabs=tabs,
         active_tab_path=active_tab,
         history=history,
         history_index=history_index,
-        focus_tree_paths=[],
-        expanded_nodes=[]
+        focus_tree_paths=focus_tree_paths,
+        expanded_nodes=expanded_nodes
     )
     
     # Save state

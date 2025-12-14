@@ -38,7 +38,11 @@ def handle_drag_enter(event: QDragEnterEvent, tab_manager=None) -> None:
 
 
 def handle_drag_move(event: QDragMoveEvent, tab_manager=None) -> None:
-    """Handle drag move to maintain drop acceptance."""
+    """
+    Handle drag move to maintain drop acceptance.
+    
+    Mejora: Determina acción (move/copy) según tecla modificadora para mejor feedback visual.
+    """
     mime_data = event.mimeData()
     if not mime_data.hasUrls():
         event.ignore()
@@ -56,8 +60,19 @@ def handle_drag_move(event: QDragMoveEvent, tab_manager=None) -> None:
                     event.ignore()
                     return
     
-    # Accept any action Windows proposes
-    event.acceptProposedAction()
+    # Determinar acción según tecla modificadora (mejora feedback visual)
+    # Ctrl = Copy, Sin modificador = Move
+    modifiers = event.keyboardModifiers()
+    if modifiers & Qt.KeyboardModifier.ControlModifier:
+        event.setDropAction(Qt.DropAction.CopyAction)
+    else:
+        # Usar acción propuesta o MoveAction como fallback
+        if event.proposedAction() != Qt.DropAction.IgnoreAction:
+            event.setDropAction(event.proposedAction())
+        else:
+            event.setDropAction(Qt.DropAction.MoveAction)
+    
+    event.accept()
 
 
 def handle_drop(event: QDropEvent, tab_manager, file_dropped_signal) -> None:
@@ -96,14 +111,10 @@ def handle_drop(event: QDropEvent, tab_manager, file_dropped_signal) -> None:
                 event.ignore()
                 return
             file_dropped_signal.emit(file_path)
-    # For Desktop Focus, use CopyAction (files are copied, not moved)
-    # For other folders, use MoveAction
-    if is_desktop:
-        event.setDropAction(Qt.DropAction.CopyAction)
+    # Desktop Focus y otras carpetas: usar MoveAction (mover archivos, no copiar)
+    if event.proposedAction() != Qt.DropAction.IgnoreAction:
+        event.setDropAction(event.proposedAction())
     else:
-        if event.proposedAction() != Qt.DropAction.IgnoreAction:
-            event.setDropAction(event.proposedAction())
-        else:
-            event.setDropAction(Qt.DropAction.MoveAction)
+        event.setDropAction(Qt.DropAction.MoveAction)
     event.accept()
 

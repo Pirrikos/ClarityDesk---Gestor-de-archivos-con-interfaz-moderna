@@ -28,6 +28,7 @@ class FileListView(QTableWidget):
     open_file = Signal(str)  # Emitted on double-click (file path)
     file_dropped = Signal(str)  # Emitted when file is dropped (source file path)
     file_deleted = Signal(str)  # Emitted when file is deleted (file path)
+    folder_moved = Signal(str, str)  # Emitted when folder is moved (old_path, new_path)
 
     def __init__(
         self,
@@ -111,7 +112,17 @@ class FileListView(QTableWidget):
                 path = item.data(Qt.ItemDataRole.UserRole)
                 if path:
                     selected_paths.append(path)
-        return selected_paths
+        if selected_paths:
+            return selected_paths
+        # Fallback: usar currentItem cuando selectedItems() está vacío (problema de foco)
+        current_row = self.currentRow()
+        if current_row >= 0:
+            current_item = self.item(current_row, 1)
+            if current_item:
+                path = current_item.data(Qt.ItemDataRole.UserRole)
+                if path:
+                    return [path]
+        return []
 
     def set_selected_states(self, state) -> None:
         """

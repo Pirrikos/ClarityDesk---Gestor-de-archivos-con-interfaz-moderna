@@ -6,8 +6,8 @@ Handles loading, saving, and restoring tab state.
 
 from typing import List, Optional
 
-from app.services.tab_finder import find_tab_index
-from app.services.tab_path_normalizer import normalize_path
+from app.services.path_utils import normalize_path
+from app.services.tab_helpers import find_tab_index
 
 
 def load_state(state_manager, history_manager) -> tuple[List[str], int, bool]:

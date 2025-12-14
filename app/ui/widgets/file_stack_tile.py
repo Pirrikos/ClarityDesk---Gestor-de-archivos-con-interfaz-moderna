@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from app.models.file_stack import FileStack
 from app.services.icon_service import IconService
+from app.services.icon_render_service import IconRenderService
 from app.services.icon_fallback_helper import get_default_icon, safe_pixmap
 from app.ui.widgets.badge_overlay_widget import BadgeOverlayWidget
 from app.ui.widgets.text_elision import elide_middle_manual
@@ -94,15 +95,9 @@ class FileStackTile(QWidget):
         container_rect = self._container_widget.geometry()
         rect = container_rect.adjusted(2, 2, -2, -2)
         
-        # Apple white style: bright white background
-        if self._is_hovered:
-            # Slightly brighter on hover
-            bg_color = QColor(255, 255, 255, 255)
-            border_color = QColor(220, 220, 220, 200)
-        else:
-            # Pure white like macOS Dock
-            bg_color = QColor(255, 255, 255, 250)
-            border_color = QColor(200, 200, 200, 150)
+        # Fondo blanco translúcido sutil - estilo Raycast
+        bg_color = QColor(255, 255, 255, 15)  # rgba(255, 255, 255, 0.06)
+        border_color = QColor(255, 255, 255, 20)  # rgba(255, 255, 255, 0.08)
         
         # Draw rounded rectangle background only on container area
         painter.setBrush(QBrush(bg_color))
@@ -117,11 +112,14 @@ class FileStackTile(QWidget):
         icon_width = 48
         icon_height = 48
         
+        # Use IconRenderService for previews with normalization
+        render_service = IconRenderService(self._icon_service)
+        
         first_file = self._file_stack.files[0] if self._file_stack.files else None
         is_folder_stack = self._file_stack.stack_type == 'folder'
         
         if first_file:
-            pixmap = self._icon_service.get_file_preview(first_file, QSize(48, 48))
+            pixmap = render_service.get_file_preview(first_file, QSize(48, 48))
             
             if is_folder_stack:
                 # Para carpetas: verificar si el pixmap tiene contenido visible
@@ -203,11 +201,16 @@ class FileStackTile(QWidget):
             self._badge_overlay = None
             return
         
-        if not self.isVisible():
-            try:
-                self._badge_overlay.hide()
-            except (RuntimeError, AttributeError):
-                self._badge_overlay = None
+        try:
+            if not self.isVisible():
+                try:
+                    self._badge_overlay.hide()
+                except (RuntimeError, AttributeError):
+                    self._badge_overlay = None
+                return
+        except RuntimeError:
+            # Widget ya fue eliminado, limpiar referencia
+            self._badge_overlay = None
             return
         
         try:

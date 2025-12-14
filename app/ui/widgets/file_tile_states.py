@@ -4,25 +4,23 @@ FileTileStates - State management for FileTile.
 Handles file state badges and state updates.
 """
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
+from app.ui.widgets.file_tile_utils import is_grid_view
 from app.ui.widgets.state_badge_widget import StateBadgeWidget
 
+if TYPE_CHECKING:
+    from app.ui.widgets.file_tile import FileTile
 
-def set_file_state(tile, state: Optional[str]) -> None:
+
+def set_file_state(tile: 'FileTile', state: Optional[str]) -> None:
     """Update file state badge."""
-    if tile._state_badge:
-        tile._state_badge.set_state(state)
-        tile._update_badge_position()
-
-
-def _set_state(tile, state) -> None:
-    """Set file state via state manager."""
-    if not tile._parent_view or not hasattr(tile._parent_view, '_state_manager'):
-        return
+    tile._file_state = state
     
-    state_manager = tile._parent_view._state_manager
-    if state_manager:
-        state_manager.set_file_state(tile._file_path, state)
-        set_file_state(tile, state)
+    if is_grid_view(tile):
+        icon_label = getattr(tile, '_icon_label', None)
+        if icon_label:
+            icon_label.update()
+    elif tile._state_badge:
+        tile._state_badge.set_state(state)
 

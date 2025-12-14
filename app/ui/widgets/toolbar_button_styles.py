@@ -10,33 +10,35 @@ def get_view_button_style(checked: bool) -> str:
     if checked:
         return """
             QPushButton {
-                background-color: #e0edff;
-                color: #1d1d1f;
+                background-color: #1F2228;
+                color: #FFFFFF;
                 border: none;
-                border-radius: 8px;
-                padding: 8px 16px;
+                border-radius: 6px;
+                padding: 6px 12px;
                 font-family: 'Segoe UI', sans-serif;
-                font-size: 13px;
+                font-size: 12px;
                 font-weight: 400;
             }
             QPushButton:hover {
-                background-color: #e0edff;
+                background-color: #1F2228;
+                color: #FFFFFF;
             }
         """
     else:
         return """
             QPushButton {
                 background-color: transparent;
-                color: #1d1d1f;
+                color: #FFFFFF;
                 border: none;
-                border-radius: 8px;
-                padding: 8px 16px;
+                border-radius: 6px;
+                padding: 6px 12px;
                 font-family: 'Segoe UI', sans-serif;
-                font-size: 13px;
+                font-size: 12px;
                 font-weight: 400;
             }
             QPushButton:hover {
-                background-color: #f0f6ff;
+                background-color: #1F2228;
+                color: #FFFFFF;
             }
         """
 
@@ -46,18 +48,23 @@ def get_nav_button_style() -> str:
     return """
         QPushButton {
             background-color: transparent;
-            border: 1px solid #e5e5e7;
+            border: none;
             border-radius: 6px;
+            color: #FFFFFF;
+            font-size: 16px;
+            font-weight: 700;
         }
         QPushButton:hover {
-            background-color: #f5f5f7;
-            border-color: #d0d0d0;
+            background-color: transparent;
+            color: #FFFFFF;
         }
         QPushButton:pressed {
-            background-color: #e5e5e7;
+            background-color: rgba(255,255,255,0.10);
+            color: #FFFFFF;
         }
         QPushButton:disabled {
-            opacity: 0.4;
+            color: rgba(255,255,255,0.4);
+            background-color: transparent;
         }
     """
 
@@ -67,16 +74,18 @@ def get_state_button_style() -> str:
     return """
         QPushButton {
             background-color: transparent;
-            border: 1px solid #e5e5e7;
+            border: none;
             border-radius: 6px;
-            font-size: 16px;
+            font-size: 14px;
+            color: #FFFFFF;
         }
         QPushButton:hover {
-            background-color: #f5f5f7;
-            border-color: #d0d0d0;
+            background-color: rgba(255,255,255,0.08);
+            color: #FFFFFF;
         }
         QPushButton:pressed {
-            background-color: #e5e5e7;
+            background-color: rgba(255,255,255,0.12);
+            color: #FFFFFF;
         }
     """
 
@@ -86,18 +95,17 @@ def get_clear_button_style() -> str:
     return """
         QPushButton {
             background-color: transparent;
-            border: 1px solid #e5e5e7;
+            border: none;
             border-radius: 6px;
-            font-size: 14px;
-            color: #8e8e93;
+            font-size: 12px;
+            color: #FFFFFF;
         }
         QPushButton:hover {
-            background-color: #f5f5f7;
-            border-color: #d0d0d0;
-            color: #2d2d2d;
+            background-color: rgba(255,255,255,0.08);
+            color: #FFFFFF;
         }
         QPushButton:pressed {
-            background-color: #e5e5e7;
+            background-color: rgba(255,255,255,0.12);
+            color: #FFFFFF;
         }
     """
-

@@ -9,10 +9,9 @@ import os
 
 from app.services.file_extensions import SUPPORTED_EXTENSIONS
 from app.services.file_list_service import get_files
-from app.services.tab_finder import find_tab_index
+from app.services.path_utils import normalize_path
+from app.services.tab_helpers import find_tab_index, validate_folder
 from app.services.tab_history_manager import TabHistoryManager
-from app.services.tab_path_normalizer import normalize_path
-from app.services.tab_validator import validate_folder
 
 
 def adjust_active_index_after_remove(

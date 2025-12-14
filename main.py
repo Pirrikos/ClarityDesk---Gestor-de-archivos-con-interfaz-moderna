@@ -6,7 +6,6 @@ MainWindow opens only when user requests it.
 """
 
 import sys
-import time
 
 from PySide6.QtWidgets import QApplication
 
@@ -16,28 +15,14 @@ from app.ui.windows.main_window import MainWindow
 
 def main() -> int:
     """Application entry point."""
-    # Start timing
-    startup_start = time.perf_counter()
-    
     app = QApplication(sys.argv)
     app.setApplicationName("ClarityDesk Pro")
-    
-    app_init_time = time.perf_counter()
-    print(f"[STARTUP] QApplication init: {(app_init_time - startup_start) * 1000:.2f} ms")
 
     # Create DesktopWindow (auto-start)
-    window_create_start = time.perf_counter()
     desktop_window = DesktopWindow()
-    window_create_time = time.perf_counter()
-    print(f"[STARTUP] DesktopWindow.__init__: {(window_create_time - window_create_start) * 1000:.2f} ms")
     
     # Show window
-    show_start = time.perf_counter()
     desktop_window.show()
-    show_time = time.perf_counter()
-    window_visible_time = show_time - startup_start
-    print(f"[STARTUP] desktop_window.show(): {(show_time - show_start) * 1000:.2f} ms")
-    print(f"[STARTUP] ⚡ VENTANA VISIBLE en: {window_visible_time * 1000:.2f} ms")
     
     # Initialize heavy components after window is shown (non-blocking)
     from PySide6.QtCore import QTimer

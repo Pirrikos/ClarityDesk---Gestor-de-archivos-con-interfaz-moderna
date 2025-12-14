@@ -145,7 +145,7 @@ def _create_expanded_file_tiles(
     for file_idx, file_path in enumerate(expanded_files):
         file_tile = create_file_tile(
             file_path, view, view._icon_service, view._state_manager,
-            disable_hover=True, dock_style=view._is_desktop_window
+            dock_style=view._is_desktop_window
         )
         file_row, file_col = calculate_expanded_file_position(
             file_idx, files_per_row, total_files, total_stacks, col_offset

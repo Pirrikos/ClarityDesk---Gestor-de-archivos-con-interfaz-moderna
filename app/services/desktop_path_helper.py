@@ -6,7 +6,7 @@ Helper functions for detecting Desktop Focus and normalizing paths.
 
 import os
 
-from app.services.tab_path_normalizer import normalize_path
+from app.services.path_utils import normalize_path
 
 
 # Virtual path identifier for Desktop Focus

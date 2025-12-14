@@ -13,6 +13,7 @@ from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QCheckBox, QTableWidgetItem, QVBoxLayout, QWidget
 
 from app.services.icon_service import IconService
+from app.services.icon_render_service import IconRenderService
 from app.ui.widgets.list_checkbox import CustomCheckBox
 from app.ui.widgets.list_state_cell import ListStateCell
 
@@ -92,7 +93,9 @@ def create_name_cell(
 
 def _get_file_icon(file_path: str, icon_service: IconService) -> Optional[QIcon]:
     """Get file icon for list view."""
-    pixmap = icon_service.get_file_preview_list(file_path, QSize(28, 28))
+    # Use IconRenderService for previews optimized for list view
+    render_service = IconRenderService(icon_service)
+    pixmap = render_service.get_file_preview_list(file_path, QSize(28, 28))
     if not pixmap.isNull():
         return QIcon(pixmap)
     return icon_service.get_file_icon(file_path, QSize(28, 28))

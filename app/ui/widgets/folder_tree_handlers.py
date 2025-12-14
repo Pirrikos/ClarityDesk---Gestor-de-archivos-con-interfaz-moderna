@@ -9,7 +9,7 @@ import os
 from PySide6.QtCore import QModelIndex, QPoint, Qt
 from PySide6.QtGui import QStandardItemModel
 from PySide6.QtWidgets import QFileDialog, QMenu, QTreeView
-from app.services.tab_validator import validate_folder
+from app.services.tab_helpers import validate_folder
 
 
 def handle_tree_click(

@@ -77,13 +77,9 @@ class SettingsStackTile(QWidget):
         container_rect = self._container_widget.geometry()
         rect = container_rect.adjusted(2, 2, -2, -2)
         
-        # Apple white style: bright white background
-        if self._is_hovered:
-            bg_color = QColor(255, 255, 255, 255)
-            border_color = QColor(220, 220, 220, 200)
-        else:
-            bg_color = QColor(255, 255, 255, 250)
-            border_color = QColor(200, 200, 200, 150)
+        # Fondo blanco translúcido sutil - estilo Raycast
+        bg_color = QColor(255, 255, 255, 15)  # rgba(255, 255, 255, 0.06)
+        border_color = QColor(255, 255, 255, 20)  # rgba(255, 255, 255, 0.08)
         
         # Draw rounded rectangle background only on container area
         painter.setBrush(bg_color)

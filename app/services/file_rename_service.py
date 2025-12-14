@@ -9,10 +9,13 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from app.core.logger import get_logger
 from app.models.file_operation_result import FileOperationResult
 from app.services.desktop_path_helper import is_desktop_focus
 from app.services.desktop_operations import rename_desktop_file
 from app.services.file_path_utils import resolve_conflict, validate_file
+
+logger = get_logger(__name__)
 
 
 def rename_file(
@@ -64,8 +67,16 @@ def rename_file(
 
     try:
         source_path.rename(dest_path)
+        logger.info(f"Renamed file: {file_path} -> {dest_path}")
         result = FileOperationResult.ok()
-    except (OSError, PermissionError) as e:
+    except PermissionError as e:
+        logger.error(f"Permission denied renaming {file_path} to {new_name}: {e}")
+        result = FileOperationResult.error(f"Failed to rename file: {str(e)}")
+    except OSError as e:
+        logger.error(f"OS error renaming {file_path} to {new_name}: {e}")
+        result = FileOperationResult.error(f"Failed to rename file: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error renaming {file_path} to {new_name}: {e}", exc_info=True)
         result = FileOperationResult.error(f"Failed to rename file: {str(e)}")
     finally:
         if watcher and hasattr(watcher, 'ignore_events'):

@@ -54,7 +54,12 @@ def _create_composite_preview(
     icon_service: IconService,
     base_size: QSize
 ) -> QPixmap:
-    """Create composite preview showing multiple file icons."""
+    """
+    Create composite preview showing multiple file icons.
+    
+    Mejora: Muestra cantidad de archivos más claramente con badge siempre visible
+    si hay más de 1 archivo.
+    """
     max_icons = 4
     icons_to_show = file_paths[:max_icons]
     
@@ -81,7 +86,8 @@ def _create_composite_preview(
         x_pos = idx * offset
         painter.drawPixmap(x_pos, 0, pixmap)
     
-    if len(file_paths) > max_icons:
+    # Mostrar badge siempre si hay más de 1 archivo (mejora feedback visual)
+    if len(file_paths) > 1:
         _draw_count_badge(painter, len(file_paths), composite_width, composite_height)
     
     painter.end()
@@ -94,18 +100,28 @@ def _draw_count_badge(
     width: int,
     height: int
 ) -> None:
-    """Draw badge showing total file count."""
-    badge_size = 20
+    """
+    Draw badge showing total file count.
+    
+    Mejora: Badge más visible con fondo semitransparente y texto más legible.
+    """
+    badge_size = 22
     badge_x = width - badge_size - 2
     badge_y = height - badge_size - 2
     
-    painter.setBrush(QColor(0, 120, 215))
-    painter.setPen(Qt.PenStyle.NoPen)
+    # Fondo semitransparente para mejor visibilidad
+    painter.setBrush(QColor(0, 120, 215, 220))
+    painter.setPen(QColor(255, 255, 255, 255))
+    painter.setPenWidth(1)
     painter.drawEllipse(badge_x, badge_y, badge_size, badge_size)
     
+    # Texto más legible
     painter.setPen(QColor(255, 255, 255))
-    painter.setFont(painter.font())
-    count_text = str(total_count)
+    font = painter.font()
+    font.setBold(True)
+    font.setPointSize(9)
+    painter.setFont(font)
+    count_text = str(total_count) if total_count < 100 else "99+"
     painter.drawText(
         badge_x, badge_y, badge_size, badge_size,
         Qt.AlignmentFlag.AlignCenter,

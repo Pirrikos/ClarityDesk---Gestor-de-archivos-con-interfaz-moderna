@@ -4,8 +4,11 @@ FileViewHandlers - Event handlers for FileViewContainer.
 Handles drag/drop, file operations, and view switching.
 """
 
-from PySide6.QtCore import QTimer
+from typing import TYPE_CHECKING, Callable, Optional
 
+from PySide6.QtCore import QObject, QTimer
+
+from app.core.constants import FILE_SYSTEM_DEBOUNCE_MS
 from app.ui.widgets.file_drop_handler import (
     handle_drag_enter,
     handle_drag_move,
@@ -13,21 +16,30 @@ from app.ui.widgets.file_drop_handler import (
     handle_file_drop,
 )
 
+if TYPE_CHECKING:
+    from app.managers.tab_manager import TabManager
+
 
 class FileViewHandlers:
     """Event handlers for FileViewContainer."""
     
-    def __init__(self, tab_manager, update_files_callback):
+    def __init__(
+        self, 
+        tab_manager: 'TabManager', 
+        update_files_callback: Callable[[], None],
+        parent: Optional[QObject] = None
+    ):
         """
         Initialize handlers.
         
         Args:
             tab_manager: TabManager instance.
             update_files_callback: Callback to update files.
+            parent: Optional parent QObject for auto-cleanup.
         """
         self._tab_manager = tab_manager
         self._update_files = update_files_callback
-        self._pending_update_timer = QTimer()
+        self._pending_update_timer = QTimer(parent)  # With parent for auto-cleanup
         self._pending_update_timer.setSingleShot(True)
         self._pending_update_timer.timeout.connect(self._update_files)
     
@@ -43,9 +55,9 @@ class FileViewHandlers:
         """Handle drop event."""
         handle_drop(event, self._tab_manager, self._update_files)
     
-    def handle_file_dropped(self, source_file_path: str) -> None:
+    def handle_file_dropped(self, source_file_path: str) -> tuple[bool, str, str]:
         """Handle file drop into active folder."""
-        handle_file_drop(source_file_path, self._tab_manager, self._update_files)
+        return handle_file_drop(source_file_path, self._tab_manager, self._update_files)
     
     def handle_file_deleted(self, file_path: str) -> None:
         """
@@ -57,5 +69,10 @@ class FileViewHandlers:
         # Stop any pending timer and restart it
         # This groups multiple file_deleted signals into a single update
         self._pending_update_timer.stop()
-        self._pending_update_timer.start(200)  # 200ms delay to group deletions
+        self._pending_update_timer.start(FILE_SYSTEM_DEBOUNCE_MS)
+    
+    def cleanup(self) -> None:
+        """Cleanup timer before destruction."""
+        if hasattr(self, '_pending_update_timer') and self._pending_update_timer.isActive():
+            self._pending_update_timer.stop()
 

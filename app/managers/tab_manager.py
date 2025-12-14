@@ -5,17 +5,20 @@ Manages tabs (folder paths), active tab selection, state persistence,
 and filtered file listings from the active folder.
 """
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from PySide6.QtCore import QObject, Signal
 
+from app.core.logger import get_logger
 from app.services.file_extensions import SUPPORTED_EXTENSIONS
 
 import os
 
+logger = get_logger(__name__)
+
 from app.services.desktop_path_helper import DESKTOP_FOCUS_PATH, is_desktop_focus
 from app.services.trash_storage import TRASH_FOCUS_PATH
-from app.services.tab_utils import get_tab_display_name
+from app.services.tab_helpers import get_tab_display_name, find_tab_index
 
 from app.managers.tab_manager_state import load_state, save_state, restore_state as state_restore_state
 from app.managers.tab_manager_actions import (
@@ -29,6 +32,10 @@ from app.managers.tab_manager_actions import (
 from app.managers.tab_manager_signals import on_folder_changed, watch_and_emit as signal_watch_and_emit
 from app.managers.tab_manager_init import initialize_tab_manager
 from app.managers.tab_manager_restore import restore_tab_manager_state
+
+if TYPE_CHECKING:
+    from app.services.tab_state_manager import TabStateManager
+    from app.services.filesystem_watcher_service import FileSystemWatcherService
 
 
 class TabManager(QObject):
@@ -45,7 +52,7 @@ class TabManager(QObject):
     def __init__(self, storage_path: Optional[str] = None):
         """Initialize TabManager and load saved state."""
         super().__init__()
-        _, _, self._nav_handler, self._watcher = initialize_tab_manager(
+        _, _, self._watcher = initialize_tab_manager(
             self, storage_path, self._load_state, self._watch_and_emit_internal
         )
 
@@ -124,7 +131,7 @@ class TabManager(QObject):
         """Get the index of the currently active tab."""
         return self._active_index
     
-    def get_state_manager(self):
+    def get_state_manager(self) -> 'TabStateManager':
         """Get TabStateManager instance."""
         return self._state_manager
 
@@ -159,8 +166,8 @@ class TabManager(QObject):
                 expanded_nodes=[]
             )
             self._state_manager.save_app_state(state)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to save full app state: {e}", exc_info=True)
 
     def _on_folder_changed(self, folder_path: str) -> None:
         """Handle folder change event from watcher."""
@@ -169,41 +176,72 @@ class TabManager(QObject):
     def _watch_and_emit_internal(self, folder_path: str) -> None:
         """Start watching folder and emit active tab changed signal."""
         try:
-            from app.services.tab_finder import find_tab_index
             idx = find_tab_index(self._tabs, folder_path)
             if idx is not None:
                 self._active_index = idx
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to find tab index for {folder_path}: {e}")
         signal_watch_and_emit(folder_path, self._active_index, self._watcher, self.activeTabChanged)
     
-    def get_watcher(self):
+    def get_watcher(self) -> Optional['FileSystemWatcherService']:
         """Get FileSystemWatcherService instance."""
         return self._watcher
 
     def can_go_back(self) -> bool:
         """Check if back navigation is possible."""
-        return self._nav_handler.can_go_back()
+        return self._history_manager.can_go_back()
 
     def can_go_forward(self) -> bool:
         """Check if forward navigation is possible."""
-        return self._nav_handler.can_go_forward()
+        return self._history_manager.can_go_forward()
 
     def go_back(self) -> bool:
         """Move one step back in history, activate that folder."""
-        new_index = self._nav_handler.go_back()
-        if new_index is not None:
-            self._active_index = new_index
-            return True
-        return False
+        if not self.can_go_back():
+            return False
+        
+        # Obtener path del historial anterior
+        folder_path = self._history_manager.get_back_path()
+        
+        # Encontrar índice del tab correspondiente
+        tab_index = find_tab_index(self._tabs, folder_path)
+        if tab_index is None:
+            return False
+        
+        # Activar flag ANTES de mover historial y llamar select_tab
+        # Esto evita que select_tab actualice el historial durante la navegación
+        self._history_manager.set_navigating_flag(True)
+        try:
+            # Mover índice del historial
+            self._history_manager.move_back()
+            # Activar tab usando la función única responsable
+            return self.select_tab(tab_index)
+        finally:
+            self._history_manager.set_navigating_flag(False)
 
     def go_forward(self) -> bool:
         """Move one step forward in history, activate that folder."""
-        new_index = self._nav_handler.go_forward()
-        if new_index is not None:
-            self._active_index = new_index
-            return True
-        return False
+        if not self.can_go_forward():
+            return False
+        
+        # Obtener path del historial siguiente
+        folder_path = self._history_manager.get_forward_path()
+        
+        # Encontrar índice del tab correspondiente
+        tab_index = find_tab_index(self._tabs, folder_path)
+        if tab_index is None:
+            return False
+        
+        # Activar flag ANTES de mover historial y llamar select_tab
+        # Esto evita que select_tab actualice el historial durante la navegación
+        self._history_manager.set_navigating_flag(True)
+        try:
+            # Mover índice del historial
+            self._history_manager.move_forward()
+            # Activar tab usando la función única responsable
+            return self.select_tab(tab_index)
+        finally:
+            self._history_manager.set_navigating_flag(False)
     
     def get_history(self) -> List[str]:
         """Get current navigation history."""

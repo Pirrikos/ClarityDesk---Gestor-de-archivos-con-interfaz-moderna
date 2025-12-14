@@ -62,13 +62,13 @@ class ViewToolbar(QWidget):
         self._grid_button = QPushButton("Grid")
         self._grid_button.setCheckable(True)
         self._grid_button.setChecked(True)
-        self._grid_button.setFixedHeight(36)
+        self._grid_button.setFixedHeight(32)
         self._grid_button.setStyleSheet(get_view_button_style(True))
         toolbar_layout.addWidget(self._grid_button)
 
         self._list_button = QPushButton("List")
         self._list_button.setCheckable(True)
-        self._list_button.setFixedHeight(36)
+        self._list_button.setFixedHeight(32)
         self._list_button.setStyleSheet(get_view_button_style(False))
         toolbar_layout.addWidget(self._list_button)
 

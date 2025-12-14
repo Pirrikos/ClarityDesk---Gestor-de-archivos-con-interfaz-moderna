@@ -4,15 +4,13 @@ FileTile - Tile widget for a single file in grid view.
 Displays file icon and name, handles drag out and double-click.
 """
 
-import os
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from PySide6.QtCore import QPoint, QPropertyAnimation, QSize, Qt, QTimer, QEvent
-from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QEnterEvent, QMouseEvent, QPixmap
+from PySide6.QtCore import QPoint, QSize, Qt
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QLabel,
-    QVBoxLayout,
     QWidget,
 )
 
@@ -23,11 +21,13 @@ from app.ui.widgets.file_tile_events import (
     mouse_press_event, mouse_move_event, mouse_release_event,
     mouse_double_click_event, drag_enter_event, drag_move_event, drop_event
 )
-from app.ui.widgets.file_tile_icon import animate_icon_size
 from app.ui.widgets.file_tile_paint import paint_dock_style
 from app.ui.widgets.file_tile_setup import setup_ui
 from app.ui.widgets.file_tile_states import set_file_state
 from app.ui.widgets.state_badge_widget import StateBadgeWidget
+
+if TYPE_CHECKING:
+    from app.ui.widgets.file_grid_view import FileGridView
 
 
 class FileTile(QWidget):
@@ -36,10 +36,10 @@ class FileTile(QWidget):
     def __init__(
         self,
         file_path: str,
-        parent_view,
+        parent_view: 'FileGridView',
         icon_service: IconService,
-        disable_hover: bool = False,
         dock_style: bool = False,
+        initial_state: Optional[str] = None,
     ):
         """Initialize file tile."""
         super().__init__(parent_view)
@@ -49,15 +49,10 @@ class FileTile(QWidget):
         self._icon_pixmap: Optional[QPixmap] = None
         self._drag_start_position: Optional[QPoint] = None
         self._is_selected: bool = False
-        self._is_hovered: bool = False
         self._icon_label: Optional[QLabel] = None
         self._icon_shadow: Optional[QGraphicsDropShadowEffect] = None
         self._state_badge: Optional[StateBadgeWidget] = None
-        self._hover_animation: Optional[QPropertyAnimation] = None
-        self._base_icon_size = 96
-        self._hover_icon_size = 120
-        self._current_animated_size = 96
-        self._disable_hover = disable_hover
+        self._file_state: Optional[str] = initial_state
         self._dock_style = dock_style
         setup_ui(self)
 
@@ -66,61 +61,17 @@ class FileTile(QWidget):
         paint_dock_style(self, event)
         super().paintEvent(event)
 
-    def enterEvent(self, event: QEnterEvent) -> None:
-        """Handle mouse enter for hover effect."""
-        if self._disable_hover:
-            super().enterEvent(event)
-            return
-        
-        self._is_hovered = True
-        if self._dock_style:
-            # Dock style: just update for hover shadow
-            self.update()
-        else:
-            # Normal style: animate icon size
-            animate_icon_size(self, self._hover_icon_size)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event: QEvent) -> None:
-        """Handle mouse leave."""
-        if self._disable_hover:
-            super().leaveEvent(event)
-            return
-        
-        self._is_hovered = False
-        if self._dock_style:
-            # Dock style: just update to remove hover shadow
-            self.update()
-        else:
-            # Normal style: animate icon size
-            animate_icon_size(self, self._base_icon_size)
-        super().leaveEvent(event)
-
-    def resizeEvent(self, event) -> None:
-        """Handle resize."""
-        super().resizeEvent(event)
-        self._update_badge_position()
-
-    def showEvent(self, event) -> None:
-        """Handle show."""
-        super().showEvent(event)
-        QTimer.singleShot(0, self._update_badge_position)
-
     def set_selected(self, selected: bool) -> None:
         """Update tile selection state."""
         set_selected(self, selected)
 
     def _get_selected_tiles(self):
         """Get selected tiles from parent view."""
-        if self._parent_view and hasattr(self._parent_view, '_selected_tiles'):
-            return self._parent_view._selected_tiles
-        return None
+        return getattr(self._parent_view, '_selected_tiles', None) if self._parent_view else None
     
     def _get_icon_service(self):
         """Get icon service from parent view."""
-        if self._parent_view and hasattr(self._parent_view, '_icon_service'):
-            return self._parent_view._icon_service
-        return None
+        return getattr(self._parent_view, '_icon_service', None) if self._parent_view else None
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Handle mouse press."""
@@ -138,10 +89,6 @@ class FileTile(QWidget):
         """Handle double-click to open file."""
         mouse_double_click_event(self, event)
 
-    def contextMenuEvent(self, event) -> None:
-        """Context menu disabled."""
-        pass
-
     def get_file_path(self) -> str:
         """Get the file path for this tile."""
         return self._file_path
@@ -149,10 +96,6 @@ class FileTile(QWidget):
     def set_file_state(self, state: Optional[str]) -> None:
         """Update file state badge."""
         set_file_state(self, state)
-
-    def _update_badge_position(self) -> None:
-        """Update badge position."""
-        pass
     
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Handle drag enter on folder tile."""
@@ -173,3 +116,11 @@ class FileTile(QWidget):
     def animate_exit(self, callback=None, end_offset: int = 60) -> None:
         """Animate tile exit Apple-style."""
         animate_exit(self, callback, end_offset)
+    
+    def sizeHint(self) -> QSize:
+        """Return preferred size - mismo tamaño para Dock y Grid."""
+        return QSize(70, 85)
+    
+    def minimumSizeHint(self) -> QSize:
+        """Return minimum size - mismo tamaño para Dock y Grid."""
+        return self.sizeHint()

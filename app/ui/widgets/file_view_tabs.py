@@ -5,6 +5,7 @@ Handles TabManager signal connections and tab change events.
 """
 
 from app.managers.tab_manager import TabManager
+from app.ui.widgets.file_view_sync import update_files
 
 
 def connect_tab_signals(container, tab_manager: TabManager) -> None:
@@ -28,7 +29,7 @@ def on_active_tab_changed(container, index: int, path: str) -> None:
         # Actualizar breadcrumb con la ruta activa
         if hasattr(container, "_focus_panel") and hasattr(container._focus_panel, "update_path"):
             container._focus_panel.update_path(path)
-        container._update_files()
+        update_files(container)
         # Animación de transición suave (<300ms)
         if hasattr(container, "_animate_content_transition"):
             container._animate_content_transition()
@@ -40,7 +41,7 @@ def on_files_changed(container) -> None:
     # Solo refrescar si hay un tab activo (no cuando se está cambiando de tab)
     # Esto evita doble refresh cuando watch_folder emite inmediatamente después de cambiar de tab
     if container._tab_manager.get_active_index() >= 0:
-        container._update_files()
+        update_files(container)
 
 
 def update_nav_buttons_state(container) -> None:

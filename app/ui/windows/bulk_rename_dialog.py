@@ -118,7 +118,11 @@ class BulkRenameDialog(QDialog):
         
         is_valid, error_msg = self._rename_service.validate_names(new_names, self._base_dir)
         if not is_valid:
-            QMessageBox.warning(self, "Error de validación", error_msg)
+            user_friendly_msg = (
+                f"No se pueden renombrar los archivos:\n\n{error_msg}\n\n"
+                "Por favor, verifica los nombres e intenta nuevamente."
+            )
+            QMessageBox.warning(self, "Error al renombrar", user_friendly_msg)
             return
         
         self.rename_applied.emit(self._file_paths, new_names)

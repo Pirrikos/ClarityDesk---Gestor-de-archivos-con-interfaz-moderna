@@ -9,7 +9,8 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from app.services.tab_validator import validate_folder
+from app.services.path_utils import normalize_path
+from app.services.tab_helpers import validate_folder
 
 
 def load_state(storage_path: Path, validate_func) -> tuple[List[str], int, bool]:
@@ -37,8 +38,8 @@ def _validate_tabs(tabs: List[str], validate_func) -> List[str]:
     valid_tabs = []
     for tab_path in tabs:
         if validate_func(tab_path):
-            # Normalize using normcase + normpath for consistency with TabManager
-            normalized = os.path.normcase(os.path.normpath(tab_path))
+            # Normalize using path_utils for consistency with TabManager
+            normalized = normalize_path(tab_path)
             valid_tabs.append(normalized)
     return valid_tabs
 

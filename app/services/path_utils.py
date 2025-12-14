@@ -1,8 +1,8 @@
 """
-TabPathNormalizer - Path normalization utility for TabManager.
+PathUtils - Basic path normalization utilities.
 
-Provides consistent path normalization using normcase and normpath.
-Unified function used across the application.
+Pure utility functions for path normalization.
+No dependencies on other app modules to avoid circular imports.
 """
 
 import os

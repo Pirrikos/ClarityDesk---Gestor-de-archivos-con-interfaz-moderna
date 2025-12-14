@@ -9,8 +9,11 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+from app.core.logger import get_logger
 from app.models.file_operation_result import FileOperationResult
 from app.services.file_path_utils import resolve_conflict, validate_file, validate_folder, validate_path
+
+logger = get_logger(__name__)
 
 
 def move_file(
@@ -46,8 +49,19 @@ def move_file(
     
     try:
         shutil.move(str(source_path), str(dest_path))
+        logger.info(f"Moved file: {source} -> {dest_path}")
         result = FileOperationResult.ok()
-    except (OSError, shutil.Error, PermissionError) as e:
+    except PermissionError as e:
+        logger.error(f"Permission denied moving {source} to {destination_folder}: {e}")
+        result = FileOperationResult.error(f"Failed to move: {str(e)}")
+    except OSError as e:
+        logger.error(f"OS error moving {source} to {destination_folder}: {e}")
+        result = FileOperationResult.error(f"Failed to move: {str(e)}")
+    except shutil.Error as e:
+        logger.error(f"Shutil error moving {source} to {destination_folder}: {e}")
+        result = FileOperationResult.error(f"Failed to move: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error moving {source} to {destination_folder}: {e}", exc_info=True)
         result = FileOperationResult.error(f"Failed to move: {str(e)}")
     finally:
         # Unblock watcher events
@@ -90,8 +104,19 @@ def copy_file(
     
     try:
         shutil.copy2(str(source_path), str(dest_path))
+        logger.info(f"Copied file: {source} -> {dest_path}")
         result = FileOperationResult.ok()
-    except (OSError, shutil.Error, PermissionError) as e:
+    except PermissionError as e:
+        logger.error(f"Permission denied copying {source} to {destination_folder}: {e}")
+        result = FileOperationResult.error(f"Failed to copy file: {str(e)}")
+    except OSError as e:
+        logger.error(f"OS error copying {source} to {destination_folder}: {e}")
+        result = FileOperationResult.error(f"Failed to copy file: {str(e)}")
+    except shutil.Error as e:
+        logger.error(f"Shutil error copying {source} to {destination_folder}: {e}")
+        result = FileOperationResult.error(f"Failed to copy file: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error copying {source} to {destination_folder}: {e}", exc_info=True)
         result = FileOperationResult.error(f"Failed to copy file: {str(e)}")
     finally:
         # Unblock watcher events

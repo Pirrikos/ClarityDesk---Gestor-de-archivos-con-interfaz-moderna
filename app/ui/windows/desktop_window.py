@@ -9,7 +9,7 @@ import os
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QUrl, QTimer, QPoint
-from PySide6.QtGui import QDesktopServices, QPainter, QColor, QBrush, QPen, QMouseEvent
+from PySide6.QtGui import QDesktopServices, QPainter, QColor, QBrush, QPen, QMouseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (
     QMainWindow,
     QVBoxLayout,
@@ -30,18 +30,19 @@ class DockBackgroundWidget(QWidget):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._drag_start_position: Optional[QPoint] = None
+        # Habilitar drops para que pasen a los widgets hijos
+        self.setAcceptDrops(True)
     
     def paintEvent(self, event) -> None:
-        """Paint Apple Dock-style background with rounded corners."""
+        """Paint Raycast-style background with rounded corners - gris muy oscuro translúcido."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Apple Dock style: dark gray with ~65% opacity
-        # macOS uses approximately rgba(30, 30, 30, 0.65) for dark mode dock
-        bg_color = QColor(28, 28, 30, 165)  # ~65% opacity (165/255)
+        # Estilo Raycast: gris muy oscuro con baja opacidad para reducir ruido visual
+        bg_color = QColor(20, 20, 20, 100)  # rgba(20, 20, 20, ~0.39) - baja opacidad
         
-        # Subtle border like Apple Dock
-        border_color = QColor(255, 255, 255, 25)  # Very subtle white border
+        # Borde muy sutil
+        border_color = QColor(255, 255, 255, 15)  # Borde casi imperceptible
         
         # Draw rounded rectangle
         rect = self.rect().adjusted(8, 8, -8, -8)  # Margin for shadow effect
@@ -103,6 +104,36 @@ class DockBackgroundWidget(QWidget):
             event.accept()
         else:
             event.ignore()
+    
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        """Propagate drag enter to child widgets (FileViewContainer)."""
+        # Buscar el FileViewContainer hijo y propagar el evento
+        for child in self.findChildren(QWidget):
+            if hasattr(child, 'dragEnterEvent') and hasattr(child, '_is_desktop'):
+                if getattr(child, '_is_desktop', False):
+                    child.dragEnterEvent(event)
+                    return
+        event.ignore()
+    
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
+        """Propagate drag move to child widgets (FileViewContainer)."""
+        # Buscar el FileViewContainer hijo y propagar el evento
+        for child in self.findChildren(QWidget):
+            if hasattr(child, 'dragMoveEvent') and hasattr(child, '_is_desktop'):
+                if getattr(child, '_is_desktop', False):
+                    child.dragMoveEvent(event)
+                    return
+        event.ignore()
+    
+    def dropEvent(self, event: QDropEvent) -> None:
+        """Propagate drop to child widgets (FileViewContainer)."""
+        # Buscar el FileViewContainer hijo y propagar el evento
+        for child in self.findChildren(QWidget):
+            if hasattr(child, 'dropEvent') and hasattr(child, '_is_desktop'):
+                if getattr(child, '_is_desktop', False):
+                    child.dropEvent(event)
+                    return
+        event.ignore()
 
 
 class DesktopWindow(QMainWindow):
@@ -145,6 +176,8 @@ class DesktopWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_PaintOnScreen, False)  # Prevent flicker
         # Disable window frame painting to prevent border flash
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        # Habilitar drops en la ventana principal
+        self.setAcceptDrops(True)
         
         # Position window at BOTTOM of screen, centered horizontally
         screen = self.screen().availableGeometry()
@@ -215,7 +248,8 @@ class DesktopWindow(QMainWindow):
             self._desktop_tab_manager,
             self._icon_service,
             None,
-            central_widget  # Parent widget
+            central_widget,  # Parent widget
+            is_desktop=True  # Flag explícito: este es DesktopWindow
         )
         
         # Connect expansion height changes to adjust window size
@@ -375,6 +409,60 @@ class DesktopWindow(QMainWindow):
         if os.path.exists(file_path):
             url = QUrl.fromLocalFile(file_path)
             QDesktopServices.openUrl(url)
+    
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        """Capture drag enter events and propagate to FileViewContainer."""
+        print(f"[DESKTOP_WINDOW] dragEnterEvent capturado - window: {self.windowTitle()}, visible: {self.isVisible()}")
+        mime_data = event.mimeData()
+        if not mime_data.hasUrls():
+            event.ignore()
+            return
+        
+        # Aceptar el evento primero para que Windows sepa que esta ventana acepta drops
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+        
+        # Luego propagar al FileViewContainer si existe
+        if self._desktop_container:
+            print(f"[DESKTOP_WINDOW] Propagando dragEnter a FileViewContainer")
+            self._desktop_container.dragEnterEvent(event)
+        else:
+            print(f"[DESKTOP_WINDOW] WARNING: _desktop_container es None en dragEnterEvent")
+    
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
+        """Capture drag move events and propagate to FileViewContainer."""
+        mime_data = event.mimeData()
+        if not mime_data.hasUrls():
+            event.ignore()
+            return
+        
+        # Aceptar el evento primero con MoveAction
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+        
+        # Luego propagar al FileViewContainer si existe
+        if self._desktop_container:
+            self._desktop_container.dragMoveEvent(event)
+    
+    def dropEvent(self, event: QDropEvent) -> None:
+        """Capture drop events and propagate to FileViewContainer."""
+        print(f"[DESKTOP_WINDOW] dropEvent capturado - window: {self.windowTitle()}, visible: {self.isVisible()}")
+        mime_data = event.mimeData()
+        if not mime_data.hasUrls():
+            event.ignore()
+            return
+        
+        # Aceptar el evento primero con MoveAction
+        event.setDropAction(Qt.DropAction.MoveAction)
+        event.accept()
+        
+        # Luego propagar al FileViewContainer si existe
+        if self._desktop_container:
+            print(f"[DESKTOP_WINDOW] Propagando drop a FileViewContainer")
+            self._desktop_container.dropEvent(event)
+        else:
+            print(f"[DESKTOP_WINDOW] ERROR: _desktop_container es None")
+            event.ignore()
     
     def closeEvent(self, event) -> None:
         """Handle window close event."""

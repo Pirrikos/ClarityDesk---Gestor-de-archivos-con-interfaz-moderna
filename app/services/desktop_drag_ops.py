@@ -11,7 +11,7 @@ from typing import Optional
 
 from app.models.file_operation_result import FileOperationResult
 from app.services.desktop_path_helper import get_desktop_path
-from app.services.tab_path_normalizer import normalize_path
+from app.services.path_utils import normalize_path
 from app.services.file_path_utils import resolve_conflict, validate_path
 from app.services.desktop_operations_scan import _get_dock_storage_path
 
