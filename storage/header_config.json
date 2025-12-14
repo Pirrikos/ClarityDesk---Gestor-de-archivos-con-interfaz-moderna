@@ -1,0 +1,14 @@
+{
+  "items": [
+    "back",
+    "forward",
+    "view",
+    "search",
+    "states",
+    "group",
+    "sort",
+    "rename",
+    "preview_panel"
+  ],
+  "version": 1
+}
