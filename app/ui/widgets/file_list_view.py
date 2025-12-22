@@ -11,6 +11,11 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
 
+try:
+    from app.managers.file_state_manager import FileStateManager
+except ImportError:
+    FileStateManager = None
+
 from app.managers.tab_manager import TabManager
 from app.services.icon_service import IconService
 from app.ui.widgets.file_list_handlers import (
@@ -33,10 +38,9 @@ class FileListView(QTableWidget):
     def __init__(
         self,
         icon_service: Optional[IconService] = None,
-        filesystem_service: Optional = None,  # Kept for compatibility, not used
         parent=None,
         tab_manager: Optional[TabManager] = None,
-        state_manager=None  # Optional FileStateManager instance
+        state_manager=None
     ):
         """Initialize FileListView with empty file list."""
         super().__init__(parent)
@@ -44,12 +48,7 @@ class FileListView(QTableWidget):
         self._icon_service = icon_service or IconService()
         self._tab_manager = tab_manager
         self._checked_paths: set[str] = set()
-        # Use provided state manager or create new instance
-        try:
-            from app.managers.file_state_manager import FileStateManager
-            self._state_manager = state_manager or (FileStateManager() if FileStateManager else None)
-        except ImportError:
-            self._state_manager = None
+        self._state_manager = state_manager or (FileStateManager() if FileStateManager else None)
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -138,8 +137,5 @@ class FileListView(QTableWidget):
         if not selected_paths:
             return
         
-        # Update states in manager
-        count = self._state_manager.set_files_state(selected_paths, state)
-        
-        # Refresh table to update state column
+        self._state_manager.set_files_state(selected_paths, state)
         self._refresh_table()

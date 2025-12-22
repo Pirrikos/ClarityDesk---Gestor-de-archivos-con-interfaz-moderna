@@ -45,7 +45,6 @@ def get_selected_items_for_drag(view: 'FileListView') -> list[QTableWidgetItem]:
     """Get selected items for drag operation - uses checkboxes if available, otherwise traditional selection."""
     selected_items = []
     
-    # Prioridad 1: Usar checkboxes marcados si existen
     if view._checked_paths:
         for row in range(view.rowCount()):
             item = view.item(row, 1)
@@ -54,13 +53,11 @@ def get_selected_items_for_drag(view: 'FileListView') -> list[QTableWidgetItem]:
                 if path and path in view._checked_paths:
                     selected_items.append(item)
     
-    # Prioridad 2: Si no hay checkboxes, usar selección tradicional
     if not selected_items:
         for item in view.selectedItems():
-            if item and item.column() == 1:  # Solo items de la columna de nombre
+            if item and item.column() == 1:
                 selected_items.append(item)
     
-    # Prioridad 3: Si no hay selección, usar currentItem
     if not selected_items:
         current_row = view.currentRow()
         if current_row >= 0:
@@ -82,23 +79,19 @@ def drag_enter_event(
         event.ignore()
         return
     
-    # Verificar si está sobre una carpeta
     item = view.itemAt(event.pos())
     if item:
         item_path = item.data(Qt.ItemDataRole.UserRole)
         if item_path and os.path.isdir(item_path):
-            # Verificar que no sea mover carpeta dentro de sí misma
             for url in mime_data.urls():
                 file_path = url.toLocalFile()
                 if file_path and os.path.exists(file_path) and os.path.isdir(file_path):
                     if is_folder_inside_itself(file_path, item_path):
                         event.ignore()
                         return
-            # Aceptar drop sobre carpeta (igual que grid tiles)
             event.acceptProposedAction()
             return
     
-    # Comportamiento estándar (fondo de la lista)
     handle_drag_enter(event, mime_data, tab_manager)
 
 
@@ -113,16 +106,13 @@ def drag_move_event(
         event.ignore()
         return
     
-    # Verificar si está sobre una carpeta
     item = view.itemAt(event.pos())
     if item:
         item_path = item.data(Qt.ItemDataRole.UserRole)
         if item_path and os.path.isdir(item_path):
-            # Aceptar drop sobre carpeta (igual que grid tiles)
             event.accept()
             return
     
-    # Comportamiento estándar (fondo de la lista)
     handle_drag_move(event, mime_data, tab_manager)
 
 
@@ -138,22 +128,18 @@ def drop_event(
         event.ignore()
         return
     
-    # Detectar si el drop es sobre un item específico (carpeta)
     item = view.itemAt(event.pos())
     target_folder_path = None
     
     if item:
-        # Obtener el path del item sobre el que se hace drop
         item_path = item.data(Qt.ItemDataRole.UserRole)
         if item_path and os.path.isdir(item_path):
             target_folder_path = item_path
     
-    # Si hay una carpeta objetivo, mover directamente a esa carpeta
     if target_folder_path:
         _handle_drop_on_folder(view, event, mime_data, target_folder_path, file_dropped_signal)
         return
     
-    # Si no hay carpeta objetivo, usar comportamiento estándar (mover a carpeta activa)
     handle_drop(event, mime_data, tab_manager, file_dropped_signal)
 
 
@@ -221,7 +207,7 @@ def _handle_drop_on_folder(
     target_folder_path: str,
     file_dropped_signal: Callable[[str], None]
 ) -> None:
-    """Handle file drop on specific folder item in list view - igual que grid tiles."""
+    """Handle file drop on specific folder item in list view."""
     moved_any = False
     
     for url in mime_data.urls():
@@ -229,18 +215,15 @@ def _handle_drop_on_folder(
         if not file_path or not os.path.exists(file_path):
             continue
         
-        # Prevenir mover carpeta dentro de sí misma
         if os.path.isdir(file_path):
             if is_folder_inside_itself(file_path, target_folder_path):
                 continue
         
-        # Obtener watcher si está disponible
         watcher = get_watcher_from_view(view)
         
         file_dir = os.path.dirname(os.path.abspath(file_path))
         is_folder = os.path.isdir(file_path)
         
-        # Mover archivo según su origen (igual que grid tiles)
         if is_file_in_dock(file_path):
             result = move_file(file_path, target_folder_path, watcher=watcher)
         elif is_desktop_focus(file_dir):
@@ -250,12 +233,10 @@ def _handle_drop_on_folder(
         
         if result.success:
             moved_any = True
-            # Calcular nuevo path si se movió una carpeta (igual que grid tiles)
             if is_folder:
                 new_path = str(Path(target_folder_path) / Path(file_path).name)
                 if hasattr(view, 'folder_moved'):
                     view.folder_moved.emit(file_path, new_path)
-            # Emitir file_deleted para actualizar vista (igual que grid tiles)
             if hasattr(view, 'file_deleted'):
                 view.file_deleted.emit(file_path)
     

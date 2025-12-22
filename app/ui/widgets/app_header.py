@@ -1,760 +1,490 @@
-"""AppHeader - Header estilo Finder con controles por defecto.
+"""AppHeader - Header simple y profesional estilo Finder.
 
-Contiene navegación, cambio de vista (Grid/Lista), búsqueda y estados.
-Reutiliza la lógica existente conectando señales al FileViewContainer.
-Soporta modo de personalización estilo Finder con drag & drop.
+Header compacto con navegación, vista, búsqueda y ajustes.
+Completamente fijo - no personalizable.
 """
 
-from typing import Optional, Dict, List, Any
+from typing import Optional, Callable
 import os
-import json
 
-from PySide6.QtCore import Qt, Signal, QMimeData, QPoint
-from PySide6.QtGui import QDrag, QMouseEvent
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QPainter, QColor
 from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QLabel, QLineEdit, QPushButton, QFrame, QMessageBox
+    QWidget, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSizePolicy, QMenu, QFrame,
+    QColorDialog
 )
 
+from app.core.constants import DEBUG_LAYOUT
 from app.ui.widgets.toolbar_navigation_buttons import create_navigation_buttons
-from app.ui.widgets.toolbar_button_styles import get_view_button_style
-from app.services.header_customization_service import HeaderCustomizationService
-from app.ui.widgets.header_customization_palette import HeaderCustomizationPalette
+from app.services.settings_service import SettingsService
+
+try:
+    from app.ui.widgets.state_badge_widget import (
+        STATE_CORRECTED, STATE_DELIVERED, STATE_PENDING, STATE_REVIEW
+    )
+except ImportError:
+    STATE_CORRECTED = None
+    STATE_DELIVERED = None
+    STATE_PENDING = None
+    STATE_REVIEW = None
 
 
 class AppHeader(QWidget):
-    """Barra superior de aplicación con controles estándares de Finder."""
+    """Header simple y profesional con controles esenciales."""
 
-    # Señales para reutilizar la lógica existente en FileViewContainer
+    _HEADER_STYLESHEET = """
+        QWidget#AppHeader {
+            background-color: #F5F5F7;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        QLineEdit {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+            padding: 8px 12px 8px 36px;
+            color: rgba(0, 0, 0, 0.85);
+            /* font-size: establecido explícitamente */
+            font-weight: 400;
+        }
+        QLineEdit:focus {
+            background-color: #FFFFFF;
+            border: 1px solid rgba(0, 0, 0, 0.25);
+            color: rgba(0, 0, 0, 0.95);
+        }
+        QLineEdit::placeholder {
+            color: rgba(0, 0, 0, 0.5);
+        }
+    """
+
+    _NAV_BUTTON_STYLESHEET = """
+        QPushButton {
+            background-color: transparent;
+            border: none;
+            border-radius: 8px;
+            color: rgba(0, 0, 0, 0.65);
+            /* font-size: establecido explícitamente */
+            font-weight: 500;
+        }
+        QPushButton:hover {
+            background-color: rgba(0, 0, 0, 0.08);
+            color: rgba(0, 0, 0, 0.85);
+        }
+        QPushButton:pressed {
+            background-color: rgba(0, 0, 0, 0.12);
+        }
+        QPushButton:disabled {
+            color: rgba(0, 0, 0, 0.3);
+        }
+    """
+
+    _VIEW_CONTAINER_STYLESHEET = """
+        QWidget#ViewContainer {
+            background-color: rgba(0, 0, 0, 0.05);
+            border-radius: 8px;
+        }
+        QPushButton#ViewGridButton, QPushButton#ViewListButton {
+            background-color: transparent;
+            border: none;
+            border-radius: 6px;
+            color: rgba(0, 0, 0, 0.65);
+            /* font-size: establecido explícitamente */
+            font-weight: 500;
+        }
+        QPushButton#ViewGridButton:hover, QPushButton#ViewListButton:hover {
+            background-color: rgba(0, 0, 0, 0.08);
+            color: rgba(0, 0, 0, 0.85);
+        }
+        QPushButton#ViewGridButton:checked, QPushButton#ViewListButton:checked {
+            background-color: rgba(0, 0, 0, 0.12);
+            color: rgba(0, 0, 0, 0.85);
+            font-weight: 600;
+        }
+    """
+
+    _SEARCH_ICON_STYLESHEET = """
+        QLabel#SearchIcon {
+            color: rgba(0, 0, 0, 0.5);
+            /* font-size: establecido explícitamente */
+            padding: 0px;
+            background-color: transparent;
+        }
+    """
+
+    _MENU_BUTTON_STYLESHEET = """
+        QPushButton#StateButton, QPushButton#SettingsButton {
+            background-color: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+            color: rgba(0, 0, 0, 0.85);
+            /* font-size: establecido explícitamente */
+            font-weight: 400;
+            padding: 8px 12px;
+        }
+        QPushButton#StateButton:hover, QPushButton#SettingsButton:hover {
+            background-color: rgba(255, 255, 255, 0.95);
+            border-color: rgba(0, 0, 0, 0.2);
+            color: rgba(0, 0, 0, 0.95);
+        }
+        QPushButton#StateButton:pressed, QPushButton#SettingsButton:pressed {
+            background-color: rgba(255, 255, 255, 1.0);
+        }
+        QPushButton#StateButton::menu-indicator, QPushButton#SettingsButton::menu-indicator {
+            image: none;
+            width: 0px;
+        }
+    """
+
+    _SEPARATOR_STYLESHEET = """
+        QFrame#AppHeaderSeparator {
+            background-color: rgba(0, 0, 0, 0.1);
+            border: none;
+        }
+    """
+
+    _MENU_STYLESHEET = """
+        QMenu {
+            background-color: #FFFFFF;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+            border-radius: 6px;
+            padding: 4px;
+        }
+        QMenu::item {
+            padding: 8px 20px;
+            border-radius: 4px;
+            color: rgba(0, 0, 0, 0.85);
+        }
+        QMenu::item:selected {
+            background-color: rgba(0, 0, 0, 0.08);
+        }
+        QMenu::separator {
+            height: 1px;
+            background-color: rgba(255, 255, 255, 0.1);
+            margin: 4px 8px;
+        }
+    """
+
     navigation_back = Signal()
     navigation_forward = Signal()
-    state_button_clicked = Signal(str)  # Emite constante de estado o None
-    search_changed = Signal(str)        # Cambio incremental del campo búsqueda
-    search_submitted = Signal(str)      # Enter en el campo búsqueda
-
-    # MIME type para drag & drop
-    MIME_TYPE = "application/x-header-control"
+    state_button_clicked = Signal(str)
+    search_changed = Signal(str)
+    search_submitted = Signal(str)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self._back_button: QPushButton | None = None
-        self._forward_button: QPushButton | None = None
-        self._grid_button: QPushButton | None = None
-        self._list_button: QPushButton | None = None
-        self._search: QLineEdit | None = None
-        self._state_button: QPushButton | None = None
-        self._workspace_label: QLabel | None = None
+        self.setObjectName("AppHeader")
+        self.setStyleSheet(self._HEADER_STYLESHEET)
         
-        # Modo personalización
-        self._customization_mode = False
-        self._original_height: int = 56
-        self._signal_states: Dict[int, bool] = {}
-        self._control_instances: Dict[str, QWidget] = {}
-        self._removed_widgets: List[tuple[str, QWidget]] = []
-        self._current_items: List[str] = []
-        self._customization_palette: Optional[HeaderCustomizationPalette] = None
-        self._customize_button: Optional[QPushButton] = None
-        self._done_button: Optional[QPushButton] = None
-        
-        # Servicio de personalización
-        self._service = HeaderCustomizationService()
-        
-        # Layout principal
-        self._layout: QHBoxLayout | None = None
+        self._back_button: Optional[QPushButton] = None
+        self._forward_button: Optional[QPushButton] = None
+        self._grid_button: Optional[QPushButton] = None
+        self._list_button: Optional[QPushButton] = None
+        self._search: Optional[QLineEdit] = None
+        self._state_button: Optional[QPushButton] = None
+        self._settings_button: Optional[QPushButton] = None
+        self._workspace_label: Optional[QLabel] = None
+        self._search_icon: Optional[QLabel] = None
         
         self._setup_ui()
-        self._load_configuration()
 
     def _setup_ui(self) -> None:
-        """Construir header con controles por defecto y nombre de workspace."""
-        # Altura cómoda para controles y búsqueda
-        self.setFixedHeight(56)
-        self._original_height = 56
-        
-        # Estilo sobrio y transparente para integrarse con WindowHeader
-        self.setStyleSheet("""
-            QWidget {
-                background-color: rgba(255, 255, 255, 0.02);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            }
-            QLabel {
-                color: rgba(255, 255, 255, 0.68);
-                font-size: 12px;
-                padding: 0px 12px;
-            }
-            QLineEdit {
-                background-color: rgba(255,255,255,0.08);
-                border: 1px solid rgba(255,255,255,0.12);
-                border-radius: 6px;
-                padding: 6px 10px;
-                color: rgba(255,255,255,0.88);
-                selection-background-color: rgba(128,180,255,0.35);
-            }
-        """)
+        self._setup_base_configuration()
+        layout = self._create_main_layout()
+        self._setup_navigation_buttons(layout)
+        self._setup_view_controls(layout)
+        self._setup_search_field(layout)
+        self._setup_menu_buttons(layout)
 
-        self._layout = QHBoxLayout(self)
-        self._layout.setContentsMargins(12, 0, 12, 0)
-        self._layout.setSpacing(8)
+    def _setup_base_configuration(self) -> None:
+        self.setFixedHeight(48)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.setContentsMargins(0, 0, 0, 0)
+        self.setAutoFillBackground(False)
 
-        # Navegación (Atrás / Adelante) — reutiliza helpers existentes
-        self._back_button, self._forward_button = create_navigation_buttons(self)
+    def _create_main_layout(self) -> QHBoxLayout:
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(16, 6, 16, 6)
+        layout.setSpacing(16)
+        layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        return layout
+
+    def _setup_navigation_buttons(self, layout: QHBoxLayout) -> None:
+        self._back_button, self._forward_button = create_navigation_buttons(
+            self, size=(36, 36), use_default_style=False
+        )
         self._back_button.clicked.connect(self.navigation_back.emit)
         self._forward_button.clicked.connect(self.navigation_forward.emit)
-        self._control_instances["back"] = self._back_button
-        self._control_instances["forward"] = self._forward_button
-        self._layout.addWidget(self._back_button, 0)
-        self._layout.addWidget(self._forward_button, 0)
+        self._back_button.setStyleSheet(self._NAV_BUTTON_STYLESHEET)
+        self._forward_button.setStyleSheet(self._NAV_BUTTON_STYLESHEET)
+        
+        layout.addWidget(self._back_button, 0)
+        layout.addWidget(self._forward_button, 0)
+        layout.addSpacing(4)
+        self._add_separator(layout)
 
-        # Separador pequeño (espaciado)
-        self._layout.addSpacing(8)
-
-        # Vista (Grid / Lista)
-        self._grid_button = QPushButton("Grid", self)
+    def _setup_view_controls(self, layout: QHBoxLayout) -> None:
+        view_container = QWidget(self)
+        view_container.setObjectName("ViewContainer")
+        view_container.setFixedSize(134, 36)
+        
+        view_layout = QHBoxLayout(view_container)
+        view_layout.setContentsMargins(3, 0, 3, 0)
+        view_layout.setSpacing(0)
+        view_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        
+        self._grid_button = QPushButton("Grid", view_container)
         self._grid_button.setCheckable(True)
         self._grid_button.setChecked(True)
-        self._grid_button.setFixedHeight(32)
-        self._grid_button.setStyleSheet(get_view_button_style(True))
-        self._layout.addWidget(self._grid_button, 0)
-
-        self._list_button = QPushButton("List", self)
+        self._grid_button.setFixedSize(64, 36)
+        self._grid_button.setObjectName("ViewGridButton")
+        
+        self._list_button = QPushButton("List", view_container)
         self._list_button.setCheckable(True)
-        self._list_button.setFixedHeight(32)
-        self._list_button.setStyleSheet(get_view_button_style(False))
-        self._layout.addWidget(self._list_button, 0)
+        self._list_button.setFixedSize(64, 36)
+        self._list_button.setObjectName("ViewListButton")
         
-        # Guardar referencia al grupo de vista
-        self._control_instances["view"] = self._grid_button  # Usar grid como referencia
+        view_container.setStyleSheet(self._VIEW_CONTAINER_STYLESHEET)
+        view_layout.addWidget(self._grid_button, 0)
+        view_layout.addWidget(self._list_button, 0)
+        layout.addWidget(view_container, 0)
+        self._add_separator(layout)
 
-        # Espacio flexible
-        self._layout.addStretch(1)
-
-        # Búsqueda (campo de texto)
-        self._search = QLineEdit(self)
-        self._search.setPlaceholderText("Buscar")
+    def _setup_search_field(self, layout: QHBoxLayout) -> None:
+        search_container = QWidget(self)
+        search_container.setObjectName("SearchContainer")
+        search_layout = QHBoxLayout(search_container)
+        search_layout.setContentsMargins(0, 0, 0, 0)
+        search_layout.setSpacing(0)
+        search_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        
+        self._search = QLineEdit(search_container)
+        self._search.setObjectName("SearchField")
+        self._search.setPlaceholderText("Buscar (Ctrl+K)")
+        self._search.setMinimumWidth(240)
+        self._search.setMaximumWidth(500)
+        self._search.setFixedHeight(36)
         self._search.returnPressed.connect(lambda: self.search_submitted.emit(self._search.text()))
-        self._search.textChanged.connect(self.search_changed.emit)
-        self._control_instances["search"] = self._search
-        self._layout.addWidget(self._search, 0)
+        self._search.textChanged.connect(lambda text: self.search_changed.emit(text))
+        
+        self._search_icon = QLabel("🔍", self._search)
+        self._search_icon.setObjectName("SearchIcon")
+        self._search_icon.setFixedSize(20, 20)
+        self._search_icon.setStyleSheet(self._SEARCH_ICON_STYLESHEET)
+        self._search_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._search_icon.move(12, 8)
+        
+        search_layout.addWidget(self._search, 1)
+        layout.addWidget(search_container, 1)
+        self._add_separator(layout)
 
-        # Etiquetas/Estados: botón único con menú contextual
-        self._state_button = QPushButton("Estados", self)
-        self._state_button.setFixedHeight(32)
+    def _setup_menu_buttons(self, layout: QHBoxLayout) -> None:
+        self._state_button = QPushButton("Estados ▼", self)
+        self._state_button.setFixedSize(100, 36)
+        self._state_button.setObjectName("StateButton")
+        self._state_button.setStyleSheet(self._MENU_BUTTON_STYLESHEET)
         self._attach_state_menu(self._state_button)
-        self._control_instances["states"] = self._state_button
-        self._layout.addWidget(self._state_button, 0)
+        layout.addWidget(self._state_button, 0)
+        
+        self._add_separator(layout)
 
-        # Nombre de workspace a la derecha (indicación del foco activo)
+        self._settings_button = QPushButton("Ajustes ▼", self)
+        self._settings_button.setFixedSize(100, 36)
+        self._settings_button.setObjectName("SettingsButton")
+        self._settings_button.setStyleSheet(self._MENU_BUTTON_STYLESHEET)
+        self._create_settings_menu()
+        layout.addWidget(self._settings_button, 0)
+
         self._workspace_label = QLabel("", self)
-        self._layout.addWidget(self._workspace_label, 0)
-        
-        # Botón Personalizar (siempre visible)
-        self._customize_button = QPushButton("⚙️", self)
-        self._customize_button.setFixedSize(32, 32)
-        self._customize_button.setToolTip("Personalizar header")
-        self._customize_button.clicked.connect(self._enter_customization_mode)
-        self._layout.addWidget(self._customize_button, 0)
-        
-        # Botón Listo (solo visible en modo personalización)
-        self._done_button = QPushButton("Listo", self)
-        self._done_button.setFixedHeight(32)
-        self._done_button.setVisible(False)
-        self._done_button.clicked.connect(self._exit_customization_mode)
-        # No añadir al layout todavía, se añadirá cuando entre en modo personalización
-        
-        # Configurar drag & drop (inicialmente desactivado)
-        self.setAcceptDrops(False)
+        self._workspace_label.setVisible(False)
 
-    def _load_configuration(self) -> None:
-        """Cargar configuración guardada y aplicarla."""
-        config = self._service.load_header_config()
-        self._current_items = config.get("items", [])
-        self._apply_configuration(self._current_items)
+    def _add_separator(self, layout: QHBoxLayout) -> None:
+        separator = QFrame(self)
+        separator.setObjectName("AppHeaderSeparator")
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFixedWidth(1)
+        separator.setFixedHeight(24)
+        separator.setStyleSheet(self._SEPARATOR_STYLESHEET)
+        layout.addWidget(separator, 0)
 
-    def _apply_configuration(self, items: List[str]) -> None:
-        """
-        Aplicar configuración de controles al header.
+    def _attach_state_menu(self, button: QPushButton) -> None:
+        menu = QMenu(button)
+        menu.setStyleSheet(self._MENU_STYLESHEET)
         
-        Args:
-            items: Lista de IDs de controles en el orden deseado.
-        """
-        # Guardar widgets especiales que no deben removerse
-        special_widgets = []
-        if self._workspace_label:
-            special_widgets.append(self._workspace_label)
-        if self._customize_button:
-            special_widgets.append(self._customize_button)
-        if self._done_button:
-            special_widgets.append(self._done_button)
-        
-        # Limpiar layout actual (sin destruir widgets)
-        widgets_to_remove = []
-        for i in range(self._layout.count()):
-            item = self._layout.itemAt(i)
-            if item and item.widget():
-                widget = item.widget()
-                if widget not in special_widgets:
-                    widgets_to_remove.append(widget)
-        
-        for widget in widgets_to_remove:
-            self._layout.removeWidget(widget)
-            widget.hide()
-        
-        # Reconstruir layout según configuración
-        for item_id in items:
-            if item_id == "separator":
-                separator = QFrame()
-                separator.setFrameShape(QFrame.Shape.VLine)
-                separator.setStyleSheet("background-color: rgba(255,255,255,0.1); max-width: 1px;")
-                separator.setFixedWidth(1)
-                separator.setFixedHeight(32)
-                self._layout.addWidget(separator, 0)
-            elif item_id == "flexible_space":
-                self._layout.addStretch(1)
-            else:
-                widget = self._control_instances.get(item_id)
-                if widget:
-                    widget.show()
-                    self._layout.addWidget(widget, 0)
-        
-        # Añadir workspace label y botones al final
-        if self._workspace_label:
-            self._layout.addWidget(self._workspace_label, 0)
-        if self._done_button and self._done_button.isVisible():
-            self._layout.addWidget(self._done_button, 0)
-        if self._customize_button and self._customize_button.isVisible():
-            self._layout.addWidget(self._customize_button, 0)
-
-    def _enter_customization_mode(self) -> None:
-        """Entrar en modo personalización."""
-        if self._customization_mode:
-            return
-        
-        self._customization_mode = True
-        
-        # Guardar altura original
-        self._original_height = self.height()
-        self.setFixedHeight(self._original_height)
-        
-        # Bloquear señales de todos los widgets
-        self._signal_states = {}
-        all_widgets = [
-            self._back_button, self._forward_button, self._grid_button,
-            self._list_button, self._search, self._state_button
-        ]
-        for widget in all_widgets:
-            if widget:
-                self._signal_states[id(widget)] = widget.signalsBlocked()
-                widget.blockSignals(True)
-        
-        # Activar drag & drop
-        self.setAcceptDrops(True)
-        
-        # Mostrar botón Listo y ocultar Personalizar
-        if self._done_button:
-            self._done_button.setVisible(True)
-            # Añadir al layout si no está ya
-            if self._layout.indexOf(self._done_button) == -1:
-                self._layout.addWidget(self._done_button, 0)
-        if self._customize_button:
-            self._customize_button.setVisible(False)
-        
-        # Aplicar estilo visual de personalización
-        self.setStyleSheet("""
-            QWidget {
-                background-color: rgba(255, 255, 255, 0.02);
-                border: 2px dashed rgba(128, 180, 255, 0.6);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            }
-            QLabel {
-                color: rgba(255, 255, 255, 0.68);
-                font-size: 12px;
-                padding: 0px 12px;
-            }
-            QLineEdit {
-                background-color: rgba(255,255,255,0.08);
-                border: 1px solid rgba(255,255,255,0.12);
-                border-radius: 6px;
-                padding: 6px 10px;
-                color: rgba(255,255,255,0.88);
-                selection-background-color: rgba(128,180,255,0.35);
-            }
-        """)
-        
-        # Mostrar paleta flotante
-        self._show_customization_palette()
-        
-        # Hacer widgets arrastrables
-        self._setup_draggable_widgets()
-
-    def _exit_customization_mode(self) -> None:
-        """Salir del modo personalización y guardar configuración."""
-        if not self._customization_mode:
-            return
-        
-        # Guardar configuración
-        config = {
-            "items": self._current_items.copy(),
-            "version": 1
-        }
-        self._service.save_header_config(config)
-        
-        # Aplicar cambios al layout
-        self._apply_configuration(self._current_items)
-        
-        # Restaurar señales
-        all_widgets = [
-            self._back_button, self._forward_button, self._grid_button,
-            self._list_button, self._search, self._state_button
-        ]
-        for widget in all_widgets:
-            if widget:
-                widget.blockSignals(self._signal_states.get(id(widget), False))
-        self._signal_states.clear()
-        
-        # Desactivar drag & drop
-        self.setAcceptDrops(False)
-        
-        # Ocultar botón Listo y mostrar Personalizar
-        if self._done_button:
-            self._done_button.setVisible(False)
-            # Remover del layout
-            self._layout.removeWidget(self._done_button)
-        if self._customize_button:
-            self._customize_button.setVisible(True)
-        
-        # Restaurar estilo normal
-        self.setStyleSheet("""
-            QWidget {
-                background-color: rgba(255, 255, 255, 0.02);
-                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            }
-            QLabel {
-                color: rgba(255, 255, 255, 0.68);
-                font-size: 12px;
-                padding: 0px 12px;
-            }
-            QLineEdit {
-                background-color: rgba(255,255,255,0.08);
-                border: 1px solid rgba(255,255,255,0.12);
-                border-radius: 6px;
-                padding: 6px 10px;
-                color: rgba(255,255,255,0.88);
-                selection-background-color: rgba(128,180,255,0.35);
-            }
-        """)
-        
-        # Ocultar paleta
-        if self._customization_palette:
-            self._customization_palette.hide()
-            self._customization_palette = None
-        
-        self._customization_mode = False
-        
-        # Recalcular estados después de restaurar
-        self._update_button_states()
-
-    def _show_customization_palette(self) -> None:
-        """Mostrar paleta de personalización flotante."""
-        if self._customization_palette:
-            return
-        
-        self._customization_palette = HeaderCustomizationPalette(self.window())
-        palette = self._customization_palette
-        
-        # Posicionar paleta cerca del header
-        header_pos = self.mapToGlobal(QPoint(0, 0))
-        palette.move(header_pos.x() + self.width() - palette.width() - 20, header_pos.y() + self.height() + 10)
-        palette.show()
-
-    def _setup_draggable_widgets(self) -> None:
-        """Configurar widgets del header para ser arrastrables."""
-        for control_id, widget in self._control_instances.items():
-            if widget and control_id in self._current_items:
-                widget.setCursor(Qt.CursorShape.OpenHandCursor)
-                # Guardar referencia al control_id en el widget
-                widget.setProperty("control_id", control_id)
-
-    def dragEnterEvent(self, event) -> None:
-        """Handle drag enter event."""
-        if not self._customization_mode:
-            event.ignore()
-            return
-        
-        if event.mimeData().hasFormat(self.MIME_TYPE):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def dragMoveEvent(self, event) -> None:
-        """Handle drag move event."""
-        if not self._customization_mode:
-            event.ignore()
-            return
-        
-        if event.mimeData().hasFormat(self.MIME_TYPE):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def dropEvent(self, event) -> None:
-        """Handle drop event."""
-        if not self._customization_mode:
-            event.ignore()
-            return
-        
-        mime_data = event.mimeData()
-        if not mime_data.hasFormat(self.MIME_TYPE):
-            event.ignore()
-            return
-        
-        # Verificar si el drop está dentro del header
-        drop_pos = event.pos()
-        if not self.rect().contains(drop_pos):
-            # Drop fuera del header = eliminar control
-            try:
-                data = json.loads(mime_data.data(self.MIME_TYPE).data().decode('utf-8'))
-                control_id = data.get("type")
-                source = data.get("source", "palette")
-                
-                if source == "header" and control_id:
-                    self._remove_control(control_id)
-                
-                event.acceptProposedAction()
-            except (json.JSONDecodeError, KeyError, ValueError):
-                event.ignore()
-            return
-        
-        try:
-            data = json.loads(mime_data.data(self.MIME_TYPE).data().decode('utf-8'))
-            control_id = data.get("type")
-            source = data.get("source", "palette")
-            
-            if source == "palette":
-                # Añadir nuevo control desde paleta
-                self._add_control_from_palette(control_id, drop_pos)
-            elif source == "header":
-                # Reordenar control existente
-                self._reorder_control(control_id, drop_pos)
-            
-            event.acceptProposedAction()
-        except (json.JSONDecodeError, KeyError, ValueError):
-            event.ignore()
-
-    def _add_control_from_palette(self, control_id: str, drop_pos: QPoint) -> None:
-        """
-        Añadir control desde paleta al header.
-        
-        Args:
-            control_id: ID del control a añadir.
-            drop_pos: Posición donde se soltó el control.
-        """
-        # Validar que el control no esté ya presente
-        if control_id in self._current_items:
-            return
-        
-        # Validar que sea un control válido
-        if control_id not in self._service.get_valid_control_ids():
-            return
-        
-        # Encontrar posición de inserción basada en drop_pos
-        insert_index = self._find_insert_index(drop_pos)
-        
-        # Insertar en la posición calculada
-        self._current_items.insert(insert_index, control_id)
-        
-        # Aplicar cambios visualmente (sin salir del modo)
-        # Durante personalización, solo actualizar visualmente sin cambiar layout real
-        self._update_layout_during_customization()
-        self._setup_draggable_widgets()
-
-    def _reorder_control(self, control_id: str, drop_pos: QPoint) -> None:
-        """
-        Reordenar control existente dentro del header.
-        
-        Args:
-            control_id: ID del control a reordenar.
-            drop_pos: Posición donde se soltó el control.
-        """
-        if control_id not in self._current_items:
-            return
-        
-        # Remover de posición actual
-        self._current_items.remove(control_id)
-        
-        # Encontrar nueva posición
-        insert_index = self._find_insert_index(drop_pos)
-        
-        # Insertar en nueva posición
-        self._current_items.insert(insert_index, control_id)
-        
-        # Aplicar cambios visualmente
-        self._update_layout_during_customization()
-        self._setup_draggable_widgets()
-
-    def _find_insert_index(self, pos: QPoint) -> int:
-        """
-        Encontrar índice de inserción basado en posición del mouse.
-        
-        Args:
-            pos: Posición del mouse en coordenadas del widget.
-        
-        Returns:
-            Índice donde insertar el control.
-        """
-        # Calcular posición relativa en el layout
-        x = pos.x()
-        margin = self._layout.contentsMargins().left()
-        
-        # Recorrer items del layout para encontrar posición
-        current_x = margin
-        insert_index = 0
-        
-        for i in range(self._layout.count()):
-            item = self._layout.itemAt(i)
-            if not item:
-                continue
-            
-            widget = item.widget()
-            if not widget or widget == self._workspace_label or widget == self._customize_button or widget == self._done_button:
-                continue
-            
-            # Calcular posición del widget
-            widget_x = current_x
-            widget_width = widget.width() if widget.isVisible() else 0
-            
-            # Si el mouse está antes de este widget, insertar aquí
-            if x < widget_x + widget_width / 2:
-                return insert_index
-            
-            # Si el widget es visible y está en current_items, incrementar índice
-            control_id = widget.property("control_id")
-            if control_id and control_id in self._current_items:
-                insert_index += 1
-            
-            current_x += widget_width + self._layout.spacing()
-        
-        # Si llegamos aquí, insertar al final
-        return len(self._current_items)
-    
-    def _remove_control(self, control_id: str) -> None:
-        """
-        Remover control del header.
-        
-        Args:
-            control_id: ID del control a remover.
-        """
-        # Validar que se puede remover
-        can_remove, error_msg = self._service.can_remove_control(control_id, self._current_items)
-        if not can_remove:
-            # Mostrar mensaje de error si no se puede remover
-            if error_msg:
-                QMessageBox.warning(self, "No se puede eliminar", error_msg)
-            return
-        
-        # Remover de la lista
-        if control_id in self._current_items:
-            self._current_items.remove(control_id)
-        
-        # Aplicar cambios visualmente
-        self._update_layout_during_customization()
-        self._setup_draggable_widgets()
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse press to start drag for header controls."""
-        if not self._customization_mode:
-            super().mousePressEvent(event)
-            return
-        
-        # Buscar widget bajo el cursor
-        widget = self.childAt(event.pos())
-        if not widget:
-            super().mousePressEvent(event)
-            return
-        
-        # Buscar control_id en el widget o sus padres
-        control_id = None
-        current = widget
-        while current:
-            control_id = current.property("control_id")
-            if control_id:
-                break
-            current = current.parent()
-        
-        if not control_id or control_id not in self._current_items:
-            super().mousePressEvent(event)
-            return
-        
-        # Iniciar drag
-        mime_data = QMimeData()
-        drag_data = {
-            "type": control_id,
-            "source": "header"
-        }
-        mime_data.setData(self.MIME_TYPE, json.dumps(drag_data).encode('utf-8'))
-        
-        drag = QDrag(self)
-        drag.setMimeData(mime_data)
-        drag.setPixmap(widget.grab())
-        drag.setHotSpot(event.pos() - widget.pos())
-        
-        # Ejecutar drag
-        drag.exec(Qt.DropAction.MoveAction)
-
-    def closeEvent(self, event) -> None:
-        """Handle close event - exit customization mode if active."""
-        if self._customization_mode:
-            # Preguntar si guardar cambios
-            reply = QMessageBox.question(
-                self, "Personalización",
-                "¿Guardar cambios en el header?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+        if STATE_PENDING and STATE_DELIVERED and STATE_CORRECTED and STATE_REVIEW:
+            menu.addAction("Pendiente").triggered.connect(
+                lambda: self.state_button_clicked.emit(STATE_PENDING)
             )
-            if reply == QMessageBox.StandardButton.Yes:
-                self._exit_customization_mode()
-            elif reply == QMessageBox.StandardButton.No:
-                # Descartar cambios y restaurar configuración anterior
-                self._load_configuration()
-                self._customization_mode = False
-                if self._customization_palette:
-                    self._customization_palette.hide()
-                    self._customization_palette = None
-            else:
-                event.ignore()
-                return
+            menu.addAction("Entregado").triggered.connect(
+                lambda: self.state_button_clicked.emit(STATE_DELIVERED)
+            )
+            menu.addAction("Corregido").triggered.connect(
+                lambda: self.state_button_clicked.emit(STATE_CORRECTED)
+            )
+            menu.addAction("Revisar").triggered.connect(
+                lambda: self.state_button_clicked.emit(STATE_REVIEW)
+            )
+            menu.addSeparator()
+            menu.addAction("Quitar estado").triggered.connect(
+                lambda: self.state_button_clicked.emit(None)
+            )
         
-        super().closeEvent(event)
+        button.setMenu(menu)
+
+    def _create_settings_menu(self) -> None:
+        menu = QMenu(self._settings_button)
+        menu.setStyleSheet(self._MENU_STYLESHEET)
+        
+        menu.addAction("Tema").triggered.connect(self._on_theme_clicked)
+        menu.addAction("Idioma").triggered.connect(self._on_language_clicked)
+        menu.addAction("Tamaño de Iconos").triggered.connect(self._on_icon_size_clicked)
+        menu.addSeparator()
+        
+        autosave_action = menu.addAction("Autoguardado")
+        autosave_action.setCheckable(True)
+        autosave_action.triggered.connect(self._on_autosave_toggled)
+        
+        startup_action = menu.addAction("Inicio Automático")
+        startup_action.setCheckable(True)
+        startup_action.triggered.connect(self._on_startup_toggled)
+        
+        taskbar_action = menu.addAction("Ocultar Barra de Tareas")
+        taskbar_action.setCheckable(True)
+        taskbar_action.triggered.connect(self._on_taskbar_toggled)
+        menu.addSeparator()
+        
+        # Placeholder para futura implementación
+        menu.addAction("Recuperar Focus").triggered.connect(self._on_recover_focus_clicked)
+        menu.addAction("Limpiar Focus").triggered.connect(self._on_clean_focus_clicked)
+        menu.addSeparator()
+        
+        menu.addAction("Color de Fondo").triggered.connect(self._on_bg_color_clicked)
+        menu.addAction("Color del Título").triggered.connect(self._on_title_color_clicked)
+        menu.addAction("Color del Borde").triggered.connect(self._on_border_color_clicked)
+        menu.addSeparator()
+        
+        # Placeholder para futura implementación
+        menu.addAction("Restaurar y Salir").triggered.connect(self._on_restore_exit_clicked)
+        
+        self._settings_button.setMenu(menu)
+        self._menu_autosave_action = autosave_action
+        self._menu_startup_action = startup_action
+        self._menu_taskbar_action = taskbar_action
 
     def update_workspace(self, workspace_name_or_path: Optional[str]) -> None:
-        """
-        Update displayed workspace name.
-        
-        Accepts either a workspace name (string) or a folder path.
-        If it's a path, extracts the folder name.
-        """
         if not self._workspace_label:
             return
-            
         if not workspace_name_or_path:
             self._workspace_label.setText("")
             return
-
-        # Si parece un path (contiene separadores de directorio), extraer nombre
         if os.sep in workspace_name_or_path or (os.altsep and os.altsep in workspace_name_or_path):
-            workspace_name = os.path.basename(workspace_name_or_path)
-            if not workspace_name:
-                # Si es raíz de unidad (ej: C:\), usar el path completo
-                workspace_name = workspace_name_or_path.rstrip(os.sep)
+            workspace_name = os.path.basename(workspace_name_or_path) or workspace_name_or_path.rstrip(os.sep)
         else:
-            # Es un nombre de workspace directamente
             workspace_name = workspace_name_or_path
-        
         self._workspace_label.setText(workspace_name)
 
-    # Métodos de compatibilidad para FileViewContainer
     def get_grid_button(self) -> QPushButton:
-        """Exponer botón Grid para conectar acciones de vista."""
         return self._grid_button
 
     def get_list_button(self) -> QPushButton:
-        """Exponer botón Lista para conectar acciones de vista."""
         return self._list_button
 
     def set_nav_enabled(self, can_back: bool, can_forward: bool) -> None:
-        """Activar/desactivar navegación según historial del TabManager."""
         if self._back_button:
             self._back_button.setEnabled(can_back)
         if self._forward_button:
             self._forward_button.setEnabled(can_forward)
 
     def update_button_styles(self, grid_checked: bool) -> None:
-        """Actualizar estilos de botones de vista según selección actual."""
         if self._grid_button and self._list_button:
-            self._grid_button.setStyleSheet(get_view_button_style(grid_checked))
-            self._list_button.setStyleSheet(get_view_button_style(not grid_checked))
+            self._grid_button.setChecked(grid_checked)
+            self._list_button.setChecked(not grid_checked)
 
-    def _update_layout_during_customization(self) -> None:
-        """Actualizar layout visualmente durante personalización."""
-        # Durante personalización, reconstruir layout según current_items
-        # pero manteniendo altura fija y sin ejecutar acciones
-        # Guardar widgets especiales
-        special_widgets = []
-        if self._workspace_label:
-            special_widgets.append(self._workspace_label)
-        if self._customize_button:
-            special_widgets.append(self._customize_button)
-        if self._done_button:
-            special_widgets.append(self._done_button)
+    def paintEvent(self, event):
+        if DEBUG_LAYOUT:
+            super().paintEvent(event)
+            return
         
-        # Remover widgets no especiales del layout
-        widgets_to_remove = []
-        for i in range(self._layout.count()):
-            item = self._layout.itemAt(i)
-            if item and item.widget():
-                widget = item.widget()
-                if widget not in special_widgets:
-                    widgets_to_remove.append(widget)
-        
-        for widget in widgets_to_remove:
-            self._layout.removeWidget(widget)
-            widget.hide()
-        
-        # Reconstruir según current_items
-        for item_id in self._current_items:
-            if item_id == "separator":
-                separator = QFrame()
-                separator.setFrameShape(QFrame.Shape.VLine)
-                separator.setStyleSheet("background-color: rgba(255,255,255,0.1); max-width: 1px;")
-                separator.setFixedWidth(1)
-                separator.setFixedHeight(32)
-                self._layout.addWidget(separator, 0)
-            elif item_id == "flexible_space":
-                self._layout.addStretch(1)
-            else:
-                widget = self._control_instances.get(item_id)
-                if widget:
-                    widget.show()
-                    self._layout.addWidget(widget, 0)
-        
-        # Añadir widgets especiales al final
-        if self._workspace_label:
-            self._layout.addWidget(self._workspace_label, 0)
-        if self._done_button and self._done_button.isVisible():
-            self._layout.addWidget(self._done_button, 0)
-        if self._customize_button and self._customize_button.isVisible():
-            self._layout.addWidget(self._customize_button, 0)
-    
-    def _update_button_states(self) -> None:
-        """Actualizar estados de botones después de salir del modo personalización."""
-        # Este método puede ser extendido para recalcular estados
-        # Por ahora, solo asegurar que los botones estén en estado correcto
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        rect = self.rect()
+        p.fillRect(rect, QColor("#F5F5F7"))
+        p.setPen(QColor(0, 0, 0, 26))
+        p.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
+        p.end()
+        super().paintEvent(event)
+
+    def _on_theme_clicked(self) -> None:
+        settings = SettingsService()
+        current = settings.get_setting("ui.theme", "dark")
+        settings.set_setting("ui.theme", "light" if current == "dark" else "dark")
+
+    def _create_selection_menu(self, items: list[tuple[str, Callable[[], None]]]) -> None:
+        menu = QMenu(self)
+        menu.setStyleSheet(self._MENU_STYLESHEET)
+        for label, callback in items:
+            menu.addAction(label).triggered.connect(callback)
+        menu.exec(self._settings_button.mapToGlobal(self._settings_button.rect().bottomLeft()))
+
+    def _on_language_clicked(self) -> None:
+        self._create_selection_menu([
+            ("Español", lambda: self._set_language("es")),
+            ("English", lambda: self._set_language("en"))
+        ])
+
+    def _set_language(self, lang: str) -> None:
+        SettingsService().set_setting("ui.language", lang)
+
+    def _on_icon_size_clicked(self) -> None:
+        self._create_selection_menu([
+            ("Pequeño (64px)", lambda: self._set_icon_size(64)),
+            ("Mediano (96px)", lambda: self._set_icon_size(96)),
+            ("Grande (128px)", lambda: self._set_icon_size(128))
+        ])
+
+    def _set_icon_size(self, size: int) -> None:
+        SettingsService().set_setting("ui.icon_size", size)
+
+    def _toggle_setting(self, setting_key: str, action_attr: str) -> None:
+        settings = SettingsService()
+        current = settings.get_setting(setting_key, False)
+        new_value = not current
+        settings.set_setting(setting_key, new_value)
+        if hasattr(self, action_attr):
+            action = getattr(self, action_attr)
+            if action:
+                action.setChecked(new_value)
+
+    def _on_autosave_toggled(self) -> None:
+        self._toggle_setting("ui.autosave", "_menu_autosave_action")
+
+    def _on_startup_toggled(self) -> None:
+        self._toggle_setting("ui.startup", "_menu_startup_action")
+
+    def _on_taskbar_toggled(self) -> None:
+        self._toggle_setting("ui.taskbar_autohide", "_menu_taskbar_action")
+
+    def _set_color_setting(self, setting_key: str) -> None:
+        color = QColorDialog.getColor()
+        if color.isValid():
+            SettingsService().set_setting(setting_key, color.name())
+
+    def _on_bg_color_clicked(self) -> None:
+        self._set_color_setting("appearance.background_color")
+
+    def _on_title_color_clicked(self) -> None:
+        self._set_color_setting("appearance.title_color")
+
+    def _on_border_color_clicked(self) -> None:
+        self._set_color_setting("appearance.border_color")
+
+    def _on_recover_focus_clicked(self) -> None:
+        # Placeholder para futura implementación
         pass
 
-    def _attach_state_menu(self, button: QPushButton) -> None:
-        """Crear menú contextual de estados con las opciones existentes.
-        
-        Mantiene la lógica: emite `state_button_clicked` con la constante de estado
-        o `None` para limpiar. """
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(button)
-        try:
-            from app.ui.widgets.state_badge_widget import (
-                STATE_CORRECTED,
-                STATE_DELIVERED,
-                STATE_PENDING,
-                STATE_REVIEW,
-            )
-        except ImportError:
-            # Si no hay estados definidos aún, no adjuntar menú
-            return
-        actions = [
-            ("Pendiente", STATE_PENDING),
-            ("Entregado", STATE_DELIVERED),
-            ("Corregido", STATE_CORRECTED),
-            ("Revisar", STATE_REVIEW),
-        ]
-        for label, state in actions:
-            act = menu.addAction(label)
-            act.triggered.connect(lambda checked=False, s=state: self.state_button_clicked.emit(s))
-        menu.addSeparator()
-        clear = menu.addAction("Quitar estado")
-        clear.triggered.connect(lambda: self.state_button_clicked.emit(None))
-        button.setMenu(menu)
+    def _on_clean_focus_clicked(self) -> None:
+        # Placeholder para futura implementación
+        pass
+
+    def _on_restore_exit_clicked(self) -> None:
+        # Placeholder para futura implementación
+        pass
+
