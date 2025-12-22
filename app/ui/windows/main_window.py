@@ -90,10 +90,10 @@ class MainWindow(QWidget):
 
     def _setup_ui(self) -> None:
         """Build the UI layout with Focus Dock integrated."""
-        self._file_view_container, self._sidebar, self._window_header, self._app_header, self._workspace_selector, self._history_panel, self._content_splitter, self._email_panel_placeholder = setup_ui(
+        self._file_view_container, self._sidebar, self._window_header, self._app_header, self._workspace_selector, self._history_panel, self._content_splitter, self._file_box_panel_placeholder = setup_ui(
             self, self._tab_manager, self._icon_service, self._workspace_manager
         )
-        self._current_email_panel = None
+        self._current_file_box_panel = None
         self._history_only_panel = None
 
     def _connect_signals(self) -> None:
@@ -129,8 +129,8 @@ class MainWindow(QWidget):
         self._workspace_selector.workspace_selected.connect(self._on_workspace_selected)
         self._workspace_manager.workspace_changed.connect(self._on_workspace_changed)
         
-        # Email sending signals
-        self._app_header.mail_button_clicked.connect(self._on_mail_button_clicked)
+        # File box signals
+        self._app_header.file_box_button_clicked.connect(self._on_file_box_button_clicked)
         self._app_header.history_panel_toggle_requested.connect(self._on_history_panel_toggle)
 
     def _load_app_state(self) -> None:
@@ -547,12 +547,12 @@ class MainWindow(QWidget):
         finally:
             self._sidebar._tree_view.setUpdatesEnabled(True)
     
-    def _on_mail_button_clicked(self) -> None:
-        """Handle mail button click - prepare files and open email client."""
-        from app.services.email_service import EmailService
-        from app.services.email_history_service import EmailHistoryService
+    def _on_file_box_button_clicked(self) -> None:
+        """Handle file box button click - prepare files and open file box."""
+        from app.services.file_box_service import FileBoxService
+        from app.services.file_box_history_service import FileBoxHistoryService
         from app.ui.widgets.file_view_sync import get_selected_files
-        from app.ui.widgets.email_send_panel import EmailSendPanel
+        from app.ui.widgets.file_box_panel import FileBoxPanel
         
         # Get selected files
         selected_files = get_selected_files(self._file_view_container)
@@ -562,42 +562,37 @@ class MainWindow(QWidget):
             QMessageBox.information(
                 self,
                 "Sin archivos seleccionados",
-                "Por favor, selecciona los archivos que deseas enviar por correo."
+                "Por favor, selecciona los archivos que deseas usar."
             )
             return
         
         try:
             # Initialize services
-            email_service = EmailService()
-            history_service = EmailHistoryService()
+            file_box_service = FileBoxService()
+            history_service = FileBoxHistoryService()
             
             # Prepare files
-            temp_folder = email_service.prepare_files_for_email(selected_files)
+            temp_folder = file_box_service.prepare_files(selected_files)
             if not temp_folder:
                 QMessageBox.warning(
                     self,
                     "Error",
-                    "No se pudieron preparar los archivos para el envío."
+                    "No se pudieron preparar los archivos."
                 )
                 return
             
-            # Open mailto (non-blocking)
-            # La nueva Outlook para Windows no soporta bien mailto con parámetros,
-            # por eso usamos mailto básico sin parámetros
-            email_service.open_mailto(temp_folder)
-            
             # Create session
-            session = email_service.create_email_session(selected_files, temp_folder)
+            session = file_box_service.create_file_box_session(selected_files, temp_folder)
             
             # Persist to history
             history_service.add_session(session)
             
-            # Show/hide email panel (toggle behavior)
-            if self._current_email_panel:
-                self._close_email_panel()
+            # Show/hide file box panel (toggle behavior)
+            if self._current_file_box_panel:
+                self._close_file_box_panel()
             else:
                 # Create and show new panel
-                self._current_email_panel = EmailSendPanel(
+                self._current_file_box_panel = FileBoxPanel(
                     session,
                     history_service,
                     self._content_splitter,
@@ -605,21 +600,21 @@ class MainWindow(QWidget):
                 )
                 
                 # Hide placeholder first to avoid flash
-                self._email_panel_placeholder.hide()
+                self._file_box_panel_placeholder.hide()
                 
                 # Temporarily disable updates to prevent flashing
                 self._content_splitter.setUpdatesEnabled(False)
                 
                 try:
                     # Replace placeholder with panel using replaceWidget
-                    placeholder_index = self._content_splitter.indexOf(self._email_panel_placeholder)
+                    placeholder_index = self._content_splitter.indexOf(self._file_box_panel_placeholder)
                     if placeholder_index >= 0:
-                        self._content_splitter.replaceWidget(placeholder_index, self._current_email_panel)
+                        self._content_splitter.replaceWidget(placeholder_index, self._current_file_box_panel)
                     
                     # Connect close signal
-                    self._current_email_panel.close_requested.connect(self._close_email_panel)
+                    self._current_file_box_panel.close_requested.connect(self._close_file_box_panel)
                     
-                    # Adjust splitter sizes: sidebar | files | email panel
+                    # Adjust splitter sizes: sidebar | files | file box panel
                     self._content_splitter.setSizes([200, 700, 400])
                 finally:
                     # Re-enable updates
@@ -630,64 +625,64 @@ class MainWindow(QWidget):
                 self._history_panel.refresh()
             
         except Exception as e:
-            logger.error(f"Failed to send email: {e}", exc_info=True)
+            logger.error(f"Failed to prepare file box: {e}", exc_info=True)
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self,
                 "Error",
-                f"Error al preparar el envío por correo:\n{str(e)}"
+                f"Error al preparar la caja de archivos:\n{str(e)}"
             )
     
-    def _close_email_panel(self) -> None:
-        """Close the email panel and restore placeholder."""
-        if not self._current_email_panel:
+    def _close_file_box_panel(self) -> None:
+        """Close the file box panel and restore placeholder."""
+        if not self._current_file_box_panel:
             return
         
         # Replace panel with placeholder
-        panel_index = self._content_splitter.indexOf(self._current_email_panel)
+        panel_index = self._content_splitter.indexOf(self._current_file_box_panel)
         if panel_index >= 0:
-            self._content_splitter.replaceWidget(panel_index, self._email_panel_placeholder)
-            self._current_email_panel.setParent(None)
-            self._current_email_panel.deleteLater()
+            self._content_splitter.replaceWidget(panel_index, self._file_box_panel_placeholder)
+            self._current_file_box_panel.setParent(None)
+            self._current_file_box_panel.deleteLater()
         
-        self._current_email_panel = None
-        self._email_panel_placeholder.hide()
+        self._current_file_box_panel = None
+        self._file_box_panel_placeholder.hide()
         # Adjust splitter to hide panel area
         self._content_splitter.setSizes([200, 1100, 0])
     
     def _on_history_panel_toggle(self) -> None:
-        """Handle history panel toggle request - show history in email panel area."""
-        # If email panel is open, close it first
-        if self._current_email_panel:
-            self._close_email_panel()
+        """Handle history panel toggle request - show history in file box panel area."""
+        # If file box panel is open, close it first
+        if self._current_file_box_panel:
+            self._close_file_box_panel()
         
-        # Toggle history-only panel in email panel area
+        # Toggle history-only panel in file box panel area
         if hasattr(self, '_history_only_panel') and self._history_only_panel:
             # Close history panel
             panel_index = self._content_splitter.indexOf(self._history_only_panel)
             if panel_index >= 0:
-                self._content_splitter.replaceWidget(panel_index, self._email_panel_placeholder)
+                self._content_splitter.replaceWidget(panel_index, self._file_box_panel_placeholder)
                 self._history_only_panel.setParent(None)
                 self._history_only_panel.deleteLater()
             
             self._history_only_panel = None
-            self._email_panel_placeholder.hide()
+            self._file_box_panel_placeholder.hide()
             # Adjust splitter to hide panel area
             self._content_splitter.setSizes([200, 1100, 0])
         else:
             # Create and show history-only panel
-            from app.services.email_history_service import EmailHistoryService
-            from app.ui.widgets.email_history_only_panel import EmailHistoryOnlyPanel
+            from app.services.file_box_history_service import FileBoxHistoryService
+            from app.ui.widgets.file_box_history_panel import FileBoxHistoryPanel
             
             # Hide placeholder first to avoid flash
-            self._email_panel_placeholder.hide()
+            self._file_box_panel_placeholder.hide()
             
             # Temporarily disable updates to prevent flashing
             self._content_splitter.setUpdatesEnabled(False)
             
             try:
-                history_service = EmailHistoryService()
-                self._history_only_panel = EmailHistoryOnlyPanel(
+                history_service = FileBoxHistoryService()
+                self._history_only_panel = FileBoxHistoryPanel(
                     history_service,
                     self._content_splitter,
                     icon_service=self._icon_service
@@ -697,7 +692,7 @@ class MainWindow(QWidget):
                 self._history_only_panel.close_requested.connect(self._close_history_only_panel)
                 
                 # Replace placeholder with panel
-                placeholder_index = self._content_splitter.indexOf(self._email_panel_placeholder)
+                placeholder_index = self._content_splitter.indexOf(self._file_box_panel_placeholder)
                 if placeholder_index >= 0:
                     self._content_splitter.replaceWidget(placeholder_index, self._history_only_panel)
                 
@@ -715,11 +710,11 @@ class MainWindow(QWidget):
         # Replace panel with placeholder
         panel_index = self._content_splitter.indexOf(self._history_only_panel)
         if panel_index >= 0:
-            self._content_splitter.replaceWidget(panel_index, self._email_panel_placeholder)
+            self._content_splitter.replaceWidget(panel_index, self._file_box_panel_placeholder)
             self._history_only_panel.setParent(None)
             self._history_only_panel.deleteLater()
         
         self._history_only_panel = None
-        self._email_panel_placeholder.hide()
+        self._file_box_panel_placeholder.hide()
         # Adjust splitter to hide panel area
         self._content_splitter.setSizes([200, 1100, 0])

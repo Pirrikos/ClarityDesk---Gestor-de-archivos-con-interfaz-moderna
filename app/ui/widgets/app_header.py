@@ -112,7 +112,7 @@ class AppHeader(QWidget):
     """
 
     _MENU_BUTTON_STYLESHEET = """
-        QPushButton#StateButton, QPushButton#SettingsButton, QPushButton#MailButton {
+        QPushButton#StateButton, QPushButton#SettingsButton, QPushButton#FileBoxButton {
             background-color: rgba(255, 255, 255, 0.8);
             border: 1px solid rgba(0, 0, 0, 0.15);
             border-radius: 8px;
@@ -121,12 +121,12 @@ class AppHeader(QWidget):
             font-weight: 400;
             padding: 8px 12px;
         }
-        QPushButton#StateButton:hover, QPushButton#SettingsButton:hover, QPushButton#MailButton:hover {
+        QPushButton#StateButton:hover, QPushButton#SettingsButton:hover, QPushButton#FileBoxButton:hover {
             background-color: rgba(255, 255, 255, 0.95);
             border-color: rgba(0, 0, 0, 0.2);
             color: rgba(0, 0, 0, 0.95);
         }
-        QPushButton#StateButton:pressed, QPushButton#SettingsButton:pressed, QPushButton#MailButton:pressed {
+        QPushButton#StateButton:pressed, QPushButton#SettingsButton:pressed, QPushButton#FileBoxButton:pressed {
             background-color: rgba(255, 255, 255, 1.0);
         }
         QPushButton#StateButton::menu-indicator, QPushButton#SettingsButton::menu-indicator {
@@ -169,7 +169,7 @@ class AppHeader(QWidget):
     state_button_clicked = Signal(str)
     search_changed = Signal(str)
     search_submitted = Signal(str)
-    mail_button_clicked = Signal()  # Emitted when mail button is clicked
+    file_box_button_clicked = Signal()
     history_panel_toggle_requested = Signal()  # Emitted when history panel toggle is requested
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -184,7 +184,7 @@ class AppHeader(QWidget):
         self._search: Optional[QLineEdit] = None
         self._state_button: Optional[QPushButton] = None
         self._settings_button: Optional[QPushButton] = None
-        self._mail_button: Optional[QPushButton] = None
+        self._file_box_button: Optional[QPushButton] = None
         self._workspace_label: Optional[QLabel] = None
         self._search_icon: Optional[QLabel] = None
         
@@ -280,13 +280,12 @@ class AppHeader(QWidget):
         layout.addWidget(search_container, 1)
         self._add_separator(layout)
 
-        # Botón adicional a la derecha del buscador, idéntico en estilo
-        self._mail_button = QPushButton("Enviar por correo", self)
-        self._mail_button.setObjectName("MailButton")
-        self._mail_button.setFixedSize(100, 36)
-        self._mail_button.setStyleSheet(self._MENU_BUTTON_STYLESHEET)
-        self._mail_button.clicked.connect(self.mail_button_clicked.emit)
-        layout.addWidget(self._mail_button, 0)
+        self._file_box_button = QPushButton("Caja de archivos", self)
+        self._file_box_button.setObjectName("FileBoxButton")
+        self._file_box_button.setFixedSize(100, 36)
+        self._file_box_button.setStyleSheet(self._MENU_BUTTON_STYLESHEET)
+        self._file_box_button.clicked.connect(self.file_box_button_clicked.emit)
+        layout.addWidget(self._file_box_button, 0)
         self._add_separator(layout)
 
     def _setup_menu_buttons(self, layout: QHBoxLayout) -> None:
@@ -350,7 +349,7 @@ class AppHeader(QWidget):
         menu.addAction("Idioma").triggered.connect(self._on_language_clicked)
         menu.addAction("Tamaño de Iconos").triggered.connect(self._on_icon_size_clicked)
         menu.addSeparator()
-        menu.addAction("Historial de envíos").triggered.connect(self._on_history_panel_toggle)
+        menu.addAction("Mostrar historial").triggered.connect(self._on_history_panel_toggle)
         menu.addSeparator()
         
         autosave_action = menu.addAction("Autoguardado")
