@@ -5,8 +5,8 @@ Controls all drawing to prevent Qt's default selection borders.
 """
 
 from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter
-from PySide6.QtWidgets import QHeaderView, QStyle, QStyleOptionViewItem, QStyledItemDelegate, QTableWidget
+from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPalette, QPen
+from PySide6.QtWidgets import QStyle, QStyleOptionViewItem, QStyledItemDelegate, QTableWidget
 
 
 class ListViewDelegate(QStyledItemDelegate):
@@ -19,6 +19,16 @@ class ListViewDelegate(QStyledItemDelegate):
     MARGIN_LEFT = 12
     ICON_SIZE_SELECTED = QSize(30, 30)
     ICON_SIZE_NORMAL = QSize(28, 28)
+    ICON_OFFSET_X = 10  # Offset horizontal del icono desde el margen izquierdo
+    TEXT_OFFSET_X = 32  # Espacio entre icono y texto en columna de nombre
+    CONTAINER_MARGIN = 2  # Margen del contenedor alrededor del icono
+    CONTAINER_RADIUS = 8  # Radio de esquinas redondeadas del contenedor
+    TEXT_COLOR = QColor(232, 232, 232)  # Color del texto en columnas
+    BASE_BG_COLOR = QColor(17, 19, 24)  # Color base de fondo de celda
+    CONTAINER_BG_COLOR = QColor(190, 190, 190)  # #BEBEBE - fondo contenedor
+    CONTAINER_BORDER_COLOR = QColor(160, 160, 160)  # Borde contenedor normal
+    SELECTION_BORDER_COLOR = QColor(0, 122, 255)  # Borde cuando está seleccionado
+    SELECTION_BG_COLOR = QColor(0, 122, 255, 10)  # Fondo cuando está seleccionado
     
     def __init__(self, parent=None, column_index: int = 1):
         """
@@ -39,7 +49,7 @@ class ListViewDelegate(QStyledItemDelegate):
         Paint item with complete control over rendering.
         
         Does not call super().paint() to prevent Qt's default selection borders.
-        Paints background ONCE for the entire row to avoid alpha seams.
+        Paints a uniform background per cell to avoid vertical seams on Windows.
         """
         opt = QStyleOptionViewItem(option)
         self.initStyleOption(opt, index)
@@ -49,80 +59,108 @@ class ListViewDelegate(QStyledItemDelegate):
         opt.state &= ~QStyle.StateFlag.State_KeyboardFocusChange
         opt.showDecorationSelected = False
         
-        # Detectar estados de selección y hover ANTES de desactivarlos
+        # Detectar estado de selección ANTES de desactivarlo
         is_selected = bool(opt.state & QStyle.StateFlag.State_Selected)
-        is_hover = bool(opt.state & QStyle.StateFlag.State_MouseOver)
         
-        # Columnas 0 y 4 tienen widgets (checkbox y state), no dibujar nada
+        # Fondo uniforme por celda: evita "costuras" verticales del estilo nativo
+        # en estado normal en Windows. No usamos transparencia aquí.
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        base_color = self.BASE_BG_COLOR
+        if self._table_widget:
+            try:
+                base_color = self._table_widget.palette().color(QPalette.ColorRole.Base)
+            except Exception:
+                pass
+        painter.fillRect(opt.rect, base_color)
+
+        # Columnas 0 y 4 tienen widgets (checkbox y state): tras pintar fondo, no dibujar contenido
         if self._is_widget_column:
             return
-        
-        # SOLUCIÓN PROFESIONAL: Pintar fondo UNA sola vez para toda la fila
-        # Solo la columna de nombre (columna 1) pinta el fondo completo
-        if (is_selected or is_hover) and self._is_name_column:
-            self._draw_selection_background(painter, opt, index.row(), is_selected, is_hover)
-        
+
         # Dibujar contenido según el tipo de columna
         if self._is_name_column:
+            self._draw_icon_container(painter, opt, is_selected)
             self._draw_name_column(painter, opt, index, is_selected)
         else:
             self._draw_text_column(painter, opt, index)
     
-    def _draw_selection_background(self, painter: QPainter, option, row: int, is_selected: bool, is_hover: bool) -> None:
+    def _calculate_icon_position(self, option, is_selected: bool) -> QRect:
+        """Calculate icon position and size rectangle."""
+        icon_size = self.ICON_SIZE_SELECTED if is_selected else self.ICON_SIZE_NORMAL
+        icon_x = option.rect.left() + self.MARGIN_LEFT + self.ICON_OFFSET_X
+        icon_y = option.rect.top() + (option.rect.height() - icon_size.height()) // 2
+        return QRect(icon_x, icon_y, icon_size.width(), icon_size.height())
+    
+    def _draw_icon_container(self, painter: QPainter, option, is_selected: bool) -> None:
         """
-        Draw selection/hover background for the current column only.
+        Draw container background over the icon area.
         
-        Paints the background ONCE using option.rect to avoid alpha seams.
-        Only the name column (column 1) should call this method.
+        Paints the background container similar to grid view, but only over the icon.
+        Only called from the name column (column 1) to avoid multiple passes.
         """
-        # Solo dibujar fondo si es la columna de nombre (columna 1)
-        # Las otras columnas no deben pintar fondo para evitar múltiples pasadas
-        if not self._is_name_column:
-            return
+        icon_rect = self._calculate_icon_position(option, is_selected)
         
-        # Usar SOLO option.rect - no calcular rectángulo completo de la fila
-        # Esto evita problemas con el cálculo y asegura que solo se pinte una vez
-        bg_rect = option.rect
+        # Crear rectángulo del contenedor sobre el icono con margen
+        container_rect = QRect(
+            icon_rect.left() - self.CONTAINER_MARGIN,
+            icon_rect.top() - self.CONTAINER_MARGIN,
+            icon_rect.width() + (self.CONTAINER_MARGIN * 2),
+            icon_rect.height() + (self.CONTAINER_MARGIN * 2)
+        )
         
-        # Pintar el fondo UNA sola vez usando el rectángulo de la columna actual
+        # Pintar el contenedor siempre visible, igual que en grid
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        
+        # Fondo gris claro siempre visible, igual que grid
+        bg_color = self.CONTAINER_BG_COLOR
+        border_color = self.CONTAINER_BORDER_COLOR
+        border_width = 1
+        
         if is_selected:
-            painter.fillRect(bg_rect, QColor(255, 255, 255, 18))
-        elif is_hover:
-            painter.fillRect(bg_rect, QColor(255, 255, 255, 10))
+            # Cuando está seleccionado, cambiar borde a azul y añadir fondo azul semitransparente
+            border_color = self.SELECTION_BORDER_COLOR
+            border_width = 2
+            bg_color = self.SELECTION_BG_COLOR
+        
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(QPen(border_color, border_width))
+        painter.drawRoundedRect(container_rect, self.CONTAINER_RADIUS, self.CONTAINER_RADIUS)
+        
+        # Restaurar render hint para el resto del dibujado
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
     
     def _draw_name_column(self, painter: QPainter, option, index, is_selected: bool) -> None:
         """Draw name column with icon and text."""
         text = index.data(Qt.ItemDataRole.DisplayRole)
         icon = index.data(Qt.ItemDataRole.DecorationRole)
         
+        # Calcular tamaño del icono una sola vez
+        icon_size = self.ICON_SIZE_SELECTED if is_selected else self.ICON_SIZE_NORMAL
+        
         # Dibujar icono si existe
         if icon and isinstance(icon, QIcon) and not icon.isNull():
-            icon_size = self.ICON_SIZE_SELECTED if is_selected else self.ICON_SIZE_NORMAL
             pixmap = icon.pixmap(icon_size)
             if not pixmap.isNull():
-                icon_x = option.rect.left() + self.MARGIN_LEFT + 10
-                icon_y = option.rect.top() + (option.rect.height() - icon_size.height()) // 2
-                icon_rect = QRect(icon_x, icon_y, icon_size.width(), icon_size.height())
+                icon_rect = self._calculate_icon_position(option, is_selected)
                 painter.drawPixmap(icon_rect, pixmap)
         
         # Dibujar texto
         if text:
-            icon_width = self.ICON_SIZE_SELECTED.width() if is_selected else self.ICON_SIZE_NORMAL.width()
-            text_x = option.rect.left() + self.MARGIN_LEFT + icon_width + 32
+            text_x = option.rect.left() + self.MARGIN_LEFT + icon_size.width() + self.TEXT_OFFSET_X
             text_rect = QRect(
                 text_x,
                 option.rect.top(),
                 option.rect.width() - text_x,
                 option.rect.height()
             )
-            painter.setPen(QColor(232, 232, 232))
+            painter.setPen(self.TEXT_COLOR)
             painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, str(text))
     
     def _draw_text_column(self, painter: QPainter, option, index) -> None:
         """Draw text-only column."""
         text = index.data(Qt.ItemDataRole.DisplayRole)
         if text:
-            painter.setPen(QColor(232, 232, 232))
+            painter.setPen(self.TEXT_COLOR)
             
             # Alineación según la columna
             alignment = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter

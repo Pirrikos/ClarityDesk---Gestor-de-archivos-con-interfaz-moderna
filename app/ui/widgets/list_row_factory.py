@@ -34,13 +34,23 @@ def create_checkbox_cell(
     return _create_checkbox_container(checkbox)
 
 
-def _create_checkbox_container(checkbox: QCheckBox) -> QWidget:
+def _create_centered_container(widget: QWidget, min_size: Optional[tuple[int, int]] = None, max_size: Optional[tuple[int, int]] = None) -> QWidget:
+    """Create a centered container widget for list view cells."""
     container = QWidget()
+    container.setStyleSheet("QWidget { background-color: transparent; border: none; }")
     layout = QVBoxLayout(container)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(0)
-    layout.addWidget(checkbox)
+    layout.addWidget(widget)
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    if min_size:
+        container.setMinimumSize(min_size[0], min_size[1])
+    if max_size:
+        container.setMaximumSize(max_size[0], max_size[1])
+    return container
+
+
+def _create_checkbox_container(checkbox: QCheckBox) -> QWidget:
     checkbox.setStyleSheet("""
         QCheckBox {
             padding: 0px;
@@ -50,9 +60,7 @@ def _create_checkbox_container(checkbox: QCheckBox) -> QWidget:
             margin: 0px;
         }
     """)
-    container.setMinimumSize(60, 56)
-    container.setMaximumSize(60, 56)
-    return container
+    return _create_centered_container(checkbox, min_size=(60, 56), max_size=(60, 56))
 
 
 def create_name_cell(
@@ -100,6 +108,7 @@ def create_date_cell(file_path: str, font: QFont) -> QTableWidgetItem:
 
 
 def create_state_cell(state: Optional[str], font: QFont) -> QWidget:
+    """Create state cell widget centered vertically in the row."""
     state_widget = ListStateCell(state)
-    return state_widget
+    return _create_centered_container(state_widget)
 

@@ -46,7 +46,7 @@ class ListViewport(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         
         # Color de fondo para sobrepintar las líneas marrones
-        bg_color = QColor(17, 19, 24)  # #111318
+        bg_color = QColor(26, 29, 34)  # #1A1D22
         
         # Obtener el header para calcular posiciones de columnas
         if hasattr(self._parent_table, 'horizontalHeader'):

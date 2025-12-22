@@ -27,12 +27,14 @@ def setup_ui(container) -> None:
         container.setObjectName("FileViewContainer")
         container.setStyleSheet("""
             QWidget#FileViewContainer {
-                background-color: #111318;
+                background-color: #1A1D22;
             }
         """)
     
     layout = QVBoxLayout(container)
-    layout.setContentsMargins(0, 0, 0, 0)
+    # Margen izquierdo para separar del splitter (8px = doble de 4px del ancho del splitter)
+    left_margin = 8 if not is_desktop_window else 0
+    layout.setContentsMargins(left_margin, 0, 0, 0)
     layout.setSpacing(0)
     
     _setup_toolbar(container, layout, is_desktop_window)
@@ -81,7 +83,7 @@ def _setup_views(container, layout: QVBoxLayout) -> None:
     else:
         container._stacked.setStyleSheet("""
             QStackedWidget { 
-                background-color: #111318;
+                background-color: #1A1D22;
                 border: none;
                 border-left: none;
                 border-right: none;

@@ -5,3 +5,7 @@ Contains data models like FileOperationResult and other simple structures.
 No business logic, no Qt dependencies.
 """
 
+from app.models.email_session import EmailSession
+
+__all__ = ['EmailSession']
+

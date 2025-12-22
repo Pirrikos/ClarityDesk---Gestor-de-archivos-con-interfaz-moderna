@@ -23,7 +23,7 @@ class CategorySectionHeader(QWidget):
     def _setup_ui(self) -> None:
         """Build the UI layout."""
         label = QLabel(self._category_label, self)
-        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         
         FontManager.safe_set_font(
             label,
@@ -40,13 +40,14 @@ class CategorySectionHeader(QWidget):
         """)
         
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 16, 0, 8)
+        main_layout.setContentsMargins(0, 8, 0, 8)
         main_layout.setSpacing(0)
         
-        # Layout horizontal para el label
+        # Layout horizontal para el label centrado
         label_layout = QHBoxLayout()
         label_layout.setContentsMargins(0, 0, 0, 0)
         label_layout.setSpacing(0)
+        label_layout.addStretch()
         label_layout.addWidget(label)
         label_layout.addStretch()
         

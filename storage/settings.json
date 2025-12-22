@@ -5,5 +5,5 @@
   "trash.max_age_days": 30,
   "ui.autosave": true,
   "ui.startup": true,
-  "ui.taskbar_autohide": true
+  "ui.taskbar_autohide": false
 }

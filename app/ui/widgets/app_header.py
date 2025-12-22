@@ -34,8 +34,9 @@ class AppHeader(QWidget):
 
     _HEADER_STYLESHEET = """
         QWidget#AppHeader {
-            background-color: #F5F5F7;
-            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            /* Opción A: oscuro coherente con el tema */
+            background-color: #1A1D22;
+            border-bottom: 1px solid #2A2E36;
         }
         QLineEdit {
             background-color: rgba(255, 255, 255, 0.9);
@@ -61,49 +62,49 @@ class AppHeader(QWidget):
             background-color: transparent;
             border: none;
             border-radius: 8px;
-            color: rgba(0, 0, 0, 0.65);
+            color: rgba(255, 255, 255, 0.80);
             /* font-size: establecido explícitamente */
             font-weight: 500;
         }
         QPushButton:hover {
-            background-color: rgba(0, 0, 0, 0.08);
-            color: rgba(0, 0, 0, 0.85);
+            background-color: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.94);
         }
         QPushButton:pressed {
-            background-color: rgba(0, 0, 0, 0.12);
+            background-color: rgba(255, 255, 255, 0.12);
         }
         QPushButton:disabled {
-            color: rgba(0, 0, 0, 0.3);
+            color: rgba(255, 255, 255, 0.35);
         }
     """
 
     _VIEW_CONTAINER_STYLESHEET = """
         QWidget#ViewContainer {
-            background-color: rgba(0, 0, 0, 0.05);
+            background-color: rgba(255, 255, 255, 0.06);
             border-radius: 8px;
         }
         QPushButton#ViewGridButton, QPushButton#ViewListButton {
             background-color: transparent;
             border: none;
             border-radius: 6px;
-            color: rgba(0, 0, 0, 0.65);
+            color: rgba(255, 255, 255, 0.80);
             /* font-size: establecido explícitamente */
             font-weight: 500;
         }
         QPushButton#ViewGridButton:hover, QPushButton#ViewListButton:hover {
-            background-color: rgba(0, 0, 0, 0.08);
-            color: rgba(0, 0, 0, 0.85);
+            background-color: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.94);
         }
         QPushButton#ViewGridButton:checked, QPushButton#ViewListButton:checked {
-            background-color: rgba(0, 0, 0, 0.12);
-            color: rgba(0, 0, 0, 0.85);
+            background-color: rgba(255, 255, 255, 0.12);
+            color: rgba(255, 255, 255, 0.94);
             font-weight: 600;
         }
     """
 
     _SEARCH_ICON_STYLESHEET = """
         QLabel#SearchIcon {
-            color: rgba(0, 0, 0, 0.5);
+            color: rgba(255, 255, 255, 0.7);
             /* font-size: establecido explícitamente */
             padding: 0px;
             background-color: transparent;
@@ -111,7 +112,7 @@ class AppHeader(QWidget):
     """
 
     _MENU_BUTTON_STYLESHEET = """
-        QPushButton#StateButton, QPushButton#SettingsButton {
+        QPushButton#StateButton, QPushButton#SettingsButton, QPushButton#MailButton {
             background-color: rgba(255, 255, 255, 0.8);
             border: 1px solid rgba(0, 0, 0, 0.15);
             border-radius: 8px;
@@ -120,12 +121,12 @@ class AppHeader(QWidget):
             font-weight: 400;
             padding: 8px 12px;
         }
-        QPushButton#StateButton:hover, QPushButton#SettingsButton:hover {
+        QPushButton#StateButton:hover, QPushButton#SettingsButton:hover, QPushButton#MailButton:hover {
             background-color: rgba(255, 255, 255, 0.95);
             border-color: rgba(0, 0, 0, 0.2);
             color: rgba(0, 0, 0, 0.95);
         }
-        QPushButton#StateButton:pressed, QPushButton#SettingsButton:pressed {
+        QPushButton#StateButton:pressed, QPushButton#SettingsButton:pressed, QPushButton#MailButton:pressed {
             background-color: rgba(255, 255, 255, 1.0);
         }
         QPushButton#StateButton::menu-indicator, QPushButton#SettingsButton::menu-indicator {
@@ -168,6 +169,8 @@ class AppHeader(QWidget):
     state_button_clicked = Signal(str)
     search_changed = Signal(str)
     search_submitted = Signal(str)
+    mail_button_clicked = Signal()  # Emitted when mail button is clicked
+    history_panel_toggle_requested = Signal()  # Emitted when history panel toggle is requested
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -181,6 +184,7 @@ class AppHeader(QWidget):
         self._search: Optional[QLineEdit] = None
         self._state_button: Optional[QPushButton] = None
         self._settings_button: Optional[QPushButton] = None
+        self._mail_button: Optional[QPushButton] = None
         self._workspace_label: Optional[QLabel] = None
         self._search_icon: Optional[QLabel] = None
         
@@ -259,8 +263,8 @@ class AppHeader(QWidget):
         self._search = QLineEdit(search_container)
         self._search.setObjectName("SearchField")
         self._search.setPlaceholderText("Buscar (Ctrl+K)")
-        self._search.setMinimumWidth(240)
-        self._search.setMaximumWidth(500)
+        self._search.setMinimumWidth(160)
+        self._search.setMaximumWidth(320)
         self._search.setFixedHeight(36)
         self._search.returnPressed.connect(lambda: self.search_submitted.emit(self._search.text()))
         self._search.textChanged.connect(lambda text: self.search_changed.emit(text))
@@ -274,6 +278,15 @@ class AppHeader(QWidget):
         
         search_layout.addWidget(self._search, 1)
         layout.addWidget(search_container, 1)
+        self._add_separator(layout)
+
+        # Botón adicional a la derecha del buscador, idéntico en estilo
+        self._mail_button = QPushButton("Enviar por correo", self)
+        self._mail_button.setObjectName("MailButton")
+        self._mail_button.setFixedSize(100, 36)
+        self._mail_button.setStyleSheet(self._MENU_BUTTON_STYLESHEET)
+        self._mail_button.clicked.connect(self.mail_button_clicked.emit)
+        layout.addWidget(self._mail_button, 0)
         self._add_separator(layout)
 
     def _setup_menu_buttons(self, layout: QHBoxLayout) -> None:
@@ -336,6 +349,8 @@ class AppHeader(QWidget):
         menu.addAction("Tema").triggered.connect(self._on_theme_clicked)
         menu.addAction("Idioma").triggered.connect(self._on_language_clicked)
         menu.addAction("Tamaño de Iconos").triggered.connect(self._on_icon_size_clicked)
+        menu.addSeparator()
+        menu.addAction("Historial de envíos").triggered.connect(self._on_history_panel_toggle)
         menu.addSeparator()
         
         autosave_action = menu.addAction("Autoguardado")
@@ -406,8 +421,9 @@ class AppHeader(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing, True)
         rect = self.rect()
-        p.fillRect(rect, QColor("#F5F5F7"))
-        p.setPen(QColor(0, 0, 0, 26))
+        p.fillRect(rect, QColor("#1A1D22"))
+        # Línea inferior acorde a Opción A
+        p.setPen(QColor("#2A2E36"))
         p.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
         p.end()
         super().paintEvent(event)
@@ -487,4 +503,7 @@ class AppHeader(QWidget):
     def _on_restore_exit_clicked(self) -> None:
         # Placeholder para futura implementación
         pass
-
+    
+    def _on_history_panel_toggle(self) -> None:
+        """Handle history panel toggle request."""
+        self.history_panel_toggle_requested.emit()

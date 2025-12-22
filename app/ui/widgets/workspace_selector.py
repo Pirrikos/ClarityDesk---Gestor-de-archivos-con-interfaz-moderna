@@ -6,7 +6,7 @@ Horizontal compact bar for selecting and managing workspaces.
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QPoint
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
@@ -88,8 +88,9 @@ class WorkspaceSelector(QWidget):
                 border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             }
             QPushButton#WorkspaceButton {
-                background-color: rgba(255, 255, 255, 0.05);
-                border: 1px solid rgba(255, 255, 255, 0.1);
+                /* Un poco más claro que el fondo para destacar el desplegable */
+                background-color: rgba(255, 255, 255, 0.12);
+                border: 1px solid rgba(255, 255, 255, 0.16);
                 border-radius: 6px;
                 color: rgba(255, 255, 255, 0.8);
                 /* font-size: establecido explícitamente */
@@ -97,11 +98,11 @@ class WorkspaceSelector(QWidget):
                 text-align: left;
             }
             QPushButton#WorkspaceButton:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-                border-color: rgba(255, 255, 255, 0.2);
+                background-color: rgba(255, 255, 255, 0.16);
+                border-color: rgba(255, 255, 255, 0.22);
             }
             QPushButton#WorkspaceButton:pressed {
-                background-color: rgba(255, 255, 255, 0.15);
+                background-color: rgba(255, 255, 255, 0.20);
             }
             QPushButton#WorkspaceAddButton {
                 background-color: rgba(255, 255, 255, 0.05);
@@ -146,15 +147,52 @@ class WorkspaceSelector(QWidget):
         active_id = self._workspace_manager.get_active_workspace_id()
         
         menu = QMenu(self)
+        # Estilo del menú desplegable: fondo oscuro claro, borde oscuro y esquinas redondeadas
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #1A1D22;
+                border: 1px solid #2A2E36;
+                border-radius: 8px;
+                color: rgba(255, 255, 255, 0.92);
+                padding: 8px 8px;
+            }
+            QMenu::item {
+                padding: 6px 12px;
+                border-radius: 6px;
+            }
+            QMenu::item:selected {
+                background-color: #20242A;
+                color: rgba(255, 255, 255, 0.98);
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #2A2E36;
+                margin: 6px 8px;
+            }
+            /* Indicador circular pequeño a la izquierda, sin desplazar el texto entre items */
+            QMenu::indicator {
+                width: 8px; height: 8px;
+                border-radius: 4px;
+                margin: 0 6px 0 0;
+                background-color: transparent;
+                border: none;
+            }
+            QMenu::indicator:checked {
+                background-color: #3D7BFF;
+                border: 1px solid #2F61CC;
+            }
+            QMenu::indicator:unchecked {
+                background-color: transparent;
+                border: none;
+            }
+        """)
         
-        # Añadir cada workspace al menú
+        # Añadir cada workspace al menú con indicador circular del activo
         for workspace in workspaces:
+            is_active = workspace.id == active_id
             action = menu.addAction(workspace.name)
-            if workspace.id == active_id:
-                # Marcar el workspace activo con check
-                action.setCheckable(True)
-                action.setChecked(True)
-            # Conectar selección del workspace
+            action.setCheckable(True)  # todos checkables para reservar espacio del indicador
+            action.setChecked(is_active)
             action.triggered.connect(lambda checked, ws_id=workspace.id: self._on_menu_item_selected(ws_id))
         
         # Separador
@@ -164,9 +202,12 @@ class WorkspaceSelector(QWidget):
         create_action = menu.addAction("+ Nuevo workspace")
         create_action.triggered.connect(self._on_add_clicked)
         
-        # Mostrar menú debajo del botón
+        # Mostrar menú centrado bajo el botón del workspace
         button_rect = self._workspace_button.geometry()
-        menu_pos = self._workspace_button.mapToGlobal(button_rect.bottomLeft())
+        menu_size = menu.sizeHint()
+        x_local = int(button_rect.left() + (button_rect.width() - menu_size.width()) / 2)
+        y_local = button_rect.bottom()
+        menu_pos = self._workspace_button.mapToGlobal(QPoint(x_local, y_local))
         menu.exec(menu_pos)
     
     def _on_menu_item_selected(self, workspace_id: str) -> None:
@@ -208,4 +249,3 @@ class WorkspaceSelector(QWidget):
     def _on_workspace_changed(self, workspace_id: str) -> None:
         """Handle workspace change from manager."""
         self._refresh_workspaces()
-

@@ -5,9 +5,9 @@ Contains CSS styles for FileListView table and checkboxes.
 """
 
 LIST_VIEW_STYLESHEET = """
-    /* Estilo con fondo oscuro #111318 */
+    /* Estilo con fondo oscuro #1A1D22 */
     QTableWidget {
-        background-color: #111318;
+        background-color: #1A1D22;
         border: none;
         border-left: none;
         border-right: none;
@@ -16,11 +16,17 @@ LIST_VIEW_STYLESHEET = """
         font-family: 'Segoe UI', sans-serif;
         /* font-size: establecido explícitamente */
         color: #E8E8E8;
-        gridline-color: transparent;
+        gridline-color: rgba(0, 0, 0, 0) !important;
         selection-background-color: transparent;
         selection-color: #E8E8E8;
         outline: none;
         show-decoration-selected: 0;
+    }
+    QTableView {
+        background-color: #1A1D22;
+        border: none;
+        gridline-color: rgba(0, 0, 0, 0) !important;
+        outline: none;
     }
     QTableWidget::viewport {
         border: none;
@@ -28,48 +34,42 @@ LIST_VIEW_STYLESHEET = """
         border-right: none;
         border-top: none;
         border-bottom: none;
-        background-color: #111318;
+        background-color: #1A1D22;
     }
-    QTableWidget::item:!selected {
-        border: none !important;
-        border-left: none !important;
-        border-right: none !important;
-        border-top: none !important;
-        border-bottom: none !important;
-    }
-    QTableWidget::item {
+    QTableView::viewport {
         border: none;
+        background-color: #1A1D22;
+    }
+    QTableWidget::item,
+    QTableView::item {
+        border: 0 !important;
+        border-left: 0 !important;
+        border-right: 0 !important;
+        border-top: 0 !important;
+        border-bottom: 0 !important;
         padding: 0px 20px;
         color: #E8E8E8;
-        outline: none;
+        outline: 0 !important;
+        background-color: transparent;
     }
-    QTableWidget::item:selected {
+    QTableWidget::item:!selected,
+    QTableView::item:!selected,
+    QTableWidget::item:selected,
+    QTableView::item:selected,
+    QTableWidget::item:selected:focus,
+    QTableView::item:selected:focus,
+    QTableWidget::item:focus,
+    QTableView::item:focus,
+    QTableWidget::item:hover,
+    QTableView::item:hover {
+        border: 0 !important;
+        border-left: 0 !important;
+        border-right: 0 !important;
+        border-top: 0 !important;
+        border-bottom: 0 !important;
+        outline: 0 !important;
         background-color: transparent;
         color: #E8E8E8;
-        border: none;
-        border-left: none;
-        border-right: none;
-        border-top: none;
-        border-bottom: none;
-        outline: none;
-    }
-    QTableWidget::item:selected:focus {
-        background-color: transparent;
-        color: #E8E8E8;
-        border: none;
-        border-left: none;
-        border-right: none;
-        border-top: none;
-        border-bottom: none;
-        outline: none;
-    }
-    QTableWidget::item:focus {
-        outline: none;
-        border: none;
-        border-left: none;
-        border-right: none;
-        border-top: none;
-        border-bottom: none;
     }
     QTableWidget::item:hover {
         background-color: transparent;
@@ -90,12 +90,12 @@ LIST_VIEW_STYLESHEET = """
         height: 22px;
         border: 2px solid rgba(255, 255, 255, 0.3);
         border-radius: 4px;
-        background-color: #111318;
+        background-color: #1A1D22;
         margin: 0px;
     }
     QCheckBox::indicator:hover {
         border-color: #007AFF;
-        background-color: #111318;
+        background-color: #1A1D22;
     }
     QCheckBox::indicator:checked {
         background-color: #007AFF;
@@ -115,7 +115,7 @@ LIST_VIEW_STYLESHEET = """
         outline: none;
     }
     QHeaderView::section {
-        background-color: #111318;
+        background-color: #1A1D22;
         color: rgba(255, 255, 255, 0.6);
         border: none !important;
         border-left: none !important;
@@ -140,7 +140,7 @@ LIST_VIEW_STYLESHEET = """
         border-right: none !important;
     }
     QTableCornerButton::section {
-        background-color: #111318;
+        background-color: #1A1D22;
         border: none;
         border-left: none;
         border-right: none;

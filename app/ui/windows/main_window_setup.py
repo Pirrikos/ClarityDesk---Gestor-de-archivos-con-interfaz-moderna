@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout, QWidget, QSiz
 from app.core.constants import DEBUG_LAYOUT
 from app.core.logger import get_logger
 from app.ui.widgets.app_header import AppHeader
+from app.ui.widgets.email_history_panel import EmailHistoryPanel
 from app.ui.widgets.file_view_container import FileViewContainer
 from app.ui.widgets.file_view_sync import switch_view
 from app.ui.widgets.file_view_tabs import on_nav_back, on_nav_forward
@@ -21,11 +22,13 @@ from app.ui.widgets.workspace_selector import WorkspaceSelector
 
 HEADER_BG = "#F5F5F7"
 HEADER_BORDER = "rgba(0, 0, 0, 0.1)"
+APP_HEADER_BG = "#1A1D22"
+APP_HEADER_BORDER = "#2A2E36"
 SIDEBAR_BG = "#E8E8ED"
 SIDEBAR_BORDER = "rgba(0, 0, 0, 0.12)"
 
 
-def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, WorkspaceSelector]:
+def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, WorkspaceSelector, EmailHistoryPanel]:
     try:
         root_layout = QVBoxLayout(window)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -49,43 +52,69 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
         
-        splitter = QSplitter(Qt.Orientation.Horizontal, central_widget)
-        splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(1)
-        splitter.setStyleSheet("""
+        # Main splitter: sidebar | content | history panel
+        main_splitter = QSplitter(Qt.Orientation.Horizontal, central_widget)
+        main_splitter.setChildrenCollapsible(False)
+        main_splitter.setHandleWidth(4)
+        main_splitter.setStyleSheet("""
             QSplitter {
                 background-color: transparent;
             }
             QSplitter::handle {
-                background-color: transparent;
+                background-color: rgba(255, 255, 255, 0.1);
                 border: none;
             }
             QSplitter::handle:hover {
-                background-color: transparent;
+                background-color: rgba(255, 255, 255, 0.15);
                 border: none;
             }
             QSplitter::handle:horizontal {
-                width: 1px;
+                width: 4px;
                 margin: 0px;
             }
         """)
         
-        sidebar = FolderTreeSidebar(splitter)
+        # Content splitter: sidebar | file view | email panel
+        content_splitter = QSplitter(Qt.Orientation.Horizontal, main_splitter)
+        content_splitter.setChildrenCollapsible(False)
+        content_splitter.setHandleWidth(4)
+        content_splitter.setStyleSheet(main_splitter.styleSheet())
+        
+        sidebar = FolderTreeSidebar(content_splitter)
         file_view_container = FileViewContainer(
             tab_manager,
             icon_service,
             None,
-            splitter
+            content_splitter
         )
         
-        splitter.addWidget(sidebar)
-        splitter.addWidget(file_view_container)
+        # Email send panel (initially hidden)
+        from app.services.email_history_service import EmailHistoryService
+        from app.ui.widgets.email_send_panel import EmailSendPanel
+        email_panel_placeholder = QWidget(content_splitter)  # Placeholder, will be replaced
+        email_panel_placeholder.hide()
         
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([200, 900])
+        content_splitter.addWidget(sidebar)
+        content_splitter.addWidget(file_view_container)
+        content_splitter.addWidget(email_panel_placeholder)
+        content_splitter.setStretchFactor(0, 0)
+        content_splitter.setStretchFactor(1, 1)
+        content_splitter.setStretchFactor(2, 0)
+        content_splitter.setSizes([200, 900, 0])  # Email panel starts with 0 width (hidden)
         
-        central_layout.addWidget(splitter, 1)
+        # History panel (initially hidden)
+        from app.services.email_history_service import EmailHistoryService
+        history_service = EmailHistoryService()
+        history_panel = EmailHistoryPanel(history_service, main_splitter)
+        history_panel.hide()  # Initially hidden
+        
+        main_splitter.addWidget(content_splitter)
+        main_splitter.addWidget(history_panel)
+        main_splitter.setStretchFactor(0, 1)
+        main_splitter.setStretchFactor(1, 0)
+        main_splitter.setSizes([1100, 300])
+        
+        central_layout.addWidget(main_splitter, 1)
         
         size_grip_container = QWidget(central_widget)
         size_grip_container.setObjectName("SizeGripContainer")
@@ -136,10 +165,12 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
             
             app_header.setStyleSheet("""
                 QWidget#AppHeader {
-                    background-color: """ + HEADER_BG + """ !important;
-                    border-bottom: 1px solid """ + HEADER_BORDER + """ !important;
+                    /* Tinte azul sutil para coherencia con workspace */
+                    background-color: """ + APP_HEADER_BG + """ !important;
+                    border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
                 }
                 QLineEdit {
+                    /* Mantener campo de búsqueda claro para contraste */
                     background-color: rgba(255, 255, 255, 0.9) !important;
                     border: 1px solid rgba(0, 0, 0, 0.15) !important;
                     border-radius: 8px;
@@ -160,29 +191,33 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
             
             workspace_selector.setStyleSheet("""
                 QWidget#WorkspaceSelector {
-                    background-color: """ + HEADER_BG + """ !important;
-                    border-bottom: 1px solid """ + HEADER_BORDER + """ !important;
+                    /* Igual que el AppHeader para continuidad visual */
+                    background-color: """ + APP_HEADER_BG + """ !important;
+                    border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
                 }
                 QPushButton#WorkspaceButton {
-                    background-color: rgba(255, 255, 255, 0.8) !important;
-                    border: 1px solid rgba(0, 0, 0, 0.15) !important;
+                    /* Botón un punto más claro para destacar sobre el header */
+                    background-color: #20242A !important;
+                    border: 1px solid #343A44 !important;
                     border-radius: 6px;
-                    color: rgba(0, 0, 0, 0.85) !important;
+                    color: rgba(255, 255, 255, 0.88) !important;
                     /* font-size: establecido explícitamente */
                     padding: 6px 12px;
                 }
                 QPushButton#WorkspaceButton:hover {
-                    background-color: rgba(255, 255, 255, 0.95) !important;
+                    background-color: #252A31 !important;
+                    border-color: #3A404B !important;
                 }
                 QPushButton#WorkspaceAddButton {
-                    background-color: rgba(255, 255, 255, 0.8) !important;
-                    border: 1px solid rgba(0, 0, 0, 0.15) !important;
+                    background-color: #20242A !important;
+                    border: 1px solid #343A44 !important;
                     border-radius: 6px;
-                    color: rgba(0, 0, 0, 0.85) !important;
+                    color: rgba(255, 255, 255, 0.88) !important;
                     /* font-size: establecido explícitamente */
                 }
                 QPushButton#WorkspaceAddButton:hover {
-                    background-color: rgba(255, 255, 255, 0.95) !important;
+                    background-color: #252A31 !important;
+                    border-color: #3A404B !important;
                 }
             """)
         
@@ -191,10 +226,10 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         if DEBUG_LAYOUT:
             _apply_layout_debug_styles(
                 window, central_widget, window_header, app_header, 
-                splitter, workspace_selector, sidebar, file_view_container, size_grip_container
+                main_splitter, workspace_selector, sidebar, file_view_container, size_grip_container
             )
 
-        return file_view_container, sidebar, window_header, app_header, workspace_selector
+        return file_view_container, sidebar, window_header, app_header, workspace_selector, history_panel, content_splitter, email_panel_placeholder
         
     except Exception as e:
         logger = get_logger(__name__)
@@ -204,7 +239,7 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
 
 def _apply_layout_debug_styles(
     window, central_widget, window_header, app_header, 
-    splitter, workspace_selector, sidebar, file_view_container, size_grip_container
+    main_splitter, workspace_selector, sidebar, file_view_container, size_grip_container
 ) -> None:
     """Apply debug styles when DEBUG_LAYOUT is enabled."""
     pass

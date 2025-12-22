@@ -33,6 +33,7 @@ class ListStateCell(QWidget):
         self.setFixedHeight(24)  # Height of state bar
         self.setMinimumWidth(80)
         self.setMaximumHeight(24)
+        self.setStyleSheet("QWidget { background-color: transparent; border: none; }")
         
     def set_state(self, state: Optional[str]) -> None:
         """Update state and repaint."""

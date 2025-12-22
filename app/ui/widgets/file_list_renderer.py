@@ -93,7 +93,7 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     # Se activará después del primer show para evitar flash de ventana marrón/blanca
     view.viewport().setStyleSheet("""
         QWidget {
-            background-color: #111318;
+            background-color: #1A1D22;
             border: none;
             border-left: none;
             border-right: none;

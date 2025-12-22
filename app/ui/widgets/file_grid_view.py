@@ -98,7 +98,7 @@ class FileGridView(QWidget):
         
         # Aplicar fondo oscuro cuando no es DesktopWindow
         if not self._is_desktop_window:
-            self.setStyleSheet("QWidget { background-color: #111318; }")
+            self.setStyleSheet("QWidget { background-color: #1A1D22; }")
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
