@@ -9,6 +9,12 @@ import platform
 import subprocess
 from pathlib import Path
 
+from app.services.preview_file_extensions import (
+    PREVIEW_IMAGE_EXTENSIONS,
+    PREVIEW_TEXT_EXTENSIONS,
+    PREVIEW_PDF_DOCX_EXTENSIONS
+)
+
 
 def open_file_with_system(file_path: str) -> None:
     """
@@ -30,7 +36,7 @@ def open_file_with_system(file_path: str) -> None:
 
 def filter_previewable_files(file_paths: list[str]) -> list[str]:
     """
-    Filter files to only include text and image files.
+    Filter files to only include previewable files (images, text, PDF, DOCX).
     
     Args:
         file_paths: List of file paths to filter.
@@ -38,18 +44,16 @@ def filter_previewable_files(file_paths: list[str]) -> list[str]:
     Returns:
         Filtered list of previewable file paths.
     """
-    image_extensions = {
-        '.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.ico', '.svg'
-    }
-    text_extensions = {
-        '.txt', '.md', '.py', '.js', '.ts', '.html', '.css', '.json', '.xml',
-        '.yaml', '.yml', '.ini', '.log', '.csv', '.pdf', '.docx', '.rtf'
-    }
+    previewable_extensions = (
+        PREVIEW_IMAGE_EXTENSIONS | 
+        PREVIEW_TEXT_EXTENSIONS | 
+        PREVIEW_PDF_DOCX_EXTENSIONS
+    )
     
     allowed = []
     for file_path in file_paths:
         ext = Path(file_path).suffix.lower()
-        if ext in image_extensions or ext in text_extensions:
+        if ext in previewable_extensions:
             allowed.append(file_path)
     
     return allowed

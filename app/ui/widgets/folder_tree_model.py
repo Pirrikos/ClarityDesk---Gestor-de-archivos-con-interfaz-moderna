@@ -5,12 +5,37 @@ Handles tree node insertion, removal, and parent finding logic.
 """
 
 import os
+import re
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QTreeView
 
 from app.ui.widgets.folder_tree_icon_utils import load_folder_icon_with_fallback, FOLDER_ICON_SIZE
+
+
+def _natural_sort_key(path: str) -> tuple:
+    """
+    Generate sort key for natural (human-like) sorting.
+    
+    Converts numbers in path to integers for proper numeric ordering.
+    Example: "1. PLATON" < "2. ARISTOTELES" < "10. NIETZSCHE"
+    
+    Args:
+        path: File path to generate key for.
+        
+    Returns:
+        Tuple of (string parts, int parts) for comparison.
+    """
+    filename = os.path.basename(path).lower()
+    # Split into text and number parts
+    parts = []
+    for part in re.split(r'(\d+)', filename):
+        if part.isdigit():
+            parts.append((0, int(part)))  # Number: sort as integer
+        else:
+            parts.append((1, part))  # Text: sort as string
+    return tuple(parts)
 
 
 def add_focus_path_to_model(
@@ -47,8 +72,42 @@ def add_focus_path_to_model(
     item.setData(normalized_path, Qt.ItemDataRole.UserRole)
     item.setEditable(False)
     
+    # Agregar el elemento al final primero
     parent_item.appendRow(item)
     path_to_item[normalized_path] = item
+    
+    # Ordenar todos los hijos del padre usando ordenamiento natural
+    # Obtener todos los hijos con sus rutas
+    children_data = []
+    for i in range(parent_item.rowCount()):
+        child = parent_item.child(i)
+        if child:
+            child_path = child.data(Qt.ItemDataRole.UserRole)
+            if child_path:
+                children_data.append((child_path, child))
+    
+    # Ordenar por nombre usando ordenamiento natural
+    children_data.sort(key=lambda x: _natural_sort_key(x[0]))
+    
+    # Reorganizar los hijos en el orden correcto
+    # Primero, remover todos los hijos temporalmente (de atrás hacia adelante para mantener índices)
+    temp_rows = []
+    for i in range(parent_item.rowCount() - 1, -1, -1):
+        row_data = parent_item.takeRow(i)
+        if row_data and len(row_data) > 0:
+            temp_rows.append(row_data[0])
+    
+    # Crear un diccionario para acceso rápido
+    temp_dict = {}
+    for temp_item in temp_rows:
+        path = temp_item.data(Qt.ItemDataRole.UserRole)
+        if path:
+            temp_dict[path] = temp_item
+    
+    # Insertar en el orden correcto
+    for child_path, _ in children_data:
+        if child_path in temp_dict:
+            parent_item.appendRow(temp_dict[child_path])
     
     return item
 

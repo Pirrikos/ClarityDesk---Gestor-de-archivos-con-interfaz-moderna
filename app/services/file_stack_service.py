@@ -5,6 +5,7 @@ Handles grouping files into stacks by family/type.
 """
 
 import os
+import re
 from collections import defaultdict
 from typing import List
 
@@ -111,6 +112,30 @@ def get_file_family(file_path: str, is_executable_func) -> str:
     return 'others'
 
 
+def _natural_sort_key(path: str) -> tuple:
+    """
+    Generate sort key for natural (human-like) sorting.
+    
+    Converts numbers in path to integers for proper numeric ordering.
+    Example: "1. PLATON" < "2. ARISTOTELES" < "10. NIETZSCHE"
+    
+    Args:
+        path: File path to generate key for.
+        
+    Returns:
+        Tuple of (string parts, int parts) for comparison.
+    """
+    filename = os.path.basename(path).lower()
+    # Split into text and number parts
+    parts = []
+    for part in re.split(r'(\d+)', filename):
+        if part.isdigit():
+            parts.append((0, int(part)))  # Number: sort as integer
+        else:
+            parts.append((1, part))  # Text: sort as string
+    return tuple(parts)
+
+
 def create_file_stacks(files: List[str], is_executable_func) -> List[FileStack]:
     """
     Group files into stacks by FAMILY (not individual extension).
@@ -136,7 +161,7 @@ def create_file_stacks(files: List[str], is_executable_func) -> List[FileStack]:
     stacks = []
     for family in FAMILY_ORDER:
         if family in stacks_dict and stacks_dict[family]:
-            file_list = sorted(stacks_dict[family])
+            file_list = sorted(stacks_dict[family], key=_natural_sort_key)
             stacks.append(FileStack(stack_type=family, files=file_list))
     
     return stacks

@@ -11,6 +11,8 @@ This module orchestrates file listing by delegating to:
 - file_stack_service.py: File stacking
 """
 
+import os
+import re
 from typing import List, Set, Union
 
 from app.models.file_stack import FileStack
@@ -21,6 +23,30 @@ from app.services.file_filter_service import (
 )
 from app.services.file_scan_service import scan_files
 from app.services.file_stack_service import create_file_stacks
+
+
+def _natural_sort_key(path: str) -> tuple:
+    """
+    Generate sort key for natural (human-like) sorting.
+    
+    Converts numbers in path to integers for proper numeric ordering.
+    Example: "1. PLATON" < "2. ARISTOTELES" < "10. NIETZSCHE"
+    
+    Args:
+        path: File path to generate key for.
+        
+    Returns:
+        Tuple of (string parts, int parts) for comparison.
+    """
+    filename = os.path.basename(path).lower()
+    # Split into text and number parts
+    parts = []
+    for part in re.split(r'(\d+)', filename):
+        if part.isdigit():
+            parts.append((0, int(part)))  # Number: sort as integer
+        else:
+            parts.append((1, part))  # Text: sort as string
+    return tuple(parts)
 
 
 def get_files(
@@ -58,9 +84,9 @@ def get_files(
         # Normal folder: scan and filter in one pass
         filtered_files = filter_folder_files_by_extensions(folder_path, extensions)
     
-    # If not using stacks, return sorted flat list
+    # If not using stacks, return sorted flat list with natural sorting
     if not use_stacks:
-        return sorted(filtered_files)
+        return sorted(filtered_files, key=_natural_sort_key)
     
     # Group files into stacks
     return create_file_stacks(filtered_files, is_executable)

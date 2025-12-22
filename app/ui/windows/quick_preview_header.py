@@ -23,8 +23,14 @@ class QuickPreviewHeader:
         self._close_btn = None
         self._open_pdf_btn = None
         self._open_word_btn = None
+        self._zoom_in_btn = None
+        self._zoom_out_btn = None
+        self._zoom_reset_btn = None
         self._current_path = ""
         self._on_close_callback = None
+        self._on_zoom_in = None
+        self._on_zoom_out = None
+        self._on_zoom_reset = None
     
     def create_header(self) -> QWidget:
         """Create header widget with buttons."""
@@ -48,14 +54,23 @@ class QuickPreviewHeader:
         self._close_btn = self._create_button("×", self._on_close_clicked)
         self._open_pdf_btn = self._create_button("📄", self._on_open_pdf_clicked)
         self._open_word_btn = self._create_button("📝", self._on_open_word_clicked)
+        self._zoom_out_btn = self._create_button("🔍−", self._on_zoom_out_clicked)
+        self._zoom_in_btn = self._create_button("🔍+", self._on_zoom_in_clicked)
+        self._zoom_reset_btn = self._create_button("100%", self._on_zoom_reset_clicked)
         
         header_layout.addWidget(self._open_pdf_btn)
         header_layout.addWidget(self._open_word_btn)
+        header_layout.addWidget(self._zoom_out_btn)
+        header_layout.addWidget(self._zoom_in_btn)
+        header_layout.addWidget(self._zoom_reset_btn)
         header_layout.addWidget(self._name_label, 1)
         header_layout.addWidget(self._close_btn)
         
         self._open_pdf_btn.setVisible(False)
         self._open_word_btn.setVisible(False)
+        self._zoom_out_btn.setVisible(True)
+        self._zoom_in_btn.setVisible(True)
+        self._zoom_reset_btn.setVisible(True)
         
         return self._header_widget
     
@@ -93,11 +108,33 @@ class QuickPreviewHeader:
         ext = Path(file_path).suffix.lower() if file_path else ""
         self._open_pdf_btn.setVisible(ext == ".pdf")
         self._open_word_btn.setVisible(ext == ".docx")
+
+    def set_zoom_callbacks(self, on_zoom_in, on_zoom_out, on_zoom_reset) -> None:
+        self._on_zoom_in = on_zoom_in
+        self._on_zoom_out = on_zoom_out
+        self._on_zoom_reset = on_zoom_reset
+
+    def set_zoom_percent(self, percent: int) -> None:
+        """Actualizar el texto del botón de zoom con el porcentaje actual."""
+        if self._zoom_reset_btn:
+            self._zoom_reset_btn.setText(f"{max(1, percent)}%")
     
     def _on_close_clicked(self) -> None:
         """Handle close button click."""
         if hasattr(self, '_on_close_callback'):
             self._on_close_callback()
+
+    def _on_zoom_in_clicked(self) -> None:
+        if self._on_zoom_in:
+            self._on_zoom_in()
+
+    def _on_zoom_out_clicked(self) -> None:
+        if self._on_zoom_out:
+            self._on_zoom_out()
+
+    def _on_zoom_reset_clicked(self) -> None:
+        if self._on_zoom_reset:
+            self._on_zoom_reset()
     
     def _on_open_pdf_clicked(self) -> None:
         """Open PDF file with default application and close preview."""
@@ -135,4 +172,3 @@ class QuickPreviewHeader:
                 subprocess.run(['xdg-open', file_path])
         except Exception:
             pass
-

@@ -90,7 +90,7 @@ class MainWindow(QWidget):
 
     def _setup_ui(self) -> None:
         """Build the UI layout with Focus Dock integrated."""
-        self._file_view_container, self._sidebar, self._window_header, self._app_header, self._workspace_selector, self._history_panel, self._content_splitter, self._file_box_panel_placeholder = setup_ui(
+        self._file_view_container, self._sidebar, self._window_header, self._app_header, self._secondary_header, self._workspace_selector, self._history_panel, self._content_splitter, self._file_box_panel_placeholder = setup_ui(
             self, self._tab_manager, self._icon_service, self._workspace_manager
         )
         self._current_file_box_panel = None
@@ -278,8 +278,13 @@ class MainWindow(QWidget):
             self._sidebar.remove_focus_path(normalized_path)
     
     def _on_structural_change_detected(self, watched_folder: str) -> None:
-        """Handle structural changes detected (moves between parents)."""
-        self._schedule_sidebar_sync(structural=True)
+        """
+        Handle structural changes detected (moves between parents).
+        
+        Disabled to prevent sidebar flash when creating/deleting files/folders.
+        Sidebar syncs only when tabs change explicitly.
+        """
+        pass
     
     def _schedule_sidebar_sync(self, structural: bool = False) -> None:
         if not hasattr(self, '_sidebar_sync_timer'):
@@ -392,16 +397,16 @@ class MainWindow(QWidget):
         if not allowed_files:
             return
 
-        preview = QuickPreviewWindow(
+        preview_window = QuickPreviewWindow(
             self._preview_service,
             file_paths=allowed_files,
             start_index=0,
-            parent=self
+            parent=None
         )
 
-        self._current_preview_window = preview
-        preview.show()
-        preview.setFocus()
+        self._current_preview_window = preview_window
+        preview_window.show()
+        preview_window.setFocus()
     
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Handle drag enter - let FileViewContainer handle it."""

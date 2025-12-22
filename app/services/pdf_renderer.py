@@ -4,8 +4,29 @@ PDF Renderer - PDF page rendering using PyMuPDF.
 Handles rendering of PDF pages to QPixmap for previews and thumbnails.
 """
 
+import sys
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
+
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
+
+# Try to import PyMuPDF at module level
+try:
+    import fitz  # PyMuPDF
+    FITZ_AVAILABLE = True
+except ImportError as e:
+    FITZ_AVAILABLE = False
+    fitz = None
+    logger.error(f"Failed to import PyMuPDF (fitz): {e}")
+    logger.error(f"Python executable: {sys.executable}")
+    # Try alternative import
+    try:
+        import pymupdf as fitz
+        FITZ_AVAILABLE = True
+    except ImportError as e2:
+        logger.error(f"Failed to import PyMuPDF as pymupdf: {e2}")
 
 
 class PdfRenderer:
@@ -14,9 +35,7 @@ class PdfRenderer:
     @staticmethod
     def get_page_count(pdf_path: str) -> int:
         """Get total number of pages in PDF."""
-        try:
-            import fitz  # PyMuPDF
-        except ImportError:
+        if not FITZ_AVAILABLE:
             return 0
         
         doc = None
@@ -35,9 +54,7 @@ class PdfRenderer:
     @staticmethod
     def _render_page_to_pixmap(doc, page_num: int, zoom: float) -> QPixmap:
         """Render PDF page to QPixmap with given zoom, respecting orientation."""
-        try:
-            import fitz  # PyMuPDF
-        except ImportError:
+        if not FITZ_AVAILABLE:
             return QPixmap()
         
         if page_num < 0 or page_num >= len(doc):
@@ -91,24 +108,32 @@ class PdfRenderer:
     @staticmethod
     def render_page(pdf_path: str, max_size: QSize, page_num: int = 0) -> QPixmap:
         """Render specific page of PDF as pixmap using PyMuPDF."""
-        try:
-            import fitz  # PyMuPDF
-        except ImportError:
+        if not FITZ_AVAILABLE:
+            logger.error("PyMuPDF (fitz) not available - module not imported")
             return QPixmap()
         
         doc = None
         try:
+            logger.debug(f"render_page: Opening PDF {pdf_path}, page {page_num}")
             doc = fitz.open(pdf_path)
             if len(doc) == 0:
+                logger.warning(f"render_page: PDF has 0 pages: {pdf_path}")
                 return QPixmap()
             
+            logger.debug(f"render_page: PDF has {len(doc)} pages, rendering page {page_num}")
             qpixmap = PdfRenderer._render_page_to_pixmap(doc, page_num, 2.5)
             
             if not qpixmap.isNull():
-                return PdfRenderer._ensure_minimum_size(qpixmap, max_size)
+                logger.debug(f"render_page: Page rendered, size: {qpixmap.width()}x{qpixmap.height()}")
+                result = PdfRenderer._ensure_minimum_size(qpixmap, max_size)
+                logger.debug(f"render_page: After scaling, size: {result.width()}x{result.height()}")
+                return result
+            else:
+                logger.warning(f"render_page: _render_page_to_pixmap returned null pixmap")
             
             return QPixmap()
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error rendering PDF page {page_num} from {pdf_path}: {e}", exc_info=True)
             return QPixmap()
         finally:
             if doc:
@@ -120,9 +145,7 @@ class PdfRenderer:
     @staticmethod
     def render_thumbnail(pdf_path: str, page_num: int, thumbnail_size: QSize) -> QPixmap:
         """Get thumbnail of a specific PDF page."""
-        try:
-            import fitz  # PyMuPDF
-        except ImportError:
+        if not FITZ_AVAILABLE:
             return QPixmap()
         
         doc = None

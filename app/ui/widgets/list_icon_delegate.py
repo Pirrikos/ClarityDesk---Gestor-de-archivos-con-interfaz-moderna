@@ -147,10 +147,14 @@ class ListViewDelegate(QStyledItemDelegate):
         # Dibujar texto
         if text:
             text_x = option.rect.left() + self.MARGIN_LEFT + icon_size.width() + self.TEXT_OFFSET_X
+            # Usar todo el ancho disponible hasta el borde derecho de la columna
+            # Reducir solo 4px de margen derecho para que el texto llegue casi hasta el borde
+            padding_right = 4
+            text_width = option.rect.right() - text_x - padding_right
             text_rect = QRect(
                 text_x,
                 option.rect.top(),
-                option.rect.width() - text_x,
+                text_width,
                 option.rect.height()
             )
             painter.setPen(self.TEXT_COLOR)

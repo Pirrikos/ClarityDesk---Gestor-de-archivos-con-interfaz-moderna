@@ -144,7 +144,7 @@ class QuickPreviewPdfHandler:
         if not (0 <= self._current_page < self._total_pages):
             return QPixmap()
         
-        return self._preview_service._render_pdf_page(
+        return self._preview_service.render_pdf_page(
             self._pdf_path, max_size, self._current_page
         )
     
@@ -222,4 +222,3 @@ class QuickPreviewPdfHandler:
     def pdf_path(self) -> Optional[str]:
         """Path to PDF file (original or converted from DOCX)."""
         return self._pdf_path
-

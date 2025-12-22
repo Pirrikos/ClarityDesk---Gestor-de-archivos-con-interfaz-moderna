@@ -8,8 +8,8 @@ Emits signal on double-click to open file.
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent
+from PySide6.QtWidgets import QCheckBox, QTableWidget, QTableWidgetItem
 
 try:
     from app.managers.file_state_manager import FileStateManager
@@ -25,6 +25,8 @@ from app.ui.widgets.file_list_handlers import (
 from app.ui.widgets.file_list_renderer import (
     setup_ui, expand_stacks_to_files, refresh_table
 )
+from app.ui.widgets.file_view_context_menu import show_background_menu, show_item_menu
+from app.ui.widgets.file_view_utils import create_refresh_callback
 
 
 class FileListView(QTableWidget):
@@ -49,6 +51,7 @@ class FileListView(QTableWidget):
         self._tab_manager = tab_manager
         self._checked_paths: set[str] = set()
         self._state_manager = state_manager or (FileStateManager() if FileStateManager else None)
+        self._header_checkbox: Optional[QCheckBox] = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -100,6 +103,79 @@ class FileListView(QTableWidget):
     def _on_checkbox_changed(self, file_path: str, state: int) -> None:
         """Handle checkbox state change to update selection set."""
         on_checkbox_changed(self, file_path, state)
+        self._update_header_checkbox_state()
+    
+    def _update_header_checkbox_state(self) -> None:
+        """Update header checkbox state based on individual checkboxes."""
+        if not self._header_checkbox or not self._files:
+            return
+        
+        total_files = len(self._files)
+        checked_count = len(self._checked_paths)
+        
+        # Bloquear señal para evitar recursión
+        self._header_checkbox.blockSignals(True)
+        
+        if checked_count == 0:
+            self._header_checkbox.setCheckState(Qt.CheckState.Unchecked)
+        elif checked_count == total_files:
+            self._header_checkbox.setCheckState(Qt.CheckState.Checked)
+        else:
+            # Estado indeterminado cuando algunos están marcados
+            self._header_checkbox.setCheckState(Qt.CheckState.PartiallyChecked)
+        
+        self._header_checkbox.blockSignals(False)
+    
+    def select_all_files(self) -> None:
+        """Select all files by checking all checkboxes."""
+        if not self._files:
+            return
+        
+        # Bloquear actualización del header durante la operación masiva
+        if self._header_checkbox:
+            self._header_checkbox.blockSignals(True)
+        
+        for file_path in self._files:
+            self._checked_paths.add(file_path)
+            checkbox = self._get_checkbox_from_row(self.row_from_path(file_path))
+            if checkbox:
+                checkbox.setChecked(True)
+        
+        if self._header_checkbox:
+            self._header_checkbox.setCheckState(Qt.CheckState.Checked)
+            self._header_checkbox.blockSignals(False)
+    
+    def deselect_all_files(self) -> None:
+        """Deselect all files by unchecking all checkboxes."""
+        if not self._files:
+            return
+        
+        # Bloquear actualización del header durante la operación masiva
+        if self._header_checkbox:
+            self._header_checkbox.blockSignals(True)
+        
+        for file_path in self._files:
+            self._checked_paths.discard(file_path)
+            checkbox = self._get_checkbox_from_row(self.row_from_path(file_path))
+            if checkbox:
+                checkbox.setChecked(False)
+        
+        if self._header_checkbox:
+            self._header_checkbox.setCheckState(Qt.CheckState.Unchecked)
+            self._header_checkbox.blockSignals(False)
+    
+    def _get_checkbox_from_row(self, row: int) -> Optional[QCheckBox]:
+        """Get checkbox widget from row's column 0."""
+        from app.ui.widgets.file_list_handlers import get_checkbox_from_row
+        return get_checkbox_from_row(self, row)
+    
+    def row_from_path(self, file_path: str) -> int:
+        """Get row index for a given file path."""
+        for row in range(self.rowCount()):
+            item = self.item(row, 1)
+            if item and item.data(Qt.ItemDataRole.UserRole) == file_path:
+                return row
+        return -1
 
     def get_selected_paths(self) -> list[str]:
         """Get paths of currently selected files via checkboxes or traditional selection."""
@@ -139,3 +215,59 @@ class FileListView(QTableWidget):
         
         self._state_manager.set_files_state(selected_paths, state)
         self._refresh_table()
+    
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        """Show context menu - background menu or item menu depending on click location."""
+        refresh_callback = create_refresh_callback(self)
+        
+        # Detectar si el clic es sobre un item o sobre el fondo
+        item_path = self._get_clicked_item_path(event.pos())
+        
+        if item_path:
+            # Clic sobre un elemento (archivo/carpeta)
+            # Obtener selección múltiple si existe
+            selected_paths = self.get_selected_paths()
+            
+            # Normalizar a lista siempre: usar selección múltiple si hay 2+ elementos, sino usar item_path como lista
+            if len(selected_paths) > 1:
+                # Hay selección múltiple (2+ elementos)
+                item_paths = selected_paths
+            else:
+                # No hay selección múltiple, usar item_path como lista de 1 elemento
+                item_paths = [item_path]
+            
+            show_item_menu(self, event, item_paths, self._tab_manager, refresh_callback)
+        else:
+            # Clic sobre el fondo (espacio vacío)
+            show_background_menu(self, event, self._tab_manager, refresh_callback)
+    
+    def _get_clicked_item_path(self, pos) -> Optional[str]:
+        """
+        Detectar si el clic es sobre un item o sobre el fondo.
+        
+        Args:
+            pos: Posición del clic en coordenadas del widget.
+            
+        Returns:
+            Ruta del archivo si el clic es sobre un item, None si es fondo.
+        """
+        # itemAt retorna el QTableWidgetItem en esa posición, o None si es fondo
+        item = self.itemAt(pos)
+        
+        if not item:
+            return None
+        
+        # Obtener ruta del archivo desde el item (columna 1 contiene el nombre con la ruta)
+        path = item.data(Qt.ItemDataRole.UserRole)
+        if path:
+            return path
+        
+        # Si no hay UserRole, intentar obtener desde la fila completa
+        row = item.row()
+        if row >= 0:
+            name_item = self.item(row, 1)  # Columna 1 contiene el nombre
+            if name_item:
+                path = name_item.data(Qt.ItemDataRole.UserRole)
+                return path if path else None
+        
+        return None

@@ -4,17 +4,30 @@ Quick Preview Navigation - Navigation logic for preview window.
 Handles keyboard and mouse navigation between files and PDF pages.
 """
 
+from typing import Callable
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeyEvent, QMouseEvent
+from PySide6.QtWidgets import QWidget
 
 
 class QuickPreviewNavigation:
     """Manages navigation logic for preview window."""
     
-    def __init__(self, window, paths: list[str], current_index: int,
-                 is_pdf: bool, current_page: int, total_pages: int,
-                 on_prev_file, on_next_file, on_prev_page, on_next_page,
-                 on_close):
+    def __init__(
+        self, 
+        window: QWidget, 
+        paths: list[str], 
+        current_index: int,
+        is_pdf: bool, 
+        current_page: int, 
+        total_pages: int,
+        on_prev_file: Callable[[], None],
+        on_next_file: Callable[[], None],
+        on_prev_page: Callable[[], None],
+        on_next_page: Callable[[], None],
+        on_close: Callable[[], None]
+    ):
         """
         Initialize navigation handler.
         

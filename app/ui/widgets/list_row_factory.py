@@ -86,9 +86,22 @@ def _get_file_icon(file_path: str, icon_service: IconService) -> Optional[QIcon]
 
 
 def create_extension_cell(file_path: str, font: QFont) -> QTableWidgetItem:
+    """Create extension cell, handling folders and files with dots in name."""
     filename = os.path.basename(file_path)
-    _, ext = os.path.splitext(filename)
-    ext_item = QTableWidgetItem(ext.upper() if ext else "")
+    
+    # Si es una carpeta, no tiene extensión
+    if os.path.isdir(file_path):
+        ext_item = QTableWidgetItem("")
+    else:
+        # Para archivos, detectar solo extensiones reales (ej: .pdf, .txt)
+        # No confundir puntos en el nombre (ej: "1. PLATON") con extensiones
+        _, ext = os.path.splitext(filename)
+        # Solo considerar extensión si tiene formato válido (al menos 2 chars, alfanumérica)
+        if ext and len(ext) >= 2 and ext[1:].replace('_', '').isalnum():
+            ext_item = QTableWidgetItem(ext.upper())
+        else:
+            ext_item = QTableWidgetItem("")
+    
     ext_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     ext_item.setFont(font)
     return ext_item

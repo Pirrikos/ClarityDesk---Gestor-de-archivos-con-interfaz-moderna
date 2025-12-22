@@ -8,6 +8,7 @@ from functools import partial
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
+from app.ui.windows.quick_preview_constants import GENERATING_THUMBNAILS, DOCUMENT_READY
 
 from app.services.preview_service import PreviewService
 from app.ui.windows.quick_preview_styles import get_thumbnail_scrollbar_style
@@ -68,8 +69,8 @@ class QuickPreviewThumbnails:
         
         return self._panel
     
-    def load_thumbnails(self, pdf_path: str, total_pages: int, current_page: int, 
-                       on_click_callback) -> None:
+    def load_thumbnails_async(self, pdf_path: str, total_pages: int, current_page: int, 
+                       on_click_callback, progress_cb=None, finished_cb=None) -> None:
         """
         Load all PDF page thumbnails.
         
@@ -90,16 +91,39 @@ class QuickPreviewThumbnails:
         
         thumbnail_size = QSize(100, 120)
         
-        for page_num in range(total_pages):
-            thumbnail = self._preview_service.get_pdf_thumbnail(
-                pdf_path, page_num, thumbnail_size
-            )
-            
-            if not thumbnail.isNull():
+        def on_progress(page_num: int, pixmap: QPixmap):
+            if not pixmap.isNull():
                 thumb_container = QuickPreviewThumbnailWidget.create(
-                    thumbnail, page_num, current_page, on_click_callback
+                    pixmap, page_num, current_page, on_click_callback
                 )
                 self._layout.insertWidget(page_num, thumb_container)
+            if progress_cb:
+                try:
+                    pct = int(((page_num + 1) / max(1, total_pages)) * 100)
+                    progress_cb(pct, GENERATING_THUMBNAILS)
+                except Exception:
+                    pass
+        
+        def on_finished():
+            if finished_cb:
+                try:
+                    finished_cb()
+                except Exception:
+                    pass
+            if progress_cb:
+                try:
+                    progress_cb(100, DOCUMENT_READY)
+                except Exception:
+                    pass
+        
+        self._preview_service.render_thumbnails_async(
+            pdf_path,
+            total_pages,
+            thumbnail_size,
+            on_progress,
+            on_finished,
+            on_error=None,
+        )
     
     def update_selection(self, current_page: int) -> None:
         """

@@ -20,6 +20,10 @@ from app.ui.windows.quick_preview_styles import get_scrollbar_style
 class QuickPreviewUISetup:
     """Handles UI setup for preview window."""
     
+    # Style constants
+    IMAGE_BORDER_COLOR = "#0b2a57"
+    IMAGE_MIN_SIZE = 200
+    
     @staticmethod
     def setup_window(window: QWidget) -> QSize:
         """Setup window geometry and flags."""
@@ -51,12 +55,6 @@ class QuickPreviewUISetup:
             int(max_height * 0.92)
         )
         
-        window.setStyleSheet("""
-            QWidget {
-                background-color: #ffffff;
-            }
-        """)
-        
         return max_size
     
     
@@ -72,9 +70,20 @@ class QuickPreviewUISetup:
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet(get_scrollbar_style())
+        # Centrar el contenido dentro del viewport del scroll
+        scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        image_label.setStyleSheet("background-color: transparent;")
+        # Borde fino de página en azul oscuro para mejorar lectura visual
+        image_label.setStyleSheet(
+            f"background-color: #ffffff; border: 2px solid {QuickPreviewUISetup.IMAGE_BORDER_COLOR};"
+        )
+        image_label.setMinimumSize(
+            QuickPreviewUISetup.IMAGE_MIN_SIZE, 
+            QuickPreviewUISetup.IMAGE_MIN_SIZE
+        )
+        image_label.setScaledContents(False)  # We'll scale manually for better control
+        image_label.setWordWrap(False)  # Don't wrap text
         
         container = QWidget()
         container_layout = QVBoxLayout(container)

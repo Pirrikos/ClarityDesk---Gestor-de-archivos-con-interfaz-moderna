@@ -5,6 +5,7 @@ Groups files into fixed categories for organized grid display.
 """
 
 import os
+import re
 from typing import Dict, List, Tuple
 
 
@@ -93,9 +94,9 @@ def group_files_by_category(file_list: List[str]) -> Dict[str, List[str]]:
         category = categorize_file(file_path)
         categorized[category].append(file_path)
     
-    # Ordenar archivos dentro de cada categoría
+    # Ordenar archivos dentro de cada categoría con ordenamiento natural
     for category in categorized:
-        categorized[category].sort()
+        categorized[category].sort(key=_natural_sort_key)
     
     # Retornar solo categorías con archivos, manteniendo el orden
     return {
@@ -103,6 +104,30 @@ def group_files_by_category(file_list: List[str]) -> Dict[str, List[str]]:
         for cat in CATEGORY_ORDER 
         if categorized[cat]  # Solo incluir si tiene archivos
     }
+
+
+def _natural_sort_key(path: str) -> tuple:
+    """
+    Generate sort key for natural (human-like) sorting.
+    
+    Converts numbers in path to integers for proper numeric ordering.
+    Example: "1. PLATON" < "2. ARISTOTELES" < "10. NIETZSCHE"
+    
+    Args:
+        path: File path to generate key for.
+        
+    Returns:
+        Tuple of (string parts, int parts) for comparison.
+    """
+    filename = os.path.basename(path).lower()
+    # Split into text and number parts
+    parts = []
+    for part in re.split(r'(\d+)', filename):
+        if part.isdigit():
+            parts.append((0, int(part)))  # Number: sort as integer
+        else:
+            parts.append((1, part))  # Text: sort as string
+    return tuple(parts)
 
 
 def get_category_label(category_key: str) -> str:

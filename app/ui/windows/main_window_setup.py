@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout, QWidget, QSiz
 from app.core.constants import DEBUG_LAYOUT
 from app.core.logger import get_logger
 from app.ui.widgets.app_header import AppHeader
+from app.ui.widgets.secondary_header import SecondaryHeader
 from app.ui.widgets.file_box_history_panel_sidebar import FileBoxHistoryPanelSidebar
 from app.ui.widgets.file_view_container import FileViewContainer
 from app.ui.widgets.file_view_sync import switch_view
@@ -28,7 +29,7 @@ SIDEBAR_BG = "#E8E8ED"
 SIDEBAR_BORDER = "rgba(0, 0, 0, 0.12)"
 
 
-def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, WorkspaceSelector, FileBoxHistoryPanelSidebar]:
+def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, SecondaryHeader, WorkspaceSelector, FileBoxHistoryPanelSidebar]:
     try:
         root_layout = QVBoxLayout(window)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -40,6 +41,10 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         app_header = AppHeader(window)
         app_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         root_layout.addWidget(app_header, 0)
+        
+        secondary_header = SecondaryHeader(window)
+        secondary_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        root_layout.addWidget(secondary_header, 0)
         
         workspace_selector = WorkspaceSelector(window)
         workspace_selector.set_workspace_manager(workspace_manager)
@@ -187,6 +192,14 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
                 }
             """)
             
+            secondary_header.setStyleSheet("""
+                QWidget#SecondaryHeader {
+                    /* Mismo estilo que AppHeader para continuidad visual */
+                    background-color: """ + APP_HEADER_BG + """ !important;
+                    border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
+                }
+            """)
+            
             workspace_selector.setStyleSheet("""
                 QWidget#WorkspaceSelector {
                     /* Igual que el AppHeader para continuidad visual */
@@ -223,11 +236,11 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         
         if DEBUG_LAYOUT:
             _apply_layout_debug_styles(
-                window, central_widget, window_header, app_header, 
+                window, central_widget, window_header, app_header, secondary_header,
                 main_splitter, workspace_selector, sidebar, file_view_container, size_grip_container
             )
 
-        return file_view_container, sidebar, window_header, app_header, workspace_selector, history_panel, content_splitter, file_box_panel_placeholder
+        return file_view_container, sidebar, window_header, app_header, secondary_header, workspace_selector, history_panel, content_splitter, file_box_panel_placeholder
         
     except Exception as e:
         logger = get_logger(__name__)
@@ -236,7 +249,7 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
 
 
 def _apply_layout_debug_styles(
-    window, central_widget, window_header, app_header, 
+    window, central_widget, window_header, app_header, secondary_header,
     main_splitter, workspace_selector, sidebar, file_view_container, size_grip_container
 ) -> None:
     """Apply debug styles when DEBUG_LAYOUT is enabled."""

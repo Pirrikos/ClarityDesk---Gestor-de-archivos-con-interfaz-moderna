@@ -24,7 +24,16 @@ def is_grid_view(tile: 'FileTile') -> bool:
 
 
 def format_filename(file_path: str) -> str:
-    """Format filename: remove extension, apply title case."""
+    """Format filename: remove extension, preserve original case."""
     filename = os.path.basename(file_path)
-    name_without_ext, _ = os.path.splitext(filename)
-    return name_without_ext.title() if name_without_ext else ""
+    # Si es una carpeta, devolver el nombre completo sin modificar
+    if os.path.isdir(file_path):
+        return filename
+    
+    # Para archivos, quitar solo extensiones reales (ej: .pdf, .txt)
+    # No quitar puntos que son parte del nombre (ej: "1. PLATON")
+    name_without_ext, ext = os.path.splitext(filename)
+    # Solo quitar extensión si tiene formato válido (al menos 2 chars, alfanumérica)
+    if ext and len(ext) >= 2 and ext[1:].replace('_', '').isalnum():
+        return name_without_ext
+    return filename

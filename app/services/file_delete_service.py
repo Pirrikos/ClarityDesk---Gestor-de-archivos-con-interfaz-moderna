@@ -7,7 +7,6 @@ Supports Desktop Focus (uses TrashService) and Trash Focus (permanent delete).
 
 import os
 from typing import Optional
-from ctypes import windll, wintypes
 
 from app.core.logger import get_logger
 from app.models.file_operation_result import FileOperationResult
@@ -15,6 +14,10 @@ from app.services.desktop_path_helper import is_desktop_focus
 from app.services.file_path_utils import validate_file, validate_path
 from app.services.trash_operations import delete_permanently, move_to_trash
 from app.services.trash_storage import TRASH_FOCUS_PATH
+from app.services.windows_recycle_bin_utils import (
+    prepare_file_path_for_recycle_bin,
+    move_to_recycle_bin_via_api
+)
 
 logger = get_logger(__name__)
 
@@ -80,48 +83,9 @@ def _send_to_recycle_bin(file_path: str) -> bool:
     """Send a file to Windows recycle bin using Shell API."""
     try:
         abs_path = os.path.abspath(file_path)
-        file_path_unicode = _prepare_file_path_for_recycle_bin(abs_path)
-        fileop = _create_fileop_structure(file_path_unicode)
-        
-        shell32 = windll.shell32
-        result = shell32.SHFileOperationW(wintypes.byref(fileop))
-        return result == 0 and not fileop.fAnyOperationsAborted
+        file_path_unicode = prepare_file_path_for_recycle_bin(abs_path)
+        result_code, was_aborted = move_to_recycle_bin_via_api(file_path_unicode)
+        return result_code == 0 and not was_aborted
     except Exception:
         return False
-
-
-def _prepare_file_path_for_recycle_bin(abs_path: str) -> str:
-    """Prepare file path with double-null termination for Windows API."""
-    return abs_path.replace('/', '\\') + '\0\0'
-
-
-def _create_fileop_structure(file_path_unicode: str):
-    """Create and configure SHFILEOPSTRUCTW structure for recycle bin operation."""
-    FO_DELETE = 0x0003
-    FOF_ALLOWUNDO = 0x0040
-    FOF_SILENT = 0x0004
-    FOF_NOCONFIRMATION = 0x0010
-    
-    class SHFILEOPSTRUCTW(wintypes.Structure):
-        _fields_ = [
-            ("hWnd", wintypes.HWND),
-            ("wFunc", wintypes.UINT),
-            ("pFrom", wintypes.LPCWSTR),
-            ("pTo", wintypes.LPCWSTR),
-            ("fFlags", wintypes.WORD),
-            ("fAnyOperationsAborted", wintypes.BOOL),
-            ("hNameMappings", wintypes.LPVOID),
-            ("lpszProgressTitle", wintypes.LPCWSTR),
-        ]
-    
-    fileop = SHFILEOPSTRUCTW()
-    fileop.hWnd = None
-    fileop.wFunc = FO_DELETE
-    fileop.pFrom = file_path_unicode
-    fileop.pTo = None
-    fileop.fFlags = FOF_ALLOWUNDO | FOF_SILENT | FOF_NOCONFIRMATION
-    fileop.fAnyOperationsAborted = wintypes.BOOL(False)
-    fileop.hNameMappings = None
-    fileop.lpszProgressTitle = None
-    return fileop
 

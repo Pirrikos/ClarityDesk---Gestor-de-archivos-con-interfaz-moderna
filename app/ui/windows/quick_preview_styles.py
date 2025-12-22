@@ -67,6 +67,30 @@ def get_scrollbar_style() -> str:
     """
 
 
+def get_loading_label_style() -> str:
+    """Get stylesheet for loading/preview label."""
+    return """
+        QLabel {
+            color: #333333;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 16px;
+            background-color: transparent;
+        }
+    """
+
+
+def get_error_label_style() -> str:
+    """Get stylesheet for error/no preview label."""
+    return """
+        QLabel {
+            color: #666666;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 16px;
+            background-color: transparent;
+        }
+    """
+
+
 def get_thumbnail_scrollbar_style() -> str:
     """Get scrollbar stylesheet for thumbnail panel."""
     return """

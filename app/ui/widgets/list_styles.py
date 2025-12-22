@@ -47,7 +47,7 @@ LIST_VIEW_STYLESHEET = """
         border-right: 0 !important;
         border-top: 0 !important;
         border-bottom: 0 !important;
-        padding: 0px 20px;
+        padding: 0px 4px 0px 20px;
         color: #E8E8E8;
         outline: 0 !important;
         background-color: transparent;
@@ -119,7 +119,7 @@ LIST_VIEW_STYLESHEET = """
         color: rgba(255, 255, 255, 0.6);
         border: none !important;
         border-left: none !important;
-        border-right: none !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.15) !important;
         border-top: none !important;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
         padding: 8px 12px;

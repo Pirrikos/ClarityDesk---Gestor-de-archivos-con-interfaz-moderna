@@ -198,6 +198,10 @@ def on_checkbox_changed(view: 'FileListView', file_path: str, state: int) -> Non
         view._checked_paths.add(file_path)
     else:
         view._checked_paths.discard(file_path)
+    
+    # Actualizar estado del checkbox del header
+    if hasattr(view, '_update_header_checkbox_state'):
+        view._update_header_checkbox_state()
 
 
 def _handle_drop_on_folder(

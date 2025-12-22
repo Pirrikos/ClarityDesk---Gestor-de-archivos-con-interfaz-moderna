@@ -7,7 +7,7 @@ Emits signal on double-click to open file.
 
 from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QPoint, QTimer, Signal
 from PySide6.QtGui import QContextMenuEvent
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
@@ -30,6 +30,8 @@ from app.ui.widgets.grid_selection_logic import (
     clear_selection, select_tile, get_selected_paths, set_selected_states
 )
 from app.ui.widgets.grid_tile_builder import create_file_tile, create_stack_tile
+from app.ui.widgets.file_view_context_menu import show_background_menu, show_item_menu
+from app.ui.widgets.file_view_utils import create_refresh_callback
 
 # Temporary import for state manager stub
 try:
@@ -205,8 +207,70 @@ class FileGridView(QWidget):
         return get_selected_paths(self)
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
-        """Context menu disabled - states are set via toolbar buttons only."""
-        pass
+        """Show context menu - background menu or item menu depending on click location."""
+        refresh_callback = create_refresh_callback(self)
+        
+        # Detectar si el clic es sobre un tile o sobre el fondo
+        clicked_tile, item_path = self._get_clicked_tile(event.pos())
+        
+        if clicked_tile and item_path:
+            # Clic sobre un elemento (archivo/carpeta)
+            # Obtener selección múltiple si existe
+            selected_paths = self.get_selected_paths()
+            
+            # Normalizar a lista siempre: usar selección múltiple si hay 2+ elementos, sino usar item_path como lista
+            if len(selected_paths) > 1:
+                # Hay selección múltiple (2+ elementos)
+                item_paths = selected_paths
+            else:
+                # No hay selección múltiple, usar item_path como lista de 1 elemento
+                item_paths = [item_path]
+            
+            show_item_menu(self, event, item_paths, self._tab_manager, refresh_callback)
+        else:
+            # Clic sobre el fondo (espacio vacío)
+            show_background_menu(self, event, self._tab_manager, refresh_callback)
+    
+    def _get_clicked_tile(self, pos: QPoint) -> tuple[Optional[object], Optional[str]]:
+        """
+        Detectar si el clic es sobre un tile o sobre el fondo.
+        
+        Args:
+            pos: Posición del clic en coordenadas del widget (FileGridView).
+            
+        Returns:
+            Tuple de (tile_widget, item_path) o (None, None) si es fondo.
+        """
+        # Convertir posición a coordenadas del content_widget
+        content_pos = self._content_widget.mapFrom(self, pos)
+        
+        # Buscar widget hijo en la posición del clic
+        child_widget = self._content_widget.childAt(content_pos)
+        
+        if not child_widget:
+            return None, None
+        
+        # Verificar si el widget o alguno de sus padres es un tile
+        widget = child_widget
+        while widget and widget != self._content_widget:
+            widget_type = type(widget).__name__
+            
+            # Verificar si es un tile (FileTile, FileStackTile, DesktopStackTile)
+            if 'Tile' in widget_type:
+                # Obtener ruta del archivo desde el tile
+                if hasattr(widget, 'get_file_path'):
+                    file_path = widget.get_file_path()
+                    return widget, file_path
+                elif hasattr(widget, '_file_stack') and widget._file_stack:
+                    # Es un FileStackTile, usar el primer archivo del stack
+                    if widget._file_stack.files:
+                        return widget, widget._file_stack.files[0]
+                elif hasattr(widget, '_file_path'):
+                    return widget, widget._file_path
+            
+            widget = widget.parent()
+        
+        return None, None
 
     def set_selected_states(self, state) -> None:
         """Set state for all selected files and update badges."""
