@@ -1,20 +1,19 @@
 """
 WorkspaceSelector - Workspace selection widget.
 
-Vertical list widget for selecting and managing workspaces.
+Horizontal compact bar for selecting and managing workspaces.
 """
 
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QListWidget,
-    QListWidgetItem,
+    QHBoxLayout,
     QPushButton,
-    QVBoxLayout,
     QWidget,
     QInputDialog,
-    QMessageBox
+    QMessageBox,
+    QMenu
 )
 
 from app.core.logger import get_logger
@@ -23,7 +22,7 @@ logger = get_logger(__name__)
 
 
 class WorkspaceSelector(QWidget):
-    """Vertical list widget for workspace selection."""
+    """Horizontal compact bar for workspace selection."""
     
     workspace_selected = Signal(str)  # Emitted when workspace is selected (workspace_id)
     workspace_create_requested = Signal()  # Emitted when + button is clicked
@@ -37,9 +36,9 @@ class WorkspaceSelector(QWidget):
         """
         super().__init__(parent)
         self.setObjectName("WorkspaceSelector")
-        self.setMinimumWidth(120)
-        self.setMaximumWidth(180)
         self._workspace_manager = None
+        self._workspace_button = None
+        self._add_button = None
         self._setup_ui()
         self._apply_styling()
     
@@ -59,93 +58,120 @@ class WorkspaceSelector(QWidget):
             workspace_manager.workspace_changed.connect(self._on_workspace_changed)
     
     def _setup_ui(self) -> None:
-        """Build UI layout with + button and list."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        """Build UI layout as horizontal compact bar."""
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(8)
         
-        # Add button at top
+        # Workspace selector button (shows active workspace + dropdown indicator)
+        self._workspace_button = QPushButton()
+        self._workspace_button.setObjectName("WorkspaceButton")
+        self._workspace_button.setFixedHeight(32)
+        self._workspace_button.clicked.connect(self._on_workspace_button_clicked)
+        layout.addWidget(self._workspace_button, 0)
+        
+        # Add button (compact, horizontal)
         self._add_button = QPushButton("+")
         self._add_button.setObjectName("WorkspaceAddButton")
-        self._add_button.setFixedHeight(52)
-        self._add_button.setMinimumWidth(100)
-        self._add_button.setMaximumWidth(180)
+        self._add_button.setFixedSize(32, 32)
         self._add_button.clicked.connect(self._on_add_clicked)
-        layout.addWidget(self._add_button)
+        layout.addWidget(self._add_button, 0)
         
-        # List widget
-        self._list_widget = QListWidget(self)
-        self._list_widget.setObjectName("WorkspaceList")
-        self._list_widget.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self._list_widget.itemClicked.connect(self._on_item_clicked)
-        self._list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._list_widget.customContextMenuRequested.connect(self._on_context_menu)
-        layout.addWidget(self._list_widget, 1)
+        # Set fixed height for the entire widget
+        self.setFixedHeight(48)
     
     def _apply_styling(self) -> None:
         """Apply stylesheet to widget."""
         self.setStyleSheet("""
             QWidget#WorkspaceSelector {
-                background-color: rgba(0, 0, 0, 0.3);
-                border-right: 1px solid rgba(255, 255, 255, 0.05);
+                background-color: rgba(0, 0, 0, 0.2);
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            QPushButton#WorkspaceButton {
+                background-color: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                color: rgba(255, 255, 255, 0.8);
+                /* font-size: establecido explícitamente */
+                padding: 6px 12px;
+                text-align: left;
+            }
+            QPushButton#WorkspaceButton:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 255, 255, 0.2);
+            }
+            QPushButton#WorkspaceButton:pressed {
+                background-color: rgba(255, 255, 255, 0.15);
             }
             QPushButton#WorkspaceAddButton {
-                background-color: transparent;
-                border: none;
+                background-color: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
                 color: rgba(255, 255, 255, 0.7);
-                font-size: 20px;
+                /* font-size: establecido explícitamente */
                 font-weight: bold;
             }
             QPushButton#WorkspaceAddButton:hover {
                 background-color: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 255, 255, 0.2);
                 color: rgba(255, 255, 255, 0.9);
             }
             QPushButton#WorkspaceAddButton:pressed {
                 background-color: rgba(255, 255, 255, 0.15);
             }
-            QListWidget#WorkspaceList {
-                background-color: transparent;
-                border: none;
-                outline: none;
-            }
-            QListWidget#WorkspaceList::item {
-                color: rgba(255, 255, 255, 0.6);
-                padding: 8px 12px;
-                border: none;
-                min-height: 32px;
-            }
-            QListWidget#WorkspaceList::item:hover {
-                background-color: rgba(255, 255, 255, 0.08);
-                color: rgba(255, 255, 255, 0.8);
-            }
-            QListWidget#WorkspaceList::item:selected {
-                background-color: rgba(255, 255, 255, 0.15);
-                color: rgba(255, 255, 255, 0.9);
-            }
         """)
     
     def _refresh_workspaces(self) -> None:
-        """Refresh workspace list from manager."""
+        """Refresh workspace button text from manager."""
+        if not self._workspace_manager or not self._workspace_button:
+            return
+        
+        active_id = self._workspace_manager.get_active_workspace_id()
+        if active_id:
+            active_workspace = self._workspace_manager.get_workspace(active_id)
+            if active_workspace:
+                # Mostrar nombre del workspace + indicador de dropdown (▼)
+                self._workspace_button.setText(f"{active_workspace.name} ▼")
+            else:
+                self._workspace_button.setText("Sin workspace ▼")
+        else:
+            self._workspace_button.setText("Sin workspace ▼")
+    
+    def _on_workspace_button_clicked(self) -> None:
+        """Handle workspace button click - show dropdown menu."""
         if not self._workspace_manager:
             return
         
-        self._list_widget.clear()
         workspaces = self._workspace_manager.get_workspaces()
         active_id = self._workspace_manager.get_active_workspace_id()
         
+        menu = QMenu(self)
+        
+        # Añadir cada workspace al menú
         for workspace in workspaces:
-            item = QListWidgetItem(workspace.name)
-            item.setData(Qt.ItemDataRole.UserRole, workspace.id)
-            self._list_widget.addItem(item)
-            
+            action = menu.addAction(workspace.name)
             if workspace.id == active_id:
-                self._list_widget.setCurrentItem(item)
+                # Marcar el workspace activo con check
+                action.setCheckable(True)
+                action.setChecked(True)
+            # Conectar selección del workspace
+            action.triggered.connect(lambda checked, ws_id=workspace.id: self._on_menu_item_selected(ws_id))
+        
+        # Separador
+        menu.addSeparator()
+        
+        # Opción para crear nuevo workspace
+        create_action = menu.addAction("+ Nuevo workspace")
+        create_action.triggered.connect(self._on_add_clicked)
+        
+        # Mostrar menú debajo del botón
+        button_rect = self._workspace_button.geometry()
+        menu_pos = self._workspace_button.mapToGlobal(button_rect.bottomLeft())
+        menu.exec(menu_pos)
     
-    def _on_item_clicked(self, item: QListWidgetItem) -> None:
-        """Handle workspace item click."""
-        workspace_id = item.data(Qt.ItemDataRole.UserRole)
-        if workspace_id:
-            self.workspace_selected.emit(workspace_id)
+    def _on_menu_item_selected(self, workspace_id: str) -> None:
+        """Handle workspace selection from menu."""
+        self.workspace_selected.emit(workspace_id)
     
     def _on_add_clicked(self) -> None:
         """Handle + button click - create new workspace."""
@@ -164,29 +190,6 @@ class WorkspaceSelector(QWidget):
             self._refresh_workspaces()
             # Auto-select newly created workspace
             self.workspace_selected.emit(workspace.id)
-    
-    def _on_context_menu(self, position) -> None:
-        """Handle context menu for workspace item."""
-        item = self._list_widget.itemAt(position)
-        if not item:
-            return
-        
-        workspace_id = item.data(Qt.ItemDataRole.UserRole)
-        if not workspace_id or not self._workspace_manager:
-            return
-        
-        workspace = self._workspace_manager.get_workspace(workspace_id)
-        if not workspace:
-            return
-        
-        from PySide6.QtWidgets import QMenu
-        
-        menu = QMenu(self)
-        
-        delete_action = menu.addAction("Eliminar")
-        delete_action.triggered.connect(lambda: self._delete_workspace(workspace_id, workspace.name))
-        
-        menu.exec(self._list_widget.mapToGlobal(position))
     
     def _delete_workspace(self, workspace_id: str, workspace_name: str) -> None:
         """Delete workspace after confirmation."""

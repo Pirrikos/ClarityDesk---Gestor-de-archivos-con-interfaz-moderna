@@ -9,6 +9,8 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from app.ui.utils.font_manager import FontManager
+
 
 class BadgeOverlayWidget(QWidget):
     """Floating badge widget for displaying stack counts."""
@@ -82,8 +84,7 @@ class BadgeOverlayWidget(QWidget):
             
             # Draw count text
             painter.setPen(QPen(QColor(26, 26, 26, 255)))
-            font = QFont('Segoe UI', font_size)
-            font.setWeight(QFont.Weight.Medium)
+            font = FontManager.create_font('Segoe UI', font_size, QFont.Weight.Medium)
             painter.setFont(font)
             
             text = str(self._count)

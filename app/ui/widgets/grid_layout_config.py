@@ -11,14 +11,15 @@ from PySide6.QtWidgets import QGridLayout
 def setup_dock_layout_config(grid_layout: QGridLayout) -> None:
     """Configure grid layout for Dock style."""
     grid_layout.setSpacing(12)
-    grid_layout.setContentsMargins(20, 16, 20, 16)
+    # Margen izquierdo: 20px, margen derecho: 12px (simétrico con spacing después del separador)
+    grid_layout.setContentsMargins(20, 16, 12, 16)
     grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
 
 def setup_normal_grid_config(grid_layout: QGridLayout) -> None:
     """Configure grid layout for normal grid style."""
     grid_layout.setSpacing(12)
-    grid_layout.setContentsMargins(20, 16, 20, 16)
+    grid_layout.setContentsMargins(20, 8, 20, 16)  # Margen superior reducido de 16px a 8px
     grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
 

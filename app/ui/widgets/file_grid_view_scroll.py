@@ -49,24 +49,70 @@ def configure_scroll_area(scroll: QScrollArea, content_widget: GridContentWidget
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setStyleSheet("""
             QScrollArea {
-                background-color: transparent;
+                background-color: #111318;
                 border: none;
                 padding: 0;
                 margin: 0;
             }
             QScrollArea > QWidget > QWidget {
+                background-color: #111318;
                 padding: 0;
                 margin: 0;
             }
             QScrollBar:vertical {
-                background-color: transparent; width: 10px; margin: 0;
+                background-color: transparent;
+                width: 12px;
+                margin: 0px;
+                border: none;
             }
             QScrollBar::handle:vertical {
-                background-color: rgba(208, 208, 208, 150);
-                border-radius: 5px; min-height: 30px;
+                background-color: rgba(255, 255, 255, 0.12);
+                border-radius: 6px;
+                min-height: 40px;
+                margin: 2px 2px 2px 4px;
             }
             QScrollBar::handle:vertical:hover {
-                background-color: rgba(176, 176, 176, 200);
+                background-color: rgba(255, 255, 255, 0.22);
+            }
+            QScrollBar::handle:vertical:pressed {
+                background-color: rgba(255, 255, 255, 0.30);
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+                border: none;
+            }
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: transparent;
+            }
+            QScrollBar:horizontal {
+                background-color: transparent;
+                height: 12px;
+                margin: 0px;
+                border: none;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: rgba(255, 255, 255, 0.12);
+                border-radius: 6px;
+                min-width: 40px;
+                margin: 4px 2px 2px 2px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background-color: rgba(255, 255, 255, 0.22);
+            }
+            QScrollBar::handle:horizontal:pressed {
+                background-color: rgba(255, 255, 255, 0.30);
+            }
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal {
+                width: 0px;
+                border: none;
+            }
+            QScrollBar::add-page:horizontal,
+            QScrollBar::sub-page:horizontal {
+                background: transparent;
             }
         """)
+        content_widget.setStyleSheet("QWidget { background-color: #111318; }")
 

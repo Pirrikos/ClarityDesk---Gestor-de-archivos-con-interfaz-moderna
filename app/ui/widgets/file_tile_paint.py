@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 
 
 def paint_dock_style(tile: 'FileTile', event: QPaintEvent) -> None:
-    """Paint background - Dock y Grid comparten el mismo fondo visual translúcido."""
     container_widget = getattr(tile, '_container_widget', None)
     if not container_widget:
         return
@@ -28,18 +27,13 @@ def paint_dock_style(tile: 'FileTile', event: QPaintEvent) -> None:
     
     is_selected = tile._is_selected
     
-    bg_color = QColor(255, 255, 255, 15)
-    border_color = QColor(255, 255, 255, 20)
-    
     if is_selected:
-        border_color = QColor(74, 144, 226, 255)
+        border_color = QColor(0, 122, 255)
         border_width = 2
-    else:
-        border_width = 1
-    
-    painter.setBrush(QBrush(bg_color))
-    painter.setPen(QPen(border_color, border_width))
-    painter.drawRoundedRect(base_rect, 14, 14)
+        bg_color = QColor(0, 122, 255, 10)
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(QPen(border_color, border_width))
+        painter.drawRoundedRect(base_rect, 14, 14)
     
     painter.end()
 

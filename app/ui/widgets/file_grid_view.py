@@ -96,6 +96,10 @@ class FileGridView(QWidget):
         """Build the UI layout."""
         self.setAcceptDrops(True)
         
+        # Aplicar fondo oscuro cuando no es DesktopWindow
+        if not self._is_desktop_window:
+            self.setStyleSheet("QWidget { background-color: #111318; }")
+        
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)

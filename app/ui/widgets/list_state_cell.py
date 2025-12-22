@@ -10,6 +10,8 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QWidget
 
+from app.ui.utils.font_manager import FontManager
+
 # Import state constants and labels
 try:
     from app.ui.widgets.state_badge_widget import (
@@ -57,7 +59,7 @@ class ListStateCell(QWidget):
         painter.drawRoundedRect(rect, 4, 4)
         
         # Draw white text
-        font = QFont("Segoe UI", 9, QFont.Weight.Bold)
+        font = FontManager.create_font("Segoe UI", FontManager.SIZE_SMALL, QFont.Weight.Bold)
         painter.setFont(font)
         painter.setPen(QColor(255, 255, 255))
         

@@ -1,0 +1,9 @@
+{
+  "ui.theme": "light",
+  "ui.icon_size": 96,
+  "preview.default_zoom": 1.0,
+  "trash.max_age_days": 30,
+  "ui.autosave": true,
+  "ui.startup": true,
+  "ui.taskbar_autohide": true
+}

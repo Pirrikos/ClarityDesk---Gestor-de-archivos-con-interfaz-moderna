@@ -17,23 +17,14 @@ from app.services.icon_render_service import IconRenderService
 from app.ui.widgets.list_checkbox import CustomCheckBox
 from app.ui.widgets.list_state_cell import ListStateCell
 
+LIST_ROW_ICON_SIZE = QSize(28, 28)
+
 
 def create_checkbox_cell(
     file_path: str,
     is_checked: bool,
     on_state_changed: Callable[[str, int], None]
 ) -> QWidget:
-    """
-    Create checkbox widget container for column 0.
-    
-    Args:
-        file_path: File path for this row.
-        is_checked: Whether checkbox should be checked.
-        on_state_changed: Callback for checkbox state changes.
-    
-    Returns:
-        Container widget with checkbox.
-    """
     checkbox = CustomCheckBox()
     checkbox.setText("")
     checkbox.setChecked(is_checked)
@@ -44,18 +35,16 @@ def create_checkbox_cell(
 
 
 def _create_checkbox_container(checkbox: QCheckBox) -> QWidget:
-    """Create container widget for checkbox alignment."""
     container = QWidget()
     layout = QVBoxLayout(container)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(0)
     layout.addWidget(checkbox)
-    layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     checkbox.setStyleSheet("""
         QCheckBox {
             padding: 0px;
             margin: 0px;
-            margin-top: 5px;
         }
         QCheckBox::indicator {
             margin: 0px;
@@ -71,17 +60,6 @@ def create_name_cell(
     icon_service: IconService,
     font: QFont
 ) -> QTableWidgetItem:
-    """
-    Create name item with icon for column 1.
-    
-    Args:
-        file_path: Full path to file.
-        icon_service: Service for getting file icons.
-        font: Font to apply to item.
-    
-    Returns:
-        Table widget item with filename and icon.
-    """
     filename = os.path.basename(file_path)
     name_item = QTableWidgetItem(filename)
     name_item.setFont(font)
@@ -92,26 +70,14 @@ def create_name_cell(
 
 
 def _get_file_icon(file_path: str, icon_service: IconService) -> Optional[QIcon]:
-    """Get file icon for list view."""
-    # Use IconRenderService for previews optimized for list view
     render_service = IconRenderService(icon_service)
-    pixmap = render_service.get_file_preview_list(file_path, QSize(28, 28))
+    pixmap = render_service.get_file_preview_list(file_path, LIST_ROW_ICON_SIZE)
     if not pixmap.isNull():
         return QIcon(pixmap)
-    return icon_service.get_file_icon(file_path, QSize(28, 28))
+    return icon_service.get_file_icon(file_path, LIST_ROW_ICON_SIZE)
 
 
 def create_extension_cell(file_path: str, font: QFont) -> QTableWidgetItem:
-    """
-    Create extension item for column 2.
-    
-    Args:
-        file_path: Full path to file.
-        font: Font to apply to item.
-    
-    Returns:
-        Table widget item with file extension.
-    """
     filename = os.path.basename(file_path)
     _, ext = os.path.splitext(filename)
     ext_item = QTableWidgetItem(ext.upper() if ext else "")
@@ -121,16 +87,6 @@ def create_extension_cell(file_path: str, font: QFont) -> QTableWidgetItem:
 
 
 def create_date_cell(file_path: str, font: QFont) -> QTableWidgetItem:
-    """
-    Create modified date item for column 3.
-    
-    Args:
-        file_path: Full path to file.
-        font: Font to apply to item.
-    
-    Returns:
-        Table widget item with modification date.
-    """
     try:
         mtime = os.path.getmtime(file_path)
         dt = datetime.fromtimestamp(mtime)
@@ -144,16 +100,6 @@ def create_date_cell(file_path: str, font: QFont) -> QTableWidgetItem:
 
 
 def create_state_cell(state: Optional[str], font: QFont) -> QWidget:
-    """
-    Create state widget for column 4.
-    
-    Args:
-        state: State constant or None if no state.
-        font: Font (not used, kept for compatibility).
-    
-    Returns:
-        Widget with colored bar and state text.
-    """
     state_widget = ListStateCell(state)
     return state_widget
 

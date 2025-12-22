@@ -8,7 +8,7 @@ import os
 from typing import Optional
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal, QTimer
-from PySide6.QtGui import QBrush, QColor, QEnterEvent, QFontMetrics, QMouseEvent, QPainter, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QEnterEvent, QFont, QFontMetrics, QMouseEvent, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QLabel,
@@ -20,6 +20,7 @@ from app.models.file_stack import FileStack
 from app.services.icon_service import IconService
 from app.services.icon_render_service import IconRenderService
 from app.services.icon_fallback_helper import get_default_icon, safe_pixmap
+from app.ui.utils.font_manager import FontManager
 from app.ui.widgets.badge_overlay_widget import BadgeOverlayWidget
 from app.ui.widgets.text_elision import elide_middle_manual
 from app.ui.widgets.tile_drag_handler import handle_tile_drag
@@ -251,12 +252,18 @@ class FileStackTile(QWidget):
         name_label.setMinimumWidth(70)
         name_label.setStyleSheet("""
             font-family: 'Segoe UI', sans-serif;
-            font-size: 10px;
+            /* font-size: establecido explícitamente */
             font-weight: 600;
             color: #ffffff;
             background-color: transparent;
             padding: 0px;
         """)
+        FontManager.safe_set_font(
+            name_label,
+            'Segoe UI',
+            FontManager.SIZE_SMALL,
+            QFont.Weight.DemiBold
+        )
         name_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         

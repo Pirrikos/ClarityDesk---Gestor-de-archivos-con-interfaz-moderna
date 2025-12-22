@@ -1,6 +1,10 @@
 {
-  "tabs": [],
-  "active_tab": null,
-  "focus_tree_paths": [],
+  "tabs": [
+    "c:\\users\\pirri\\onedrive\\escritorio\\files"
+  ],
+  "active_tab": "c:\\users\\pirri\\onedrive\\escritorio\\files",
+  "focus_tree_paths": [
+    "c:\\users\\pirri\\onedrive\\escritorio\\files"
+  ],
   "expanded_nodes": []
 }

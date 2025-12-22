@@ -5,9 +5,10 @@ Generates composite preview images for multiple file drag operations.
 """
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
 
 from app.services.icon_service import IconService
+from app.ui.utils.font_manager import FontManager
 
 
 def create_multi_file_preview(
@@ -111,15 +112,12 @@ def _draw_count_badge(
     
     # Fondo semitransparente para mejor visibilidad
     painter.setBrush(QColor(0, 120, 215, 220))
-    painter.setPen(QColor(255, 255, 255, 255))
-    painter.setPenWidth(1)
+    painter.setPen(QPen(QColor(255, 255, 255, 255), 1))
     painter.drawEllipse(badge_x, badge_y, badge_size, badge_size)
     
     # Texto más legible
     painter.setPen(QColor(255, 255, 255))
-    font = painter.font()
-    font.setBold(True)
-    font.setPointSize(9)
+    font = FontManager.create_font("Segoe UI", FontManager.SIZE_SMALL, QFont.Weight.Bold)
     painter.setFont(font)
     count_text = str(total_count) if total_count < 100 else "99+"
     painter.drawText(

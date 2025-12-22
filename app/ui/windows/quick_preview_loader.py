@@ -53,7 +53,7 @@ class QuickPreviewLoader:
                 QLabel {
                     color: rgba(255, 255, 255, 100);
                     font-family: 'Segoe UI', sans-serif;
-                    font-size: 14px;
+                    /* font-size: establecido explícitamente */
                     background-color: transparent;
                 }
             """)

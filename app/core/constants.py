@@ -29,3 +29,21 @@ UPDATE_DELAY_MS = 300
 # Progress thresholds
 PROGRESS_DIALOG_THRESHOLD = 5  # Show progress for >N files
 
+# Layout debugging mode
+# Cambiar a True para activar bordes de depuración del layout
+# 
+# Cuando está activo, muestra bordes de colores alrededor de todos los componentes:
+# - Rojo: Ventana principal
+# - Azul: Central widget (RaycastPanel)
+# - Verde: WindowHeader (barra superior con botones)
+# - Amarillo: AppHeader (barra de aplicación)
+# - Magenta: QSplitter (contenedor principal)
+# - Cyan: WorkspaceSelector (selector izquierdo)
+# - Naranja: FolderTreeSidebar (sidebar navegación)
+# - Rosa: FileViewContainer (contenido principal)
+# - Blanco: SizeGripContainer (zona inferior)
+#
+# Útil para detectar solapamientos, desbordes y errores de jerarquía de layout.
+# No modifica tamaños, posiciones ni comportamiento de los widgets.
+DEBUG_LAYOUT = False
+

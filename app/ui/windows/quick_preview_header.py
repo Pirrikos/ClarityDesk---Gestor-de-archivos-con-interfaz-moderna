@@ -39,7 +39,7 @@ class QuickPreviewHeader:
             QLabel {
                 color: rgba(50, 50, 50, 255);
                 font-family: 'Segoe UI', sans-serif;
-                font-size: 13px;
+                /* font-size: establecido explícitamente */
                 font-weight: 500;
                 background-color: transparent;
             }
@@ -70,7 +70,7 @@ class QuickPreviewHeader:
                 background-color: rgba(240, 240, 240, 255);
                 border: 1px solid rgba(200, 200, 200, 255);
                 border-radius: 4px;
-                font-size: 16px;
+                /* font-size: establecido explícitamente */
                 font-weight: 500;
                 color: rgba(50, 50, 50, 255);
             }

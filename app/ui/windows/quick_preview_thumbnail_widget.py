@@ -56,7 +56,7 @@ class QuickPreviewThumbnailWidget:
         page_num_label.setStyleSheet("""
             QLabel {
                 color: rgba(100, 100, 100, 255);
-                font-size: 10px;
+                /* font-size: establecido explícitamente */
                 font-weight: 500;
                 background-color: transparent;
             }

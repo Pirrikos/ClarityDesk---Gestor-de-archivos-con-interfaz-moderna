@@ -59,7 +59,7 @@ class BulkRenameDialog(QDialog):
         self._setup_templates_bar(layout)
         
         pattern_label = QLabel("Patrón:")
-        pattern_label.setStyleSheet("font-weight: 600; font-size: 13px;")
+        pattern_label.setStyleSheet("font-weight: 600; /* font-size: establecido explícitamente */")
         layout.addWidget(pattern_label)
         
         self._pattern_input = QLineEdit()
@@ -68,11 +68,11 @@ class BulkRenameDialog(QDialog):
         layout.addWidget(self._pattern_input)
         
         help_label = QLabel("Usa {n} para numeración, {name} para nombre original, {date} para fecha")
-        help_label.setStyleSheet("color: #8e8e93; font-size: 11px;")
+        help_label.setStyleSheet("color: #8e8e93; /* font-size: establecido explícitamente */")
         layout.addWidget(help_label)
         
         preview_label = QLabel("Vista previa:")
-        preview_label.setStyleSheet("font-weight: 600; font-size: 13px; margin-top: 8px;")
+        preview_label.setStyleSheet("font-weight: 600; /* font-size: establecido explícitamente */ margin-top: 8px;")
         layout.addWidget(preview_label)
         
         self._preview_list = QListWidget()
@@ -134,7 +134,7 @@ class BulkRenameDialog(QDialog):
         templates_layout.setSpacing(8)
         
         template_label = QLabel("Plantilla:")
-        template_label.setStyleSheet("font-weight: 600; font-size: 13px;")
+        template_label.setStyleSheet("font-weight: 600; /* font-size: establecido explícitamente */")
         templates_layout.addWidget(template_label)
         
         self._templates_combo = QComboBox()
@@ -143,13 +143,13 @@ class BulkRenameDialog(QDialog):
         
         self._save_button = QPushButton("+ Guardar")
         self._save_button.setFixedHeight(32)
-        self._save_button.setStyleSheet("background-color: #0078d4; color: #ffffff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px;")
+        self._save_button.setStyleSheet("background-color: #0078d4; color: #ffffff; border: none; border-radius: 6px; padding: 6px 12px; /* font-size: establecido explícitamente */")
         self._save_button.clicked.connect(self._on_save_template)
         templates_layout.addWidget(self._save_button)
         
         self._delete_button = QPushButton("🗑 Borrar")
         self._delete_button.setFixedHeight(32)
-        self._delete_button.setStyleSheet("background-color: #d13438; color: #ffffff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 12px;")
+        self._delete_button.setStyleSheet("background-color: #d13438; color: #ffffff; border: none; border-radius: 6px; padding: 6px 12px; /* font-size: establecido explícitamente */")
         self._delete_button.clicked.connect(self._on_delete_template)
         templates_layout.addWidget(self._delete_button)
         

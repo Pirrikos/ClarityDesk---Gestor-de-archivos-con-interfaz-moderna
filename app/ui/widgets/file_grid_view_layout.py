@@ -14,7 +14,7 @@ def setup_grid_layout(content_widget) -> QGridLayout:
     """Setup grid layout para el contenido sin panel dock."""
     grid_layout = QGridLayout(content_widget)
     grid_layout.setSpacing(20)
-    grid_layout.setContentsMargins(24, 24, 24, 24)  # Márgenes uniformes, centrados en contenido
+    grid_layout.setContentsMargins(24, 8, 24, 24)  # Margen superior reducido de 24px a 8px
     # No alinear explícitamente para evitar centrado forzado
     grid_layout.setColumnStretch(0, 1)  # Una sola columna que estira el contenido
     return grid_layout

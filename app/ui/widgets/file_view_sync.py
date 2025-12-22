@@ -60,16 +60,27 @@ def switch_view(container, view_type: str) -> None:
     # Switch view
     if view_type == "grid":
         container._stacked.setCurrentWidget(container._grid_view)
-        container._grid_button.setChecked(True)
-        container._list_button.setChecked(False)
+        if hasattr(container, '_grid_button') and container._grid_button:
+            container._grid_button.setChecked(True)
+        if hasattr(container, '_list_button') and container._list_button:
+            container._list_button.setChecked(False)
         container._current_view = "grid"
-        container._toolbar.update_button_styles(True)
+        # Actualizar estilos en toolbar o header, según exista
+        if hasattr(container, '_toolbar') and container._toolbar:
+            container._toolbar.update_button_styles(True)
+        elif hasattr(container, '_header') and hasattr(container._header, 'update_button_styles'):
+            container._header.update_button_styles(True)
     else:
         container._stacked.setCurrentWidget(container._list_view)
-        container._list_button.setChecked(True)
-        container._grid_button.setChecked(False)
+        if hasattr(container, '_list_button') and container._list_button:
+            container._list_button.setChecked(True)
+        if hasattr(container, '_grid_button') and container._grid_button:
+            container._grid_button.setChecked(False)
         container._current_view = "list"
-        container._toolbar.update_button_styles(False)
+        if hasattr(container, '_toolbar') and container._toolbar:
+            container._toolbar.update_button_styles(False)
+        elif hasattr(container, '_header') and hasattr(container._header, 'update_button_styles'):
+            container._header.update_button_styles(False)
 
     # Update files first
     update_files(container)

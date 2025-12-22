@@ -6,106 +6,102 @@ Provides consistent button styling for ViewToolbar.
 
 
 def get_view_button_style(checked: bool) -> str:
-    """Get stylesheet for view toggle button (Grid/List) based on checked state."""
     if checked:
         return """
             QPushButton {
-                background-color: #1F2228;
-                color: #FFFFFF;
+                background-color: rgba(0, 0, 0, 0.08);
+                color: rgba(0, 0, 0, 0.85);
                 border: none;
                 border-radius: 6px;
                 padding: 6px 12px;
                 font-family: 'Segoe UI', sans-serif;
-                font-size: 12px;
+                /* font-size: establecido explícitamente */
                 font-weight: 400;
             }
             QPushButton:hover {
-                background-color: #1F2228;
-                color: #FFFFFF;
+                background-color: rgba(0, 0, 0, 0.12);
+                color: rgba(0, 0, 0, 0.85);
             }
         """
     else:
         return """
             QPushButton {
                 background-color: transparent;
-                color: #FFFFFF;
+                color: rgba(0, 0, 0, 0.65);
                 border: none;
                 border-radius: 6px;
                 padding: 6px 12px;
                 font-family: 'Segoe UI', sans-serif;
-                font-size: 12px;
+                /* font-size: establecido explícitamente */
                 font-weight: 400;
             }
             QPushButton:hover {
-                background-color: #1F2228;
-                color: #FFFFFF;
+                background-color: rgba(0, 0, 0, 0.08);
+                color: rgba(0, 0, 0, 0.85);
             }
         """
 
 
 def get_nav_button_style() -> str:
-    """Get stylesheet for navigation buttons (Back/Forward)."""
     return """
         QPushButton {
             background-color: transparent;
             border: none;
             border-radius: 6px;
-            color: #FFFFFF;
-            font-size: 16px;
+            color: rgba(0, 0, 0, 0.85);
+            /* font-size: establecido explícitamente */
             font-weight: 700;
         }
         QPushButton:hover {
-            background-color: transparent;
-            color: #FFFFFF;
+            background-color: rgba(0, 0, 0, 0.08);
+            color: rgba(0, 0, 0, 0.85);
         }
         QPushButton:pressed {
-            background-color: rgba(255,255,255,0.10);
-            color: #FFFFFF;
+            background-color: rgba(0, 0, 0, 0.12);
+            color: rgba(0, 0, 0, 0.85);
         }
         QPushButton:disabled {
-            color: rgba(255,255,255,0.4);
+            color: rgba(0, 0, 0, 0.3);
             background-color: transparent;
         }
     """
 
 
 def get_state_button_style() -> str:
-    """Get stylesheet for state action buttons."""
     return """
         QPushButton {
             background-color: transparent;
             border: none;
             border-radius: 6px;
-            font-size: 14px;
-            color: #FFFFFF;
+            /* font-size: establecido explícitamente */
+            color: rgba(0, 0, 0, 0.85);
         }
         QPushButton:hover {
-            background-color: rgba(255,255,255,0.08);
-            color: #FFFFFF;
+            background-color: rgba(0, 0, 0, 0.08);
+            color: rgba(0, 0, 0, 0.85);
         }
         QPushButton:pressed {
-            background-color: rgba(255,255,255,0.12);
-            color: #FFFFFF;
+            background-color: rgba(0, 0, 0, 0.12);
+            color: rgba(0, 0, 0, 0.85);
         }
     """
 
 
 def get_clear_button_style() -> str:
-    """Get stylesheet for clear state button."""
     return """
         QPushButton {
             background-color: transparent;
             border: none;
             border-radius: 6px;
-            font-size: 12px;
-            color: #FFFFFF;
+            /* font-size: establecido explícitamente */
+            color: rgba(0, 0, 0, 0.85);
         }
         QPushButton:hover {
-            background-color: rgba(255,255,255,0.08);
-            color: #FFFFFF;
+            background-color: rgba(0, 0, 0, 0.08);
+            color: rgba(0, 0, 0, 0.85);
         }
         QPushButton:pressed {
-            background-color: rgba(255,255,255,0.12);
-            color: #FFFFFF;
+            background-color: rgba(0, 0, 0, 0.12);
+            color: rgba(0, 0, 0, 0.85);
         }
     """

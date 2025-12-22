@@ -1,43 +1,36 @@
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget, QSizePolicy
+
+from app.core.constants import DEBUG_LAYOUT
+
+# Padding para cubrir el margen fantasma que Windows introduce en ventanas frameless
+WINDOW_EDGE_PADDING = 8  # Píxeles - funciona bien en Windows 10/11 con DPI estándar y alto
 
 class RaycastPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("CentralWidget")
         self._radius = 12
+        # Asegurar expansión completa en ambas direcciones
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # Asegurar que el widget ocupe todo el espacio disponible sin márgenes
+        self.setContentsMargins(0, 0, 0, 0)
+        # Desactivar auto-fill background para control total del pintado
+        self.setAutoFillBackground(False)
 
     def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
-        rect = self.rect().adjusted(8, 8, -8, -8)
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(rect), self._radius, self._radius)
-
-        bg_top = QColor("#15181E")
-        bg_bottom = QColor("#12151B")
-        grad_bg = QRadialGradient(rect.center(), max(rect.width(), rect.height()) * 0.9)
-        grad_bg.setColorAt(0.0, bg_top)
-        grad_bg.setColorAt(0.7, bg_bottom)
-        grad_bg.setColorAt(1.0, bg_bottom)
-
-        p.fillPath(path, grad_bg)
-
-        aurora1 = QRadialGradient(rect.topLeft(), rect.width() * 0.6)
-        a1 = QColor(91, 52, 214, 38)
-        aurora1.setColorAt(0.0, a1)
-        aurora1.setColorAt(0.7, QColor(91, 52, 214, 6))
-        aurora1.setColorAt(1.0, QColor(0, 0, 0, 0))
-        p.fillPath(path, aurora1)
-
-        aurora2 = QRadialGradient(rect.bottomRight(), rect.width() * 0.6)
-        a2 = QColor(25, 115, 232, 34)
-        aurora2.setColorAt(0.0, a2)
-        aurora2.setColorAt(0.7, QColor(25, 115, 232, 6))
-        aurora2.setColorAt(1.0, QColor(0, 0, 0, 0))
-        p.fillPath(path, aurora2)
-
-        border = QColor(255, 255, 255, 22)
-        p.setPen(border)
-        p.drawPath(path)
+        """
+        RaycastPanel ya no pinta el fondo - MainWindow lo hace.
+        
+        Solución profesional: El fondo se pinta en la ventana raíz (MainWindow)
+        para asegurar que cubra toda el área incluyendo el margen fantasma de Windows.
+        RaycastPanel es transparente y solo contiene widgets hijos.
+        """
+        # En modo depuración, no pintar nada para que se vean los bordes
+        if DEBUG_LAYOUT:
+            return
+        
+        # RaycastPanel es transparente - el fondo se pinta en MainWindow
+        # No pintar nada aquí para evitar duplicación
+        pass

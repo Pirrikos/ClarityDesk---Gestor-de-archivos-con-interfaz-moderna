@@ -11,11 +11,12 @@ from app.core.constants import SIDEBAR_MAX_WIDTH
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
-from PySide6.QtCore import QModelIndex, QMimeData, QPoint, QRect, QSize, Qt, Signal, QTimer
+from PySide6.QtCore import QModelIndex, QMimeData, QPoint, QSize, Qt, Signal, QTimer
 from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QDrag, QDragMoveEvent, QDropEvent, QMouseEvent, QStandardItem, QStandardItemModel
+from PySide6.QtGui import QDragMoveEvent, QDropEvent, QMouseEvent, QStandardItem, QStandardItemModel, QPainter, QColor, QPen, QIcon, QBrush, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QHBoxLayout,
     QMenu,
     QPushButton,
     QTreeView,
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.ui.utils.font_manager import FontManager
 from app.ui.widgets.folder_tree_drag_handler import (
     get_drop_target_path,
     handle_drag_enter,
@@ -37,44 +39,52 @@ from app.ui.widgets.folder_tree_handlers import (
 )
 from app.ui.widgets.folder_tree_model import (
     add_focus_path_to_model,
+    collect_children_paths,
+    collect_expanded_paths,
     find_parent_item,
     get_root_folder_paths,
     remove_focus_path_from_model,
-    collect_expanded_paths,
+    _remove_item_recursive,
 )
 from app.ui.widgets.folder_tree_reorder_handler import (
     handle_reorder_drag_move,
     handle_reorder_drop,
     is_internal_reorder_drag,
 )
-from app.ui.widgets.folder_tree_styles import get_complete_stylesheet, get_menu_stylesheet
+from app.ui.widgets.folder_tree_styles import get_complete_stylesheet, get_menu_stylesheet, PANEL_BG
 from app.ui.widgets.folder_tree_delegate import FolderTreeSectionDelegate
+from app.ui.widgets.folder_tree_icon_utils import load_folder_icon_with_fallback, FOLDER_ICON_SIZE
 from app.ui.widgets.folder_tree_menu_utils import calculate_menu_rect_viewport, create_option_from_index
 from app.ui.widgets.folder_tree_widget_utils import find_tab_manager
-from app.ui.widgets.folder_tree_model import collect_children_paths, collect_expanded_paths
+
+
+class MinimalTreeView(QTreeView):
+    """QTreeView sin líneas de conexión del árbol - mantiene flechas de expansión."""
+    
+    def drawBranches(self, painter, rect, index):
+        # No dibujar líneas de conexión - esto es intencional y documentado
+        # Las flechas de expansión se mantienen mediante setRootIsDecorated(True)
+        pass
 
 
 class FolderTreeSidebar(QWidget):
     """Navigation history tree showing opened Focus folders."""
     
-    folder_selected = Signal(str)  # Emitted when folder is clicked (folder path)
-    new_focus_requested = Signal(str)  # Emitted when + button is clicked (folder path)
-    focus_remove_requested = Signal(str)  # Emitted when remove is requested (folder path)
-    files_moved = Signal(str, str)  # Emitted when files are moved (source_path, target_path)
+    folder_selected = Signal(str)
+    new_focus_requested = Signal(str)
+    focus_remove_requested = Signal(str)
+    files_moved = Signal(str, str)
     
     def __init__(self, parent=None):
-        """
-        Initialize FolderTreeSidebar.
-        
-        Args:
-            parent: Parent widget.
-        """
         super().__init__(parent)
-        self.setObjectName("FolderTreeSidebar")  # Para stylesheet
-        self.setMinimumWidth(180)  # Ancho mínimo
+        self.setObjectName("FolderTreeSidebar")
+        self.setMinimumWidth(180)
         self.setMaximumWidth(SIDEBAR_MAX_WIDTH)
         self._path_to_item: dict[str, QStandardItem] = {}
-        self.setAcceptDrops(True)  # Enable drop on widget
+        self.setAcceptDrops(True)
+        # Mismo patrón que DockBackgroundWidget para transparencia
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(False)
         self._setup_model()
         self._setup_ui()
         self._apply_styling()
@@ -93,59 +103,80 @@ class FolderTreeSidebar(QWidget):
         self._reorder_drag_start_pos = None
     
     def _setup_model(self) -> None:
-        """Setup QStandardItemModel for navigation history."""
         self._model = QStandardItemModel(self)
         self._model.setHorizontalHeaderLabels(["Folders"])
     
     def _setup_ui(self) -> None:
-        """Build UI layout with QTreeView and + button."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        # Add button at top
-        self._add_button = QPushButton("+")
-        self._add_button.setObjectName("AddButton")  # Para stylesheet
-        self._add_button.setFixedHeight(52)  # Altura suficiente para texto 20px + padding 8px arriba/abajo
-        self._add_button.setMinimumWidth(50)  # Ancho mínimo para que se vea
-        self._add_button.setMaximumWidth(240)  # Respetar ancho del sidebar
+        # Alineación: button_container con padding-left 10px para alinear con viewport del tree_container
+        button_container = QWidget(self)
+        button_container.setObjectName("ButtonContainer")
+        button_container_layout = QHBoxLayout(button_container)
+        button_container_layout.setContentsMargins(10, 0, 0, 0)
+        button_container_layout.setSpacing(0)
+        
+        self._add_button = QPushButton(button_container)
+        self._add_button.setObjectName("AddButton")
+        self._add_button.setFixedHeight(36)
+        self._add_button.setVisible(True)
+        
+        icon_loaded = False
+        try:
+            folder_icon = load_folder_icon_with_fallback(FOLDER_ICON_SIZE)
+            if not folder_icon.isNull():
+                self._add_button.setIcon(folder_icon)
+                self._add_button.setIconSize(FOLDER_ICON_SIZE)
+                icon_loaded = True
+        except Exception as e:
+            logger.warning(f"No se pudo cargar icono de carpeta para botón: {e}")
+        
+        if icon_loaded:
+            self._add_button.setText("Nueva carpeta")
+        else:
+            self._add_button.setText("+")
+        
         self._add_button.clicked.connect(self._on_add_clicked)
-        layout.addWidget(self._add_button)
         
-        # Spacer para alinear el primer elemento del árbol con el header de la tabla
-        # FileViewContainer spacing (52px) + Toolbar (56px) + Header tabla (~30px) = ~138px
-        # Botón "+" (52px) + spacer necesario (~86px) = ~138px
-        layout.addSpacing(86)
+        button_container_layout.addWidget(self._add_button, 1)
         
-        # Tree view
-        self._tree_view = QTreeView(self)
+        layout.addWidget(button_container, 0)  # Sin stretch - siempre arriba
+        
+        # Contenedor del árbol - estilo Finder: padding izquierdo mínimo
+        # Finder usa padding izquierdo pequeño (alrededor de 10px) para alinear contenido
+        tree_container = QWidget(self)
+        tree_container.setObjectName("TreeContainer")
+        tree_container_layout = QVBoxLayout(tree_container)
+        tree_container_layout.setContentsMargins(10, 0, 0, 0)  # Padding izquierdo estilo Finder (reducido de 24px)
+        tree_container_layout.setSpacing(0)
+        
+        # Tree view - usar subclase profesional que oculta líneas de conexión
+        self._tree_view = MinimalTreeView(tree_container)
         self._tree_view.setModel(self._model)
         self._tree_view.setHeaderHidden(True)
-        self._tree_view.setAnimated(True)  # Habilitar animaciones con easing personalizado
+        self._tree_view.setAnimated(True)
         self._tree_view.setExpandsOnDoubleClick(False)
-        self._tree_view.setRootIsDecorated(False)  # Sin flechas expand/collapse
-        self._tree_view.setIndentation(24)  # Arc-style (era 12)
-        self._tree_view.setUniformRowHeights(True)  # Optimización
-        self._tree_view.setIconSize(QSize(24, 24))
-        self._tree_view.setWordWrap(False)  # Prevent text wrapping, use ellipsis
-        # Delegate visual para dibujar bloque tipo tarjeta en la sección activa
+        self._tree_view.setRootIsDecorated(True)
+        self._tree_view.setIndentation(12)
+        self._tree_view.setUniformRowHeights(True)
+        self._tree_view.setIconSize(FOLDER_ICON_SIZE)
+        self._tree_view.setWordWrap(False)
         self._tree_view.setItemDelegate(FolderTreeSectionDelegate(self._tree_view))
         self._tree_view.setMouseTracking(True)
         
-        # Enable drag & drop (internal for reordering, external for files)
         self._tree_view.setAcceptDrops(True)
         self._tree_view.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         
         self._tree_view.clicked.connect(self._on_tree_clicked)
         self._tree_view.doubleClicked.connect(self._on_tree_double_clicked)
-        # Deshabilitar menú contextual del botón derecho - ahora se usa el botón de tres puntitos
         self._tree_view.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
-        
-        # Interceptar eventos de mouse para detectar clic en botón de menú
         self._tree_view.viewport().installEventFilter(self)
         self._hovered_menu_index = None
         
-        layout.addWidget(self._tree_view, 1)  # Stretch factor to fill space
+        tree_container_layout.addWidget(self._tree_view, 1)
+        layout.addWidget(tree_container, 1)  # Stretch factor to fill space
     
     def _on_tree_clicked(self, index: QModelIndex) -> None:
         if self._click_expand_timer.isActive():
@@ -163,110 +194,89 @@ class FolderTreeSidebar(QWidget):
             self.folder_selected.emit(folder_path)
     
     def _on_single_click_timeout(self) -> None:
-        if self._pending_click_path and self._pending_click_path in self._path_to_item:
-            item = self._path_to_item[self._pending_click_path]
+        if not self._pending_click_path:
+            return
+        
+        normalized_path = os.path.normpath(self._pending_click_path)
+        
+        if normalized_path not in self._path_to_item:
+            self._pending_click_path = None
+            return
+        
+        item = self._path_to_item[normalized_path]
+        if not item:
+            self._pending_click_path = None
+            return
+        
+        try:
             index = self._model.indexFromItem(item)
             if index.isValid():
                 handle_tree_click(index, self._model, self._tree_view)
+        except RuntimeError:
+            pass
+        
         self._pending_click_path = None
     
     def _on_add_clicked(self) -> None:
-        """Handle + button click - open folder picker."""
         folder_path = handle_add_button_click(self)
         if folder_path:
             self.new_focus_requested.emit(folder_path)
     
     def add_focus_path(self, path: str) -> None:
-        """
-        Add Focus path to navigation history tree.
-        
-        Inserts path under its parent ONLY if parent exists in tree.
-        Otherwise inserts as root node.
-        Recoloca el nodo si ya existe pero está en posición incorrecta.
-        
-        Args:
-            path: Folder path to add.
-        """
         normalized_path = os.path.normpath(path)
         
-        # Si el path ya existe, verificar si necesita recolocación jerárquica
         if normalized_path in self._path_to_item:
-            existing_item = self._path_to_item[normalized_path]
-            current_parent = existing_item.parent() if existing_item.parent() else self._model.invisibleRootItem()
-            
-            # Buscar el padre correcto según la jerarquía de paths
-            correct_parent = find_parent_item(self._model, self._path_to_item, normalized_path)
-            
-            # Si el padre actual no es el correcto, recolocar el nodo
-            if current_parent != correct_parent:
-                # Reubicamos el nodo al añadir un tab para mantener la jerarquía basada en paths.
-                # Guardar estado expandido del nodo antes de eliminarlo
-                existing_index = self._model.indexFromItem(existing_item)
-                was_expanded = existing_index.isValid() and self._tree_view.isExpanded(existing_index)
-                
-                children_paths = collect_children_paths(existing_item)
-                
-                # Eliminar nodo antiguo del modelo (los hijos se eliminarán también del dict)
-                remove_focus_path_from_model(self._model, self._path_to_item, normalized_path)
-                
-                # Recrear nodo bajo el padre correcto
-                item = add_focus_path_to_model(self._model, self._path_to_item, normalized_path)
-                
-                if item:
-                    # Deshabilitar actualizaciones durante la restauración de hijos para mayor velocidad
-                    self._tree_view.setUpdatesEnabled(False)
-                    try:
-                        # Restaurar hijos recursivamente (se añadirán bajo sus padres correctos)
-                        for child_path in children_paths:
-                            if child_path not in self._path_to_item:
-                                add_focus_path_to_model(self._model, self._path_to_item, child_path)
-                    finally:
-                        self._tree_view.setUpdatesEnabled(True)
-                    
-                    # Expandir padre para mostrar el nodo recolocado
-                    if correct_parent != self._model.invisibleRootItem():
-                        parent_index = self._model.indexFromItem(correct_parent)
-                        if parent_index.isValid():
-                            self._tree_view.expand(parent_index)
-                    
-                    # Restaurar estado expandido del nodo si estaba expandido (sin timer para mayor velocidad)
-                    if was_expanded:
-                        new_index = self._model.indexFromItem(item)
-                        if new_index.isValid() and item.rowCount() > 0:
-                            self._tree_view.expand(new_index)
-                
+            if self._reposition_node_if_needed(normalized_path):
                 return
         
-        # Path no existe o ya está en posición correcta, añadir normalmente
         item = add_focus_path_to_model(self._model, self._path_to_item, path)
         if not item:
             return
         
         self._expand_parent_if_needed(path)
     
+    def _reposition_node_if_needed(self, normalized_path: str) -> bool:
+        existing_item = self._path_to_item[normalized_path]
+        current_parent = existing_item.parent() if existing_item.parent() else self._model.invisibleRootItem()
+        correct_parent = find_parent_item(self._model, self._path_to_item, normalized_path)
+        
+        if current_parent == correct_parent:
+            return False
+        
+        existing_index = self._model.indexFromItem(existing_item)
+        was_expanded = existing_index.isValid() and self._tree_view.isExpanded(existing_index)
+        children_paths = collect_children_paths(existing_item)
+        
+        remove_focus_path_from_model(self._model, self._path_to_item, normalized_path)
+        
+        item = add_focus_path_to_model(self._model, self._path_to_item, normalized_path)
+        if not item:
+            return True
+        
+        self._tree_view.setUpdatesEnabled(False)
+        try:
+            for child_path in children_paths:
+                if child_path not in self._path_to_item:
+                    add_focus_path_to_model(self._model, self._path_to_item, child_path)
+        finally:
+            self._tree_view.setUpdatesEnabled(True)
+        
+        if correct_parent != self._model.invisibleRootItem():
+            parent_index = self._model.indexFromItem(correct_parent)
+            if parent_index.isValid():
+                self._tree_view.expand(parent_index)
+        
+        if was_expanded:
+            new_index = self._model.indexFromItem(item)
+            if new_index.isValid() and item.rowCount() > 0:
+                self._tree_view.expand(new_index)
+        
+        return True
+    
     def remove_focus_path(self, path: str) -> None:
-        """
-        Remove Focus path from navigation history tree.
-        
-        Removes node and all its children (breadcrumb hierarchy).
-        Does NOT delete folder from filesystem.
-        
-        Args:
-            path: Folder path to remove.
-        """
         remove_focus_path_from_model(self._model, self._path_to_item, path)
     
     def update_focus_path(self, old_path: str, new_path: str) -> None:
-        """
-        Update Focus path when folder is moved or renamed.
-        
-        Removes old path and adds new path ONLY if it corresponds to an existing tab.
-        Does NOT create new tabs, only updates existing nodes in sidebar.
-        
-        Args:
-            old_path: Old folder path.
-            new_path: New folder path.
-        """
         normalized_old = os.path.normpath(old_path)
         normalized_new = os.path.normpath(new_path)
         
@@ -296,7 +306,6 @@ class FolderTreeSidebar(QWidget):
         
         # PASO 1: Eliminar TODAS las referencias internas primero (_path_to_item)
         # Esto incluye el item principal y todos sus hijos recursivamente
-        from app.ui.widgets.folder_tree_model import _remove_item_recursive
         _remove_item_recursive(self._path_to_item, normalized_old)
         
         # PASO 2: Eliminar el item del modelo (ya no está en _path_to_item)
@@ -327,11 +336,9 @@ class FolderTreeSidebar(QWidget):
                 self._tree_view.expand(new_index)
     
     def dragEnterEvent(self, event) -> None:
-        """Handle drag enter on tree view."""
         handle_drag_enter(event)
     
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        """Handle drag move over tree view."""
         # Check if internal reorder drag
         if is_internal_reorder_drag(event, self._tree_view):
             if handle_reorder_drag_move(event, self._tree_view, self._model):
@@ -343,7 +350,6 @@ class FolderTreeSidebar(QWidget):
             handle_drag_move(event, self._tree_view, self._model)
     
     def dropEvent(self, event: QDropEvent) -> None:
-        """Handle drop on tree view - reorder root folders or move files."""
         # Check if internal reorder drag
         if is_internal_reorder_drag(event, self._tree_view):
             # Prevent Qt's automatic move by setting IgnoreAction BEFORE processing
@@ -378,11 +384,9 @@ class FolderTreeSidebar(QWidget):
                 event.ignore()
     
     def _get_drop_target_path(self, event) -> str:
-        """Get target folder path from drop event."""
         return get_drop_target_path(event, self._tree_view, self._model)
     
     def _expand_parent_if_needed(self, path: str) -> None:
-        """Expandir padre automáticamente para que el nodo sea visible."""
         parent_item = find_parent_item(self._model, self._path_to_item, os.path.normpath(path))
         if parent_item != self._model.invisibleRootItem():
             parent_index = self._model.indexFromItem(parent_item)
@@ -390,11 +394,44 @@ class FolderTreeSidebar(QWidget):
                 self._tree_view.expand(parent_index)
     
     def _apply_styling(self) -> None:
-        """Apply Arc Browser stylesheet to sidebar."""
+        """Apply stylesheet and ensure fonts are properly initialized."""
         self.setStyleSheet(get_complete_stylesheet())
+        
+        if hasattr(self, '_add_button') and self._add_button:
+            FontManager.safe_set_font(
+                self._add_button,
+                'Segoe UI',
+                FontManager.SIZE_MEDIUM,
+                QFont.Weight.Normal
+            )
+        
+        if hasattr(self, '_tree_view') and self._tree_view:
+            FontManager.safe_set_font(
+                self._tree_view,
+                'Segoe UI',
+                FontManager.SIZE_MEDIUM,
+                QFont.Weight.Normal
+            )
+    
+    def paintEvent(self, event) -> None:
+        # Mismo patrón que DockBackgroundWidget para transparencia
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        bg_color = QColor(PANEL_BG)
+        painter.setBrush(QBrush(bg_color))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRect(self.rect())
+        
+        rect = self.rect()
+        separator_x = rect.right() - 1
+        separator_color = QColor(255, 255, 255, 23)
+        painter.setPen(QPen(separator_color, 1))
+        painter.drawLine(separator_x, rect.top(), separator_x, rect.bottom())
+        
+        painter.end()
     
     def mousePressEvent(self, event) -> None:
-        """Iniciar arrastre si el clic es en fondo/botón, no dentro del árbol."""
         if event.button() == Qt.MouseButton.LeftButton:
             child_widget = self.childAt(event.pos())
             # No iniciar arrastre si se pulsa dentro del QTreeView (para no romper DnD)
@@ -408,7 +445,6 @@ class FolderTreeSidebar(QWidget):
             super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event) -> None:
-        """Mover la ventana principal mientras se arrastra."""
         if self._drag_start_position is not None:
             delta = event.globalPos() - self._drag_start_position
             main_window = self.window()
@@ -421,7 +457,6 @@ class FolderTreeSidebar(QWidget):
             super().mouseMoveEvent(event)
     
     def mouseReleaseEvent(self, event) -> None:
-        """Finalizar arrastre al soltar el botón."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start_position = None
             event.accept()
@@ -429,14 +464,6 @@ class FolderTreeSidebar(QWidget):
             super().mouseReleaseEvent(event)
     
     def get_focus_tree_paths(self) -> list[str]:
-        """
-        Get all paths currently in the focus tree, preserving root folder order.
-        
-        Returns root folders first (in their current order), then children recursively.
-        
-        Returns:
-            List of folder paths in the tree, with root folders first.
-        """
         paths = []
         root_paths = get_root_folder_paths(self._model, self._path_to_item)
         
@@ -464,47 +491,18 @@ class FolderTreeSidebar(QWidget):
         return paths
     
     def get_expanded_paths(self) -> list[str]:
-        """
-        Get all currently expanded node paths.
-        
-        Returns:
-            List of expanded folder paths.
-        """
         root = self._model.invisibleRootItem()
         return collect_expanded_paths(self._model, self._path_to_item, self._tree_view, root)
     
     def get_current_state(self) -> tuple[list[str], list[str]]:
-        """
-        Get current sidebar state (paths and expanded nodes).
-        
-        Returns:
-            Tuple of (paths list, expanded_nodes list).
-        """
         paths = self.get_focus_tree_paths()
         expanded = self.get_expanded_paths()
         return (paths, expanded)
     
     def load_workspace_state(self, paths: list[str], expanded: list[str]) -> None:
-        """
-        Load workspace state (paths and expanded nodes).
-        
-        Args:
-            paths: List of folder paths to add to tree.
-            expanded: List of paths that should be expanded.
-        """
         self.restore_tree(paths, expanded)
     
     def restore_tree(self, paths: list[str], expanded_paths: list[str]) -> None:
-        """
-        Restore tree state from saved paths and expanded nodes.
-        
-        Respects the order of root folders in the paths list.
-        Root folders are added first in the specified order, then children.
-        
-        Args:
-            paths: List of folder paths to add to tree (root folders first, then children).
-            expanded_paths: List of paths that should be expanded.
-        """
         # Bloquear señales del widget para evitar parpadeo visual
         self._tree_view.blockSignals(True)
         
@@ -571,7 +569,6 @@ class FolderTreeSidebar(QWidget):
         self._tree_view.blockSignals(False)
     
     def showEvent(self, event) -> None:
-        """Asegurar que el botón sea visible cuando se muestra el widget."""
         super().showEvent(event)
         if hasattr(self, '_add_button'):
             self._add_button.setVisible(True)
@@ -579,7 +576,6 @@ class FolderTreeSidebar(QWidget):
             self._add_button.update()
     
     def eventFilter(self, obj, event) -> bool:
-        """Interceptar eventos de mouse para detectar clic en botón de menú y drag de carpetas raíz."""
         if obj == self._tree_view.viewport():
             if event.type() == QMouseEvent.Type.MouseButtonPress:
                 handled = self._handle_menu_button_click(event)
@@ -594,7 +590,6 @@ class FolderTreeSidebar(QWidget):
         return super().eventFilter(obj, event)
     
     def _handle_reorder_drag_start(self, event: QMouseEvent) -> None:
-        """Handle mouse press for potential reorder drag."""
         if event.button() != Qt.MouseButton.LeftButton:
             return
         
@@ -613,7 +608,6 @@ class FolderTreeSidebar(QWidget):
             self._dragged_index = index
     
     def _handle_reorder_drag_move(self, event: QMouseEvent) -> None:
-        """Handle mouse move to detect drag start."""
         if self._reorder_drag_start_pos is None:
             return
         
@@ -629,13 +623,11 @@ class FolderTreeSidebar(QWidget):
             pass
     
     def _handle_reorder_drag_end(self, event: QMouseEvent) -> None:
-        """Handle mouse release after drag."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._reorder_drag_start_pos = None
             # Don't clear _dragged_index here, it's needed in dropEvent
     
     def _handle_menu_button_click(self, event: QMouseEvent) -> bool:
-        """Manejar clic en botón de menú (tres puntitos)."""
         if event.button() != Qt.MouseButton.LeftButton:
             return False
         
@@ -667,7 +659,6 @@ class FolderTreeSidebar(QWidget):
         return False
     
     def _handle_menu_button_hover(self, event: QMouseEvent) -> None:
-        """Manejar hover sobre botón de menú."""
         index = self._tree_view.indexAt(event.pos())
         delegate = self._tree_view.itemDelegate()
         
@@ -701,7 +692,6 @@ class FolderTreeSidebar(QWidget):
                 self._tree_view.viewport().update()
     
     def _show_root_menu(self, folder_path: str, global_pos: QPoint) -> None:
-        """Mostrar menú para carpeta raíz."""
         menu = QMenu(self)
         menu.setStyleSheet(get_menu_stylesheet())
         remove_action = menu.addAction("Quitar del sidebar")
@@ -711,7 +701,6 @@ class FolderTreeSidebar(QWidget):
         menu.exec(global_pos)
     
     def closeEvent(self, event) -> None:
-        """Cleanup timers before closing."""
         if hasattr(self, '_click_expand_timer') and self._click_expand_timer.isActive():
             self._click_expand_timer.stop()
         super().closeEvent(event)

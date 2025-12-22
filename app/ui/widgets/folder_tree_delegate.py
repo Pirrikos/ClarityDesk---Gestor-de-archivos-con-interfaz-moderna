@@ -1,5 +1,5 @@
 from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QEasingCurve, QTimer, QVariantAnimation
-from PySide6.QtGui import QBrush, QColor, QFont, QMouseEvent, QPainter, QPen, QPolygon, QTransform
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QMouseEvent, QPainter, QPen, QPolygon, QTransform
 from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QTreeView, QStyle
 
 from app.ui.widgets.folder_tree_menu_utils import calculate_menu_rect_viewport
@@ -11,33 +11,26 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
     """Delegate de pintura para agrupar visualmente la sección activa como bloque tipo tarjeta."""
 
     def __init__(self, tree_view: QTreeView):
-        """Guardar referencia al QTreeView para calcular rectángulos visibles."""
         super().__init__(tree_view)
         self._view = tree_view
-        # Skin oscuro tipo Raycast
-        self._block_bg = QColor(31, 34, 40, 168)  # Tinte oscuro con ligera transparencia
-        self._hover_bg = QColor(31, 34, 40, 220)  # Hover suave
-        self._text_color = QColor("#E6E7EA")
-        self._radius = 12  # Bordes redondeados amplios
-        self._padding = 6  # Aire alrededor del contenido
+        self._block_bg = QColor("#1A1D22")
+        self._hover_bg = QColor("#23262D")
+        self._selected_bg = QColor("#23262D")
+        self._text_color = QColor("#E6E6E6")
+        self._radius = 12
+        self._padding = 6
         
-        # Animation state tracking
-        # Para hijos: {opacity, icon_rotation, animations}
-        # Para nodos padre (chevron): {chevron_rotation, chevron_opacity, bg_highlight_opacity, animations}
         self._animations: dict[object, dict] = {}
         self._setup_animation_tracking()
     
     def _setup_animation_tracking(self) -> None:
-        """Setup animation tracking for expansion/collapse."""
         if not self._view:
             return
         
-        # Track expansion state changes
         self._view.expanded.connect(self._on_expanded)
         self._view.collapsed.connect(self._on_collapsed)
     
     def _create_animation_updater(self, index, key: str, anim_data: dict):
-        """Crear función de actualización para animaciones que repinta el viewport."""
         def update_value(value):
             anim_data[key] = float(value)
             if self._view:
@@ -47,7 +40,6 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         return update_value
     
     def _cancel_existing_animations(self, index) -> None:
-        """Cancelar animaciones existentes para un índice."""
         if index in self._animations:
             anim_data = self._animations[index]
             for anim in anim_data.get('animations', []):
@@ -62,7 +54,6 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             del self._animations[index]
     
     def clear_all_animations(self) -> None:
-        """Limpiar todas las animaciones activas."""
         for index in list(self._animations.keys()):
             self._cancel_existing_animations(index)
         self._animations.clear()
@@ -78,7 +69,6 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         key: str,
         on_finished=None
     ) -> QVariantAnimation:
-        """Helper para crear animaciones con configuración común."""
         anim = QVariantAnimation(self._view)
         anim.setDuration(duration)
         anim.setEasingCurve(easing)
@@ -91,7 +81,7 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         return anim
     
     def _animate_chevron_expand(self, index) -> None:
-        """Animate chevron rotation + fade on expansion (140ms, OutCubic)."""
+        # 140ms, OutCubic
         if not index.isValid():
             return
         
@@ -126,7 +116,7 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         highlight_anim.start()
     
     def _animate_chevron_collapse(self, index) -> None:
-        """Animate chevron rotation on collapse (140ms, OutCubic)."""
+        # 140ms, OutCubic
         if not index.isValid():
             return
         
@@ -149,7 +139,6 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         rotation_anim.start()
     
     def _start_highlight_fadeout(self, index, anim_data: dict) -> None:
-        """Iniciar fadeout del highlight después de la expansión."""
         fadeout_anim = self._create_animation(
             index, anim_data, 120, QEasingCurve.Type.InCubic,
             anim_data.get('bg_highlight_opacity', 0.04), 0.0, 'bg_highlight_opacity',
@@ -158,7 +147,6 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         fadeout_anim.start()
     
     def _cleanup_animation(self, index, is_chevron: bool = False) -> None:
-        """Clean up animation data after completion."""
         if index in self._animations:
             anim_data = self._animations[index]
             if is_chevron and 'chevron_rotation' not in anim_data:
@@ -168,7 +156,6 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             QTimer.singleShot(200, lambda idx=index: self._animations.pop(idx, None))
     
     def _iterate_children(self, index, callback) -> None:
-        """Iterar sobre hijos de un índice y aplicar callback."""
         model = self._view.model()
         if not model:
             return
@@ -179,21 +166,19 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                 callback(child_index)
     
     def _on_expanded(self, index) -> None:
-        """Handle node expansion - animate chevron + highlight, then fade-in for children."""
         if not index.isValid():
             return
         self._animate_chevron_expand(index)
         self._iterate_children(index, self._animate_child_expand)
     
     def _on_collapsed(self, index) -> None:
-        """Handle node collapse - animate chevron, then fade-out for children."""
         if not index.isValid():
             return
         self._animate_chevron_collapse(index)
         self._iterate_children(index, self._animate_child_collapse)
     
     def _animate_child_expand(self, index) -> None:
-        """Animate child item expansion with fade-in and icon pivot (180ms)."""
+        # 180ms
         self._cancel_existing_animations(index)
         
         anim_data = {
@@ -218,7 +203,6 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         icon_anim.start()
     
     def _animate_child_collapse(self, index) -> None:
-        """Animate child item collapse - limpio y seco, sin efectos adicionales."""
         if index not in self._animations:
             self._animations[index] = {'opacity': 1.0, 'icon_rotation': 0.0, 'animations': []}
         
@@ -274,29 +258,33 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             if is_child_anim and opacity < 1.0:
                 painter.setOpacity(opacity)
             
-            # Pintar hover background si es necesario
-            if option.state & QStyle.State.State_MouseOver:
-                style = self._view.style()
-                # Compute exact rects for icon (decoration) and text
-                text_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, self._view)
-                deco_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemDecoration, option, self._view)
-                union = text_rect.united(deco_rect)
-                # Fallback to option.rect if union invalid
-                if not union.isValid():
-                    union = option.rect
-                # Padding and clamping inside item rect
-                pad_x = 6
-                pad_y = 3
-                left = max(option.rect.left(), union.left() - pad_x)
-                right = min(option.rect.right(), union.right() + pad_x)
-                top = max(option.rect.top(), union.top() - pad_y)
-                bottom = min(option.rect.bottom(), union.bottom() + pad_y)
-                if right > left and bottom > top:
-                    hover_rect = QRect(left, top, right - left, bottom - top)
-                    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                    painter.setPen(Qt.PenStyle.NoPen)
-                    painter.setBrush(QBrush(self._hover_bg))
-                    painter.drawRoundedRect(hover_rect, 6, 6)
+            # Calcular rectángulo para feedback (hover/selected) - estilo Finder exacto
+            # Finder: el área de selección empieza desde el borde izquierdo del viewport
+            # y tiene margen derecho claro antes del separador
+            pad_x_right = 10  # Margen derecho antes del separador (estilo Finder - más visible)
+            viewport_rect = self._view.viewport().rect()
+            left = 0  # Desde el borde izquierdo del viewport (estilo Finder - empieza en 0)
+            right = viewport_rect.width() - pad_x_right  # Hasta antes del separador (con margen estilo Finder)
+            top = option.rect.top()  # Coordenada Y del item
+            bottom = option.rect.bottom()  # Coordenada Y del item
+            
+            feedback_rect = None
+            if right > left and bottom > top:
+                feedback_rect = QRect(left, top, right - left, bottom - top)
+            
+            # Pintar fondo de selección primero (debajo del hover) - estilo Finder rectangular
+            if option.state & QStyle.State.State_Selected and feedback_rect:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)  # Sin antialiasing para bordes rectos
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(self._selected_bg))
+                painter.drawRect(feedback_rect)  # Rectángulo sin bordes redondeados - estilo Finder
+            
+            # Pintar hover background si es necesario (encima de selected) - estilo Finder rectangular
+            if option.state & QStyle.State.State_MouseOver and feedback_rect:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)  # Sin antialiasing para bordes rectos
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(self._hover_bg))
+                painter.drawRect(feedback_rect)  # Rectángulo sin bordes redondeados - estilo Finder
             
             # Aplicar rotación del icono (solo al icono, después de pintar el fondo)
             if abs(icon_rotation) > 0.01:
@@ -314,25 +302,39 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                     icon_transform.translate(-icon_center_x, -icon_center_y)
                     painter.setTransform(icon_transform, combine=True)
             
-            # Pintar el contenido (icono y texto) primero para tener las dimensiones correctas
-            super().paint(painter, option, index)
+            original_state = option.state
+            option.state = option.state & ~QStyle.State.State_Selected
             
-            # Pintar chevron DESPUÉS del contenido para usar las dimensiones correctas
-            # (animado o estático, solo si el nodo tiene hijos)
-            model = index.model()
-            if model and model.rowCount(index) > 0:
-                if chevron_rotation is not None:
-                    # Chevron animado
-                    self._paint_chevron(painter, option, index, chevron_rotation, chevron_opacity)
-                else:
-                    # Chevron estático según estado expandido/colapsado
-                    is_expanded = self._view.isExpanded(index)
-                    static_rotation = 0.0 if is_expanded else 90.0
-                    self._paint_chevron(painter, option, index, static_rotation, 1.0)
+            # Alinear texto de subcarpetas con texto de raíces (no con icono)
+            icon = index.data(Qt.ItemDataRole.DecorationRole)
+            has_icon = icon and isinstance(icon, QIcon) and not icon.isNull()
+            is_subfolder = index.parent().isValid()
+            
+            original_rect = option.rect
+            if not has_icon and is_subfolder:
+                icon_size = self._view.iconSize()
+                if icon_size.isValid():
+                    icon_space = icon_size.width() + 4
+                    option.rect = option.rect.adjusted(icon_space, 0, 0, 0)
+            
+            super().paint(painter, option, index)
+            option.state = original_state
+            option.rect = original_rect
+            
+            # NO pintar chevron personalizado - usar flechas básicas de Qt
+            # (Qt las pintará automáticamente con setRootIsDecorated(True))
             
             # Pintar tres puntitos solo en carpetas raíz (sin padre)
             if not index.parent().isValid():
                 self._paint_menu_button(painter, option, index)
+            
+            # Dibujar línea blanca separadora al final de cada item (después del contenido)
+            separator_y = option.rect.bottom()
+            separator_left = 0  # Desde el borde izquierdo del viewport
+            separator_right = viewport_rect.width() - pad_x_right  # Hasta antes del separador vertical
+            separator_color = QColor(255, 255, 255, 23)  # rgba(255, 255, 255, 0.09) - paleta Raycast
+            painter.setPen(QPen(separator_color, 1))
+            painter.drawLine(separator_left, separator_y, separator_right, separator_y)
             
             # Restaurar estado del icono si se aplicó rotación
             if abs(icon_rotation) > 0.01:
@@ -372,10 +374,7 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             painter.restore()
     
     def _get_menu_button_rect(self, option: QStyleOptionViewItem, index) -> QRect:
-        """Obtener rectángulo del botón de menú (tres puntitos) dentro del contenedor del item.
-        
-        IMPORTANTE: Retorna coordenadas RELATIVAS a option.rect (no absolutas del viewport).
-        """
+        # Retorna coordenadas RELATIVAS a option.rect (no absolutas del viewport)
         # Obtener rectángulo del texto para posicionar el botón al lado del texto
         style = self._view.style()
         text_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, self._view)

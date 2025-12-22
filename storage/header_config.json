@@ -8,7 +8,12 @@
     "group",
     "sort",
     "rename",
-    "preview_panel"
+    "preview_panel",
+    "separator",
+    "new_folder",
+    "flexible_space",
+    "duplicate",
+    "info"
   ],
   "version": 1
 }

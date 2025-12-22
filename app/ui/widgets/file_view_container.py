@@ -285,6 +285,14 @@ class FileViewContainer(QWidget):
         """Update navigation buttons enabled state."""
         update_nav_buttons_state(self)
     
+    def set_header(self, header) -> None:
+        """Inyectar referencia al AppHeader para control de navegación y estilos.
+        
+        Permite que la lógica existente actualice el estado de flechas y estilos
+        de botones de vista delegando en el header cuando no hay toolbar interna.
+        """
+        self._header = header
+    
     def closeEvent(self, event) -> None:
         """Cleanup timers before closing."""
         if hasattr(self, '_selection_timer') and self._selection_timer.isActive():

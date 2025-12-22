@@ -57,70 +57,56 @@ class FileTile(QWidget):
         setup_ui(self)
 
     def paintEvent(self, event) -> None:
-        """Paint background - Dock style draws rounded rect container."""
         paint_dock_style(self, event)
         super().paintEvent(event)
 
     def set_selected(self, selected: bool) -> None:
-        """Update tile selection state."""
         set_selected(self, selected)
 
     def _get_selected_tiles(self):
-        """Get selected tiles from parent view."""
         return getattr(self._parent_view, '_selected_tiles', None) if self._parent_view else None
     
     def _get_icon_service(self):
-        """Get icon service from parent view."""
         return getattr(self._parent_view, '_icon_service', None) if self._parent_view else None
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse press."""
         mouse_press_event(self, event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse move for drag."""
         mouse_move_event(self, event)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """Reset drag start position."""
         mouse_release_event(self, event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        """Handle double-click to open file."""
         mouse_double_click_event(self, event)
 
     def get_file_path(self) -> str:
-        """Get the file path for this tile."""
         return self._file_path
 
     def set_file_state(self, state: Optional[str]) -> None:
-        """Update file state badge."""
         set_file_state(self, state)
     
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        """Handle drag enter on folder tile."""
         drag_enter_event(self, event)
     
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        """Handle drag move on folder tile."""
         drag_move_event(self, event)
     
     def dropEvent(self, event: QDropEvent) -> None:
-        """Handle file drop on folder tile."""
         drop_event(self, event)
     
     def animate_enter(self, delay_ms: int = 0, start_offset: int = 80) -> None:
-        """Animate tile entrance Apple-style."""
         animate_enter(self, delay_ms, start_offset)
     
     def animate_exit(self, callback=None, end_offset: int = 60) -> None:
-        """Animate tile exit Apple-style."""
         animate_exit(self, callback, end_offset)
     
     def sizeHint(self) -> QSize:
-        """Return preferred size - mismo tamaño para Dock y Grid."""
-        return QSize(70, 85)
+        from app.ui.widgets.file_tile_utils import is_grid_view
+        is_grid = is_grid_view(self)
+        tile_height = 98 if is_grid else 85
+        return QSize(70, tile_height)
     
     def minimumSizeHint(self) -> QSize:
-        """Return minimum size - mismo tamaño para Dock y Grid."""
         return self.sizeHint()

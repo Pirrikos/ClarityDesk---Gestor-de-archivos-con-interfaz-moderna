@@ -38,7 +38,7 @@ class FocusHeaderPanel(QWidget):
         self._path_label.setStyleSheet("""
             QLabel {
                 color: #1f1f1f;
-                font-size: 13px;
+                /* font-size: establecido explícitamente */
             }
         """)
         layout.addWidget(self._path_label, 1)
@@ -53,7 +53,7 @@ class FocusHeaderPanel(QWidget):
                 border-radius: 8px;
                 padding: 8px 16px;
                 font-family: 'Segoe UI', sans-serif;
-                font-size: 13px;
+                /* font-size: establecido explícitamente */
                 font-weight: 500;
             }
             QPushButton:hover {

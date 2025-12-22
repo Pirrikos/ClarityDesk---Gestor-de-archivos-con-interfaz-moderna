@@ -6,7 +6,9 @@ Displays category name as section title with a subtle separator line below.
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QPainter, QColor
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
+
+from app.ui.utils.font_manager import FontManager
 
 
 class CategorySectionHeader(QWidget):
@@ -23,9 +25,12 @@ class CategorySectionHeader(QWidget):
         label = QLabel(self._category_label, self)
         label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         
-        # Estilo moderno tipo Raycast
-        font = QFont('Segoe UI', 11, QFont.Weight.DemiBold)
-        label.setFont(font)
+        FontManager.safe_set_font(
+            label,
+            'Segoe UI',
+            FontManager.SIZE_NORMAL,
+            QFont.Weight.DemiBold
+        )
         label.setStyleSheet("""
             QLabel {
                 color: #B0B3B8;
@@ -34,8 +39,6 @@ class CategorySectionHeader(QWidget):
             }
         """)
         
-        # Layout simple
-        from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 16, 0, 8)
         main_layout.setSpacing(0)

@@ -49,7 +49,7 @@ class TrashDeleteDialog(QDialog):
         warning_label.setStyleSheet("""
             QLabel {
                 font-family: 'Segoe UI', sans-serif;
-                font-size: 14px;
+                /* font-size: establecido explícitamente */
                 color: #1d1d1f;
             }
         """)
@@ -60,7 +60,7 @@ class TrashDeleteDialog(QDialog):
         self._confirm_checkbox.setStyleSheet("""
             QCheckBox {
                 font-family: 'Segoe UI', sans-serif;
-                font-size: 13px;
+                /* font-size: establecido explícitamente */
                 color: #1d1d1f;
             }
         """)

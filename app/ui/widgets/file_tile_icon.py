@@ -36,6 +36,8 @@ class IconWidget(QWidget):
         self._tile = tile
         self._icon_pixmap: Optional[QPixmap] = None
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAutoFillBackground(False)
+        self.setStyleSheet("QWidget { background-color: transparent; }")
     
     def set_pixmap(self, pixmap: QPixmap) -> None:
         """Establecer pixmap del icono."""
@@ -110,6 +112,8 @@ def add_icon_zone(tile: 'FileTile', layout: QVBoxLayout, icon_service: IconServi
         icon_label.setPixmap(pixmap)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        icon_label.setAutoFillBackground(False)
+        icon_label.setStyleSheet("QLabel { background-color: transparent; }")
         icon_shadow = _create_icon_shadow(icon_label)
         icon_label.setGraphicsEffect(icon_shadow)
         tile._icon_label = icon_label

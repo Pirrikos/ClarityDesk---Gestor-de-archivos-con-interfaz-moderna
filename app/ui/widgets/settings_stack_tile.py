@@ -7,7 +7,7 @@ Displays ajustes.svg icon as a stack tile, always positioned at the rightmost po
 from typing import Optional
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor, QEnterEvent, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QEnterEvent, QFont, QFontMetrics, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QLabel,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.services.icon_renderer import render_svg_icon
+from app.ui.utils.font_manager import FontManager
 from app.ui.widgets.text_elision import elide_middle_manual
 
 
@@ -126,12 +127,18 @@ class SettingsStackTile(QWidget):
         name_label.setMinimumWidth(70)
         name_label.setStyleSheet("""
             font-family: 'Segoe UI', sans-serif;
-            font-size: 10px;
+            /* font-size: establecido explícitamente */
             font-weight: 600;
             color: #ffffff;
             background-color: transparent;
             padding: 0px;
         """)
+        FontManager.safe_set_font(
+            name_label,
+            'Segoe UI',
+            FontManager.SIZE_SMALL,
+            QFont.Weight.DemiBold
+        )
         name_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         
@@ -144,7 +151,7 @@ class SettingsStackTile(QWidget):
         name_label.setGraphicsEffect(text_shadow)
         
         display_name = "Ajustes"
-        metrics = name_label.fontMetrics()
+        metrics = QFontMetrics(name_label.font())
         max_width = 68
         elided_text = elide_middle_manual(display_name, metrics, max_width)
         name_label.setText(elided_text)

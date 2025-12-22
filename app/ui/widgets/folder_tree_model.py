@@ -5,11 +5,12 @@ Handles tree node insertion, removal, and parent finding logic.
 """
 
 import os
-from pathlib import Path as PathLib
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QStandardItem, QStandardItemModel, QIcon
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QIcon, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QTreeView
+
+from app.ui.widgets.folder_tree_icon_utils import load_folder_icon_with_fallback, FOLDER_ICON_SIZE
 
 
 def add_focus_path_to_model(
@@ -17,21 +18,6 @@ def add_focus_path_to_model(
     path_to_item: dict[str, QStandardItem],
     path: str
 ) -> QStandardItem:
-    """
-    Add Focus path to navigation history tree.
-    
-    Inserts path under its parent ONLY if parent exists in tree.
-    Otherwise inserts as root node.
-    Skips if path already exists in tree.
-    
-    Args:
-        model: QStandardItemModel instance.
-        path_to_item: Dictionary mapping paths to items.
-        path: Folder path to add.
-        
-    Returns:
-        Created QStandardItem if added, None if skipped.
-    """
     if not path or not os.path.isdir(path):
         return None
     
@@ -43,18 +29,24 @@ def add_focus_path_to_model(
     
     folder_name = os.path.basename(normalized_path) or normalized_path
     item = QStandardItem(folder_name)
-    try:
-        svg_path = PathLib(__file__).resolve().parents[2] / 'assets' / 'icons' / 'folder_sidebar.svg'
-        item.setIcon(QIcon(str(svg_path)))
-    except Exception:
-        item.setIcon(QIcon())
-    item.setData(normalized_path, Qt.ItemDataRole.UserRole)
-    item.setEditable(False)
     
     # Find parent (only if exists, don't create)
     parent_item = find_parent_item(model, path_to_item, normalized_path)
     
-    # Insert under parent (or root)
+    is_root = parent_item == model.invisibleRootItem()
+    if is_root:
+        try:
+            icon = load_folder_icon_with_fallback(FOLDER_ICON_SIZE)
+            item.setIcon(icon)
+        except Exception:
+            item.setIcon(QIcon())
+    else:
+        # No asignar icono para carpetas hijas
+        item.setIcon(QIcon())
+    
+    item.setData(normalized_path, Qt.ItemDataRole.UserRole)
+    item.setEditable(False)
+    
     parent_item.appendRow(item)
     path_to_item[normalized_path] = item
     
@@ -66,31 +58,15 @@ def find_parent_item(
     path_to_item: dict[str, QStandardItem],
     path: str
 ) -> QStandardItem:
-    """
-    Find parent item in tree if exists, otherwise return root.
-    
-    Does NOT create parents automatically.
-    Only returns existing parent nodes.
-    
-    Args:
-        model: QStandardItemModel instance.
-        path_to_item: Dictionary mapping paths to items.
-        path: Child folder path.
-        
-    Returns:
-        Parent QStandardItem if exists, otherwise root.
-    """
     parent_path = os.path.dirname(path)
     if not parent_path or parent_path == path:
         return model.invisibleRootItem()
     
     normalized_parent = os.path.normpath(parent_path)
     
-    # Return existing parent if found
     if normalized_parent in path_to_item:
         return path_to_item[normalized_parent]
     
-    # Parent doesn't exist - return root
     return model.invisibleRootItem()
 
 
@@ -99,17 +75,6 @@ def remove_focus_path_from_model(
     path_to_item: dict[str, QStandardItem],
     path: str
 ) -> None:
-    """
-    Remove Focus path from navigation history tree.
-    
-    Removes node and all its children (breadcrumb hierarchy).
-    Does NOT delete folder from filesystem.
-    
-    Args:
-        model: QStandardItemModel instance.
-        path_to_item: Dictionary mapping paths to items.
-        path: Folder path to remove.
-    """
     normalized_path = os.path.normpath(path)
     
     if normalized_path not in path_to_item:
@@ -130,13 +95,6 @@ def remove_focus_path_from_model(
 
 
 def _remove_item_recursive(path_to_item: dict[str, QStandardItem], path: str) -> None:
-    """
-    Remove item and all children from path_to_item dict recursively.
-    
-    Args:
-        path_to_item: Dictionary mapping paths to items.
-        path: Root path to remove.
-    """
     if path not in path_to_item:
         return
     
@@ -155,7 +113,6 @@ def _remove_item_recursive(path_to_item: dict[str, QStandardItem], path: str) ->
 
 
 def collect_children_paths(item: QStandardItem) -> list[str]:
-    """Recursively collect all child paths from an item."""
     children_paths = []
     for i in range(item.rowCount()):
         child = item.child(i)
@@ -212,16 +169,6 @@ def collect_expanded_paths(
 
 
 def is_root_folder_item(item: QStandardItem, model: QStandardItemModel) -> bool:
-    """
-    Check if an item is a root folder (has no parent or parent is invisible root).
-    
-    Args:
-        item: QStandardItem to check.
-        model: QStandardItemModel instance.
-        
-    Returns:
-        True if item is a root folder, False otherwise.
-    """
     if not item:
         return False
     
@@ -233,16 +180,6 @@ def get_root_folder_items(
     model: QStandardItemModel,
     path_to_item: dict[str, QStandardItem]
 ) -> list[QStandardItem]:
-    """
-    Get all root folder items in current order.
-    
-    Args:
-        model: QStandardItemModel instance.
-        path_to_item: Dictionary mapping paths to items.
-        
-    Returns:
-        List of root folder items in current order.
-    """
     root = model.invisibleRootItem()
     root_items = []
     
@@ -258,16 +195,6 @@ def get_root_folder_paths(
     model: QStandardItemModel,
     path_to_item: dict[str, QStandardItem]
 ) -> list[str]:
-    """
-    Get all root folder paths in current order.
-    
-    Args:
-        model: QStandardItemModel instance.
-        path_to_item: Dictionary mapping paths to items.
-        
-    Returns:
-        List of root folder paths in current order.
-    """
     root_items = get_root_folder_items(model, path_to_item)
     paths = []
     
@@ -285,20 +212,6 @@ def reorder_root_folders(
     source_path: str,
     target_path: str
 ) -> bool:
-    """
-    Reorder root folders by swapping source and target positions.
-    
-    Verifica que ambas carpetas sigan siendo raíz después del cambio.
-    
-    Args:
-        model: QStandardItemModel instance.
-        path_to_item: Dictionary mapping paths to items.
-        source_path: Path of source root folder.
-        target_path: Path of target root folder.
-        
-    Returns:
-        True if reordering was successful, False otherwise.
-    """
     normalized_source = os.path.normpath(source_path)
     normalized_target = os.path.normpath(target_path)
     
@@ -308,43 +221,33 @@ def reorder_root_folders(
     source_item = path_to_item[normalized_source]
     target_item = path_to_item[normalized_target]
     
-    # Verify both are root folders BEFORE swap
     if not is_root_folder_item(source_item, model) or not is_root_folder_item(target_item, model):
         return False
     
-    # Cannot swap with itself
     if source_item == target_item:
         return False
     
-    # Verify both have the same parent (root invisible)
     root = model.invisibleRootItem()
     source_parent = source_item.parent()
     target_parent = target_item.parent()
     
-    # Both must be direct children of root
     if (source_parent and source_parent != root) or (target_parent and target_parent != root):
         return False
     
     source_row = source_item.row()
     target_row = target_item.row()
     
-    # Verify rows are valid
     if source_row < 0 or target_row < 0:
         return False
     
-    # Swap positions
     source_row_data = root.takeRow(source_row)
-    # Adjust target row if source was before target
     adjusted_target_row = target_row if target_row < source_row else target_row - 1
     target_row_data = root.takeRow(adjusted_target_row)
     
-    # Insert in swapped positions
     root.insertRow(target_row, source_row_data[0])
     root.insertRow(source_row, target_row_data[0])
     
-    # Verify both items are still root folders AFTER swap
     if not is_root_folder_item(source_row_data[0], model) or not is_root_folder_item(target_row_data[0], model):
-        # Revert the swap if validation fails
         root.removeRow(target_row)
         root.removeRow(source_row)
         root.insertRow(source_row, source_row_data[0])

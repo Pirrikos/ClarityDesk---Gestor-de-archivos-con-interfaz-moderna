@@ -48,7 +48,14 @@ def update_nav_buttons_state(container) -> None:
     """Update navigation buttons enabled state based on TabManager history."""
     can_back = container._tab_manager.can_go_back()
     can_forward = container._tab_manager.can_go_forward()
-    container._toolbar.set_nav_enabled(can_back, can_forward)
+    # Compatibilidad: si no hay toolbar interna, delegar en el header
+    target = None
+    if hasattr(container, "_toolbar") and container._toolbar:
+        target = container._toolbar
+    elif hasattr(container, "_header") and container._header and hasattr(container._header, "set_nav_enabled"):
+        target = container._header
+    if target:
+        target.set_nav_enabled(can_back, can_forward)
 
 
 def on_nav_back(container) -> None:

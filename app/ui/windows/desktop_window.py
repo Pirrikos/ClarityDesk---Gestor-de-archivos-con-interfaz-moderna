@@ -11,9 +11,8 @@ from typing import Optional
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QUrl, QTimer, QPoint
 from PySide6.QtGui import QDesktopServices, QPainter, QColor, QBrush, QPen, QMouseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (
-    QMainWindow,
-    QVBoxLayout,
     QWidget,
+    QVBoxLayout,
 )
 
 from app.managers.tab_manager import TabManager
@@ -136,10 +135,32 @@ class DockBackgroundWidget(QWidget):
         event.ignore()
 
 
-class DesktopWindow(QMainWindow):
+class DesktopWindow(QWidget):
     """Desktop Focus window with vertical Desktop (top) and Trash (bottom) panels."""
     
     open_main_window = Signal()  # Emitted when user clicks to open main window
+    
+    # Dock layout constants
+    STACK_TILE_WIDTH = 70
+    DESKTOP_TILE_WIDTH = 70
+    SETTINGS_TILE_WIDTH = 70
+    SEPARATOR_WIDTH = 1
+    STACK_SPACING = 12
+    BASE_WINDOW_HEIGHT = 140
+    MIN_WINDOW_HEIGHT = 120
+    ANIMATION_DURATION_MS = 250
+    DEFAULT_WINDOW_WIDTH = 400
+    
+    # Layout margins
+    MAIN_LAYOUT_MARGIN = 16
+    CENTRAL_LAYOUT_MARGIN = 16
+    GRID_LAYOUT_LEFT_MARGIN = 20
+    GRID_LAYOUT_RIGHT_MARGIN = 12  # Simétrico con spacing después del separador
+    
+    # Screen positioning
+    WINDOW_BOTTOM_MARGIN = 10
+    WINDOW_MAX_HEIGHT_MARGIN = 20
+    INITIAL_WINDOW_WIDTH_RATIO = 0.6
     
     def __init__(self, parent=None):
         """Initialize DesktopWindow with Desktop and Trash Focus."""
@@ -181,24 +202,32 @@ class DesktopWindow(QMainWindow):
         
         # Position window at BOTTOM of screen, centered horizontally
         screen = self.screen().availableGeometry()
-        window_height = 140  # Compact height for Dock (just icons)
-        window_width = int(screen.width() * 0.6)  # 60% width
-        window_x = (screen.width() - window_width) // 2  # Centered
-        window_y = screen.height() - window_height - 10  # Bottom with small margin
+        window_height = self.BASE_WINDOW_HEIGHT
+        window_width = int(screen.width() * self.INITIAL_WINDOW_WIDTH_RATIO)
+        window_x = (screen.width() - window_width) // 2
+        window_y = screen.height() - window_height - self.WINDOW_BOTTOM_MARGIN
         self.setGeometry(window_x, window_y, window_width, window_height)
         # Minimum size will be set dynamically based on stacks count
         # Only set minimum height, width will be adjusted by _adjust_window_width
-        self.setMinimumHeight(120)
+        self.setMinimumHeight(self.MIN_WINDOW_HEIGHT)
         # No max height limit - window expands as needed
         
         # Create dock background widget with Apple-style transparency
-        central_widget = DockBackgroundWidget()
-        self.setCentralWidget(central_widget)
+        self._central_widget = DockBackgroundWidget()
         
-        main_layout = QVBoxLayout(central_widget)
+        # Layout raíz directamente en la ventana
+        main_layout = QVBoxLayout(self)
         # Margins match the rounded background (8px outer + some inner padding)
-        main_layout.setContentsMargins(16, 14, 16, 14)
+        main_layout.setContentsMargins(self.MAIN_LAYOUT_MARGIN, 14, self.MAIN_LAYOUT_MARGIN, 14)
         main_layout.setSpacing(0)
+        
+        # Añadir central_widget al layout raíz
+        main_layout.addWidget(self._central_widget, 1)
+        
+        # Layout interno del central_widget (DockBackgroundWidget mantiene su layout interno)
+        central_internal_layout = QVBoxLayout(self._central_widget)
+        central_internal_layout.setContentsMargins(self.CENTRAL_LAYOUT_MARGIN, 14, self.CENTRAL_LAYOUT_MARGIN, 14)
+        central_internal_layout.setSpacing(0)
         
         # Placeholder widget for Desktop Focus panel (will be replaced in initialize_after_show)
         self._desktop_placeholder = QWidget()
@@ -207,13 +236,13 @@ class DesktopWindow(QMainWindow):
                 background-color: transparent;
             }
         """)
-        main_layout.addWidget(self._desktop_placeholder, 1)
+        central_internal_layout.addWidget(self._desktop_placeholder, 1)
         
         # NO footer - pure Dock style
         
         # Fully transparent window
         self.setStyleSheet("""
-            QMainWindow {
+            QWidget {
                 background-color: transparent;
             }
         """)
@@ -240,8 +269,8 @@ class DesktopWindow(QMainWindow):
         # Create IconService
         self._icon_service = IconService()
         
-        # Get parent widget for FileViewContainer
-        central_widget = self.centralWidget()
+        # Get parent widget for FileViewContainer (usar referencia directa)
+        central_widget = self._central_widget
         
         # Create Desktop Focus panel
         self._desktop_container = FileViewContainer(
@@ -292,10 +321,9 @@ class DesktopWindow(QMainWindow):
         if current_geometry.height() == target_height:
             return
         
-        # Si es la primera expansión (altura base = 140px), aplicar inmediatamente
+        # Si es la primera expansión (altura base), aplicar inmediatamente
         # para evitar que los archivos se superpongan con el nombre del stack
-        base_height = 140
-        is_first_expansion = current_geometry.height() == base_height and expansion_height > 0
+        is_first_expansion = current_geometry.height() == self.BASE_WINDOW_HEIGHT and expansion_height > 0
         
         if is_first_expansion:
             # Aplicar altura inmediatamente sin animación
@@ -310,37 +338,45 @@ class DesktopWindow(QMainWindow):
     def _calculate_target_geometry(self, expansion_height: int) -> tuple[int, int]:
         """Calculate target height and Y position for window."""
         screen = self.screen().availableGeometry()
-        base_height = 140
         
-        target_height = base_height + expansion_height
-        max_screen_height = screen.height() - 20
+        target_height = self.BASE_WINDOW_HEIGHT + expansion_height
+        max_screen_height = screen.height() - self.WINDOW_MAX_HEIGHT_MARGIN
         target_height = min(target_height, max_screen_height)
-        target_height = max(target_height, 120)
+        target_height = max(target_height, self.MIN_WINDOW_HEIGHT)
         
-        target_y = screen.height() - target_height - 10
+        target_y = screen.height() - target_height - self.WINDOW_BOTTOM_MARGIN
         return target_height, target_y
+    
+    def _apply_geometry_animation(
+        self,
+        current_geometry: QRect,
+        target_geometry: QRect,
+        animation_attr: str
+    ) -> None:
+        """Apply smooth geometry animation to window."""
+        # Detener animación anterior si existe
+        current_animation = getattr(self, animation_attr, None)
+        if current_animation:
+            current_animation.stop()
+            setattr(self, animation_attr, None)
+        
+        # Crear nueva animación
+        animation = QPropertyAnimation(self, b"geometry", self)
+        animation.setDuration(self.ANIMATION_DURATION_MS)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.setStartValue(current_geometry)
+        animation.setEndValue(target_geometry)
+        animation.start()
+        
+        setattr(self, animation_attr, animation)
     
     def _apply_height_animation(self, current_geometry: QRect, target_height: int, target_y: int) -> None:
         """Apply smooth height animation to window."""
-        if self._height_animation:
-            self._height_animation.stop()
-            self._height_animation = None
-        
-        current_height = current_geometry.height()
-        current_y = current_geometry.y()
-        
-        self._height_animation = QPropertyAnimation(self, b"geometry", self)
-        self._height_animation.setDuration(250)
-        self._height_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._height_animation.setStartValue(QRect(
-            current_geometry.x(), current_y,
-            current_geometry.width(), current_height
-        ))
-        self._height_animation.setEndValue(QRect(
+        target_geometry = QRect(
             current_geometry.x(), target_y,
             current_geometry.width(), target_height
-        ))
-        self._height_animation.start()
+        )
+        self._apply_geometry_animation(current_geometry, target_geometry, '_height_animation')
     
     def _adjust_window_width(self, stacks_count: int) -> None:
         """Adjust window width based on number of stacks."""
@@ -359,50 +395,30 @@ class DesktopWindow(QMainWindow):
     def _calculate_target_width(self, stacks_count: int) -> int:
         """Calculate target width for dock window based on stacks count."""
         if stacks_count == 0:
-            return 400
+            return self.DEFAULT_WINDOW_WIDTH
         
-        stack_width = 70
-        spacing = 12
-        margins = 72  # 32px (main_layout) + 40px (grid_layout)
-        escritorio_width = 70
-        ajustes_width = 70
-        separator_width = 1  # Separador es muy delgado
+        # Márgenes: main_layout + central_internal_layout + grid_layout
+        layout_margins = (self.MAIN_LAYOUT_MARGIN * 2) + (self.CENTRAL_LAYOUT_MARGIN * 2)
+        grid_margins = self.GRID_LAYOUT_LEFT_MARGIN + self.GRID_LAYOUT_RIGHT_MARGIN
+        total_margins = layout_margins + grid_margins
         
-        stacks_width = stacks_count * stack_width
-        # Spacing: entre escritorio y ajustes, entre ajustes y separador, entre separador y primer stack, y entre stacks
-        total_spacing = (stacks_count + 2) * spacing  # +2 por espacios entre escritorio-ajustes-separador-primer stack
+        stacks_width = stacks_count * self.STACK_TILE_WIDTH
+        # Spacing: entre escritorio-ajustes, ajustes-separador, separador-primer stack, entre stacks
+        # A la izquierda: después del separador hay spacing antes del primer stack
+        # A la derecha: el margin derecho del grid proporciona el espacio simétrico
+        # Total spacing: 3 espacios fijos + (stacks_count - 1) entre stacks = stacks_count + 2
+        total_spacing = (stacks_count + 2) * self.STACK_SPACING
         
-        return escritorio_width + ajustes_width + separator_width + stacks_width + total_spacing + margins
-        
-        # Check if width needs to change
-        if current_width == target_width:
-            return
-        
-        # Apply smooth width animation
-        self._apply_width_animation(current_geometry, target_width, new_x, current_height)
+        return (self.DESKTOP_TILE_WIDTH + self.SETTINGS_TILE_WIDTH + self.SEPARATOR_WIDTH + 
+                stacks_width + total_spacing + total_margins)
     
     def _apply_width_animation(self, current_geometry: QRect, target_width: int, new_x: int, current_height: int) -> None:
         """Apply smooth width animation to window."""
-        if self._width_animation:
-            self._width_animation.stop()
-            self._width_animation = None
-        
-        current_width = current_geometry.width()
-        current_x = current_geometry.x()
-        current_y = current_geometry.y()
-        
-        self._width_animation = QPropertyAnimation(self, b"geometry", self)
-        self._width_animation.setDuration(250)
-        self._width_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self._width_animation.setStartValue(QRect(
-            current_x, current_y,
-            current_width, current_height
-        ))
-        self._width_animation.setEndValue(QRect(
-            new_x, current_y,
+        target_geometry = QRect(
+            new_x, current_geometry.y(),
             target_width, current_height
-        ))
-        self._width_animation.start()
+        )
+        self._apply_geometry_animation(current_geometry, target_geometry, '_width_animation')
     
     def _open_file(self, file_path: str) -> None:
         """Open file with default system application."""
@@ -410,60 +426,40 @@ class DesktopWindow(QMainWindow):
             url = QUrl.fromLocalFile(file_path)
             QDesktopServices.openUrl(url)
     
-    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        """Capture drag enter events and propagate to FileViewContainer."""
-        print(f"[DESKTOP_WINDOW] dragEnterEvent capturado - window: {self.windowTitle()}, visible: {self.isVisible()}")
+    def _handle_drag_event(self, event: QDragEnterEvent | QDragMoveEvent | QDropEvent) -> bool:
+        """Handle common drag event logic and propagate to FileViewContainer."""
         mime_data = event.mimeData()
         if not mime_data.hasUrls():
             event.ignore()
-            return
+            return False
         
         # Aceptar el evento primero para que Windows sepa que esta ventana acepta drops
         event.setDropAction(Qt.DropAction.MoveAction)
         event.accept()
         
-        # Luego propagar al FileViewContainer si existe
+        # Propagar al FileViewContainer si existe
         if self._desktop_container:
-            print(f"[DESKTOP_WINDOW] Propagando dragEnter a FileViewContainer")
-            self._desktop_container.dragEnterEvent(event)
-        else:
-            print(f"[DESKTOP_WINDOW] WARNING: _desktop_container es None en dragEnterEvent")
+            if isinstance(event, QDragEnterEvent):
+                self._desktop_container.dragEnterEvent(event)
+            elif isinstance(event, QDragMoveEvent):
+                self._desktop_container.dragMoveEvent(event)
+            else:  # QDropEvent
+                self._desktop_container.dropEvent(event)
+            return True
+        
+        return False
+    
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        """Capture drag enter events and propagate to FileViewContainer."""
+        self._handle_drag_event(event)
     
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
         """Capture drag move events and propagate to FileViewContainer."""
-        mime_data = event.mimeData()
-        if not mime_data.hasUrls():
-            event.ignore()
-            return
-        
-        # Aceptar el evento primero con MoveAction
-        event.setDropAction(Qt.DropAction.MoveAction)
-        event.accept()
-        
-        # Luego propagar al FileViewContainer si existe
-        if self._desktop_container:
-            self._desktop_container.dragMoveEvent(event)
+        self._handle_drag_event(event)
     
     def dropEvent(self, event: QDropEvent) -> None:
         """Capture drop events and propagate to FileViewContainer."""
-        print(f"[DESKTOP_WINDOW] dropEvent capturado - window: {self.windowTitle()}, visible: {self.isVisible()}")
-        mime_data = event.mimeData()
-        if not mime_data.hasUrls():
-            event.ignore()
-            return
-        
-        # Aceptar el evento primero con MoveAction
-        event.setDropAction(Qt.DropAction.MoveAction)
-        event.accept()
-        
-        # Luego propagar al FileViewContainer si existe
-        if self._desktop_container:
-            print(f"[DESKTOP_WINDOW] Propagando drop a FileViewContainer")
-            self._desktop_container.dropEvent(event)
-        else:
-            print(f"[DESKTOP_WINDOW] ERROR: _desktop_container es None")
+        if not self._handle_drag_event(event):
             event.ignore()
     
-    def closeEvent(self, event) -> None:
-        """Handle window close event."""
-        super().closeEvent(event)
+    

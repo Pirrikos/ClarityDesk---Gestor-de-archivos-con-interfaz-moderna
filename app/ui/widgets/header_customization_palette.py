@@ -74,7 +74,7 @@ class HeaderCustomizationPalette(QWidget):
             }
             QLabel {
                 color: #1f1f1f;
-                font-size: 11px;
+                /* font-size: establecido explícitamente */
                 font-weight: 600;
                 padding: 8px 12px 4px 12px;
             }
@@ -85,7 +85,7 @@ class HeaderCustomizationPalette(QWidget):
                 padding: 6px 12px;
                 text-align: left;
                 color: #1f1f1f;
-                font-size: 12px;
+                /* font-size: establecido explícitamente */
             }
             QPushButton:hover {
                 background-color: #f0f0f3;
@@ -121,7 +121,7 @@ class HeaderCustomizationPalette(QWidget):
         for category_name, control_ids in categories:
             # Etiqueta de categoría
             cat_label = QLabel(category_name)
-            cat_label.setStyleSheet("color: #6e7681; font-size: 10px; font-weight: normal; padding-top: 8px;")
+            cat_label.setStyleSheet("color: #6e7681; /* font-size: establecido explícitamente */ font-weight: normal; padding-top: 8px;")
             layout.addWidget(cat_label)
             
             # Botones de controles

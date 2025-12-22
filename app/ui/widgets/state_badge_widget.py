@@ -11,6 +11,8 @@ from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QSize
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
 
+from app.ui.utils.font_manager import FontManager
+
 
 # State constants
 STATE_PENDING = "pending"      # 🟡 PENDIENTE
@@ -140,7 +142,7 @@ class StateBadgeWidget(QWidget):
         painter.drawRoundedRect(rect, 4, 4)
         
         # Draw white text
-        font = QFont("Segoe UI", 9, QFont.Weight.Bold)
+        font = FontManager.create_font("Segoe UI", FontManager.SIZE_SMALL, QFont.Weight.Bold)
         painter.setFont(font)
         painter.setPen(QColor(255, 255, 255))
         
