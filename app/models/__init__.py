@@ -5,7 +5,7 @@ Contains data models like FileOperationResult and other simple structures.
 No business logic, no Qt dependencies.
 """
 
-from app.models.email_session import EmailSession
+from app.models.file_box_session import FileBoxSession
 
-__all__ = ['EmailSession']
+__all__ = ['FileBoxSession']
 

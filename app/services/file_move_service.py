@@ -77,7 +77,7 @@ def copy_file(
     watcher: Optional[object] = None
 ) -> FileOperationResult:
     """
-    Copy a file to destination folder (used for email/attach operations).
+    Copy a file to destination folder (used for file box operations).
 
     Args:
         source: Full path to source file.

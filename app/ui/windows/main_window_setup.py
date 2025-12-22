@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout, QWidget, QSiz
 from app.core.constants import DEBUG_LAYOUT
 from app.core.logger import get_logger
 from app.ui.widgets.app_header import AppHeader
-from app.ui.widgets.email_history_panel import EmailHistoryPanel
+from app.ui.widgets.file_box_history_panel_sidebar import FileBoxHistoryPanelSidebar
 from app.ui.widgets.file_view_container import FileViewContainer
 from app.ui.widgets.file_view_sync import switch_view
 from app.ui.widgets.file_view_tabs import on_nav_back, on_nav_forward
@@ -28,7 +28,7 @@ SIDEBAR_BG = "#E8E8ED"
 SIDEBAR_BORDER = "rgba(0, 0, 0, 0.12)"
 
 
-def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, WorkspaceSelector, EmailHistoryPanel]:
+def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, WorkspaceSelector, FileBoxHistoryPanelSidebar]:
     try:
         root_layout = QVBoxLayout(window)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -74,7 +74,7 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
             }
         """)
         
-        # Content splitter: sidebar | file view | email panel
+        # Content splitter: sidebar | file view | file box panel
         content_splitter = QSplitter(Qt.Orientation.Horizontal, main_splitter)
         content_splitter.setChildrenCollapsible(False)
         content_splitter.setHandleWidth(4)
@@ -88,24 +88,22 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
             content_splitter
         )
         
-        # Email send panel (initially hidden)
-        from app.services.email_history_service import EmailHistoryService
-        from app.ui.widgets.email_send_panel import EmailSendPanel
-        email_panel_placeholder = QWidget(content_splitter)  # Placeholder, will be replaced
-        email_panel_placeholder.hide()
+        # File box panel (initially hidden)
+        file_box_panel_placeholder = QWidget(content_splitter)  # Placeholder, will be replaced
+        file_box_panel_placeholder.hide()
         
         content_splitter.addWidget(sidebar)
         content_splitter.addWidget(file_view_container)
-        content_splitter.addWidget(email_panel_placeholder)
+        content_splitter.addWidget(file_box_panel_placeholder)
         content_splitter.setStretchFactor(0, 0)
         content_splitter.setStretchFactor(1, 1)
         content_splitter.setStretchFactor(2, 0)
-        content_splitter.setSizes([200, 900, 0])  # Email panel starts with 0 width (hidden)
+        content_splitter.setSizes([200, 900, 0])  # File box panel starts with 0 width (hidden)
         
         # History panel (initially hidden)
-        from app.services.email_history_service import EmailHistoryService
-        history_service = EmailHistoryService()
-        history_panel = EmailHistoryPanel(history_service, main_splitter)
+        from app.services.file_box_history_service import FileBoxHistoryService
+        history_service = FileBoxHistoryService()
+        history_panel = FileBoxHistoryPanelSidebar(history_service, main_splitter)
         history_panel.hide()  # Initially hidden
         
         main_splitter.addWidget(content_splitter)
@@ -229,7 +227,7 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
                 main_splitter, workspace_selector, sidebar, file_view_container, size_grip_container
             )
 
-        return file_view_container, sidebar, window_header, app_header, workspace_selector, history_panel, content_splitter, email_panel_placeholder
+        return file_view_container, sidebar, window_header, app_header, workspace_selector, history_panel, content_splitter, file_box_panel_placeholder
         
     except Exception as e:
         logger = get_logger(__name__)
