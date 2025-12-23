@@ -31,9 +31,9 @@ class TabStateManager:
             Tuple of (tabs list, active index, needs_save flag).
         """
         tabs, index, needs_save = load_state(self._storage_path, validate_folder)
-        # Normalize all loaded tabs
-        normalized_tabs = [normalize_path(tab) for tab in tabs]
-        return normalized_tabs, index, needs_save
+        # NO normalizar al cargar - preservar paths originales (case-preserving)
+        # La normalización solo se usa para comparaciones internas
+        return tabs, index, needs_save
     
     def save_tabs_and_index(self, tabs: List[str], active_index: int) -> None:
         """
@@ -45,6 +45,23 @@ class TabStateManager:
         """
         save_state(self._storage_path, tabs, active_index)
     
+    def _validate_and_preserve_paths(self, paths: List[str]) -> List[str]:
+        """
+        Validar paths usando normalización pero preservar originales.
+        
+        Args:
+            paths: Lista de paths a validar.
+            
+        Returns:
+            Lista de paths originales válidos (case-preserving).
+        """
+        valid_paths = []
+        for path in paths:
+            normalized = normalize_path(path)
+            if validate_folder(normalized):
+                valid_paths.append(path)
+        return valid_paths
+    
     def build_app_state(
         self,
         tabs: List[str],
@@ -52,7 +69,8 @@ class TabStateManager:
         history: List[str],
         history_index: int,
         focus_tree_paths: List[str],
-        expanded_nodes: List[str]
+        expanded_nodes: List[str],
+        root_folders_order: Optional[List[str]] = None
     ) -> dict:
         """
         Build complete application state dict from current state.
@@ -64,43 +82,45 @@ class TabStateManager:
             history_index: Current history index.
             focus_tree_paths: List of paths in focus tree.
             expanded_nodes: List of expanded node paths.
+            root_folders_order: List of normalized root folder paths in visual order.
             
         Returns:
             State dict ready for persistence.
         """
-        # Normalize all paths
-        normalized_tabs = [normalize_path(tab) for tab in tabs]
-        normalized_active = normalize_path(active_tab_path) if active_tab_path else None
-        normalized_history = [normalize_path(path) for path in history]
-        normalized_tree_paths = [normalize_path(path) for path in focus_tree_paths]
-        normalized_expanded = [normalize_path(path) for path in expanded_nodes]
-        
-        return {
-            'open_tabs': normalized_tabs,
-            'active_tab': normalized_active,
-            'history': normalized_history,
+        # NO normalizar al guardar - preservar paths originales (case-preserving)
+        # Los paths ya vienen case-preserving desde TabManager
+        # La normalización solo se usa para comparaciones internas
+        # root_folders_order ya viene normalizado (solo para orden interno)
+        state = {
+            'open_tabs': tabs,
+            'active_tab': active_tab_path,
+            'history': history,
             'history_index': history_index,
-            'focus_tree_paths': normalized_tree_paths,
-            'expanded_nodes': normalized_expanded
+            'focus_tree_paths': focus_tree_paths,
+            'expanded_nodes': expanded_nodes
         }
+        if root_folders_order is not None:
+            state['root_folders_order'] = root_folders_order
+        return state
     
     def apply_app_state(self, state: dict) -> dict:
         """
         Apply saved application state, returning validated state.
         
-        Validates and normalizes all paths. Returns dict with:
-        - open_tabs: Validated and normalized tabs
-        - active_tab: Validated active tab (or None)
-        - history: Validated and normalized history
+        Validates paths using normalization but preserves original case.
+        Returns dict with:
+        - open_tabs: Validated tabs (case-preserving)
+        - active_tab: Validated active tab (case-preserving)
+        - history: Validated history (case-preserving)
         - history_index: Validated history index
-        - focus_tree_paths: Validated and normalized tree paths
-        - expanded_nodes: Validated and normalized expanded nodes
+        - focus_tree_paths: Validated tree paths (case-preserving)
+        - expanded_nodes: Validated expanded nodes (case-preserving)
         
         Args:
             state: State dict from load_app_state().
             
         Returns:
-            Validated state dict with normalized paths.
+            Validated state dict with case-preserving paths.
         """
         if not state:
             return {
@@ -112,31 +132,29 @@ class TabStateManager:
                 'expanded_nodes': []
             }
         
-        # Validate and normalize tabs
+        # Validate tabs (usar normalización solo para validar, preservar path original)
         open_tabs = state.get('open_tabs', [])
-        valid_tabs = []
-        for tab_path in open_tabs:
-            normalized = normalize_path(tab_path)
-            if validate_folder(normalized):
-                valid_tabs.append(normalized)
+        valid_tabs = self._validate_and_preserve_paths(open_tabs)
         
-        # Get active tab (normalized)
+        # Get active tab (preservar path original)
         active_tab = state.get('active_tab')
         if active_tab:
-            active_tab = normalize_path(active_tab)
-            # Ensure active tab is in valid tabs
-            if active_tab not in valid_tabs:
+            normalized_active = normalize_path(active_tab)
+            # Buscar el tab activo usando normalización para comparar
+            found = False
+            for tab in valid_tabs:
+                if normalize_path(tab) == normalized_active:
+                    active_tab = tab
+                    found = True
+                    break
+            if not found:
                 active_tab = valid_tabs[0] if valid_tabs else None
         elif valid_tabs:
             active_tab = valid_tabs[0]
         
-        # Validate and normalize history
+        # Validate history (preservar paths originales)
         history = state.get('history', [])
-        valid_history = []
-        for path in history:
-            normalized = normalize_path(path)
-            if validate_folder(normalized):
-                valid_history.append(normalized)
+        valid_history = self._validate_and_preserve_paths(history)
         
         # Validate history index
         history_index = state.get('history_index', -1)
@@ -145,23 +163,22 @@ class TabStateManager:
         else:
             history_index = -1
         
-        # Validate and normalize focus tree paths
+        # Validate focus tree paths (preservar paths originales)
         focus_tree_paths = state.get('focus_tree_paths', [])
-        valid_tree_paths = []
-        for path in focus_tree_paths:
-            normalized = normalize_path(path)
-            if validate_folder(normalized):
-                valid_tree_paths.append(normalized)
+        valid_tree_paths = self._validate_and_preserve_paths(focus_tree_paths)
         
-        # Validate and normalize expanded nodes
+        # Validate expanded nodes (preservar paths originales)
         expanded_nodes = state.get('expanded_nodes', [])
-        valid_expanded = []
-        for path in expanded_nodes:
-            normalized = normalize_path(path)
-            if validate_folder(normalized):
-                valid_expanded.append(normalized)
+        valid_expanded = self._validate_and_preserve_paths(expanded_nodes)
         
-        return {
+        # Validate root_folders_order (ya viene normalizado, solo validar existencia)
+        root_folders_order = state.get('root_folders_order', [])
+        valid_root_order = []
+        for normalized_path in root_folders_order:
+            if validate_folder(normalized_path):
+                valid_root_order.append(normalized_path)
+        
+        result = {
             'open_tabs': valid_tabs,
             'active_tab': active_tab,
             'history': valid_history,
@@ -169,6 +186,9 @@ class TabStateManager:
             'focus_tree_paths': valid_tree_paths,
             'expanded_nodes': valid_expanded
         }
+        if valid_root_order:
+            result['root_folders_order'] = valid_root_order
+        return result
     
     def load_app_state(self) -> Optional[dict]:
         """

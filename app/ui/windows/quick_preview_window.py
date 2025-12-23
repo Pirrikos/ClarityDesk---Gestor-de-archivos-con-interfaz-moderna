@@ -11,7 +11,7 @@ from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget, QStackedLayout, QProgressBar, QApplication
 
-from app.services.preview_service import PreviewService
+from app.services.preview_pdf_service import PreviewPdfService
 from app.ui.windows.quick_preview_cache import QuickPreviewCache
 from app.ui.windows.quick_preview_animations import QuickPreviewAnimations
 from app.ui.windows.quick_preview_thumbnails import QuickPreviewThumbnails
@@ -43,7 +43,7 @@ class QuickPreviewWindow(QWidget):
     
     def __init__(
         self,
-        preview_service: PreviewService,
+        preview_service: PreviewPdfService,
         file_path: str = None,
         file_paths: list[str] = None,
         start_index: int = 0,

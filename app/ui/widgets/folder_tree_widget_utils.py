@@ -8,7 +8,6 @@ from typing import Optional
 
 
 def find_tab_manager(widget) -> Optional[object]:
-    """Buscar TabManager en la cadena de padres del widget."""
     parent = widget.parent()
     while parent:
         if hasattr(parent, '_tab_manager'):
@@ -18,7 +17,6 @@ def find_tab_manager(widget) -> Optional[object]:
 
 
 def find_sidebar(widget) -> Optional[object]:
-    """Buscar FolderTreeSidebar en la cadena de padres del widget."""
     parent = widget.parent()
     while parent:
         if hasattr(parent, '_show_root_menu') and hasattr(parent, '_hovered_menu_index'):

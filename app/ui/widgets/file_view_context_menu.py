@@ -14,7 +14,8 @@ from PySide6.QtWidgets import QInputDialog, QMenu, QMessageBox, QWidget
 from app.core.logger import get_logger
 from app.managers.tab_manager import TabManager
 from app.services.folder_creation_service import create_folder
-from app.services.file_deletion_service import is_folder_empty, move_to_windows_recycle_bin
+from app.services.file_deletion_service import is_folder_empty
+from app.services.file_delete_service import delete_file
 from app.services.file_creation_service import (
     create_text_file,
     create_markdown_file,
@@ -130,7 +131,7 @@ def show_item_menu(
     # Acción: Mover a la papelera (siempre al final)
     move_to_trash_action = menu.addAction("Mover a la papelera")
     move_to_trash_action.triggered.connect(
-        lambda: _move_to_trash_dialog(widget, item_paths, on_refresh_callback)
+        lambda: _move_to_trash_dialog(widget, item_paths, tab_manager, on_refresh_callback)
     )
     
     # Mostrar menú en posición del evento
@@ -181,6 +182,7 @@ def _create_folder_dialog(
 def _move_to_trash_dialog(
     parent: QWidget,
     item_paths: list[str],
+    tab_manager: Optional[TabManager],
     on_refresh_callback: Optional[Callable[[], None]] = None
 ) -> None:
     """
@@ -189,6 +191,7 @@ def _move_to_trash_dialog(
     Args:
         parent: Parent widget for dialogs.
         item_paths: List of file/folder paths to move to trash.
+        tab_manager: TabManager instance to get watcher if available.
         on_refresh_callback: Optional callback to refresh view after deletion.
     """
     if not item_paths:
@@ -203,12 +206,18 @@ def _move_to_trash_dialog(
         if not confirmed:
             return
     
-    # Mover cada path a la papelera
+    # Mover cada path a la papelera usando delete_file con lógica contextual
     success_count = 0
     error_messages = []
     
+    # Obtener watcher del tab_manager si está disponible
+    watcher = None
+    if tab_manager and hasattr(tab_manager, 'get_watcher'):
+        watcher = tab_manager.get_watcher()
+    
     for path in item_paths:
-        result = move_to_windows_recycle_bin(path)
+        # Usar delete_file que maneja Desktop Focus, Trash Focus y carpetas normales
+        result = delete_file(path, watcher=watcher, is_trash_focus=False)
         if result.success:
             success_count += 1
         else:

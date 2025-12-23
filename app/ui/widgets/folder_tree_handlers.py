@@ -50,15 +50,7 @@ def resolve_folder_path(
 
 
 def handle_add_button_click(parent_widget) -> str:
-    """
-    Handle + button click - open folder picker.
-    
-    Args:
-        parent_widget: Parent widget for dialog.
-        
-    Returns:
-        Selected folder path, or None if cancelled.
-    """
+    """Abrir selector de carpeta al hacer click en botón +."""
     folder_path = QFileDialog.getExistingDirectory(
         parent_widget,
         "Select Folder",
@@ -74,17 +66,7 @@ def handle_context_menu(
     tree_view: QTreeView,
     model: QStandardItemModel
 ) -> str:
-    """
-    Handle context menu request on tree item.
-    
-    Args:
-        position: Menu position.
-        tree_view: QTreeView instance.
-        model: QStandardItemModel instance.
-        
-    Returns:
-        Folder path for context menu, or None if invalid.
-    """
+    """Obtener path de carpeta para menú contextual en item del árbol."""
     index = tree_view.indexAt(position)
     if not index.isValid():
         return None

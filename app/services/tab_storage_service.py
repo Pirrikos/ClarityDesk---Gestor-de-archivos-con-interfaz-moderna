@@ -34,13 +34,13 @@ def load_state(storage_path: Path, validate_func) -> tuple[List[str], int, bool]
 
 
 def _validate_tabs(tabs: List[str], validate_func) -> List[str]:
-    """Validate and filter existing folder tabs."""
+    """Validate and filter existing folder tabs, preserving original case."""
     valid_tabs = []
     for tab_path in tabs:
-        if validate_func(tab_path):
-            # Normalize using path_utils for consistency with TabManager
-            normalized = normalize_path(tab_path)
-            valid_tabs.append(normalized)
+        # Validar usando normalización pero preservar path original
+        normalized = normalize_path(tab_path)
+        if validate_func(normalized):
+            valid_tabs.append(tab_path)
     return valid_tabs
 
 
@@ -87,6 +87,7 @@ def load_app_state(storage_path: Path) -> Optional[dict]:
     - history_index: Current history index
     - focus_tree_paths: List of paths in focus tree
     - expanded_nodes: List of expanded node paths
+    - root_folders_order: List of normalized root folder paths in visual order (optional)
     
     Args:
         storage_path: Path to JSON storage file.
@@ -108,7 +109,8 @@ def load_app_state(storage_path: Path) -> Optional[dict]:
             'history': data.get('history', []),
             'history_index': data.get('history_index', -1),
             'focus_tree_paths': data.get('focus_tree_paths', []),
-            'expanded_nodes': data.get('expanded_nodes', [])
+            'expanded_nodes': data.get('expanded_nodes', []),
+            'root_folders_order': data.get('root_folders_order', [])
         }
         
         # If old format, derive active_tab from active_index
@@ -136,6 +138,7 @@ def save_app_state(storage_path: Path, state: dict) -> None:
             - history_index: Current history index
             - focus_tree_paths: List of paths in focus tree
             - expanded_nodes: List of expanded node paths
+            - root_folders_order: List of normalized root folder paths in visual order (optional)
     """
     try:
         # Backwards compatibility: incluir también 'tabs' y 'active_index'

@@ -65,8 +65,11 @@ def add_tab(
         return select_tab(manager, existing_index, tabs, active_index, history_manager, watcher, save_state_callback, watch_and_emit_callback)
 
     new_tabs = tabs.copy()
-    new_tabs.append(normalized_path)
+    # Guardar el path ORIGINAL (case-preserving) para presentación
+    # La normalización solo se usa para comparaciones internas
+    new_tabs.append(folder_path)
     new_active_index = len(new_tabs) - 1
+    # Para historial, usar path normalizado para consistencia interna
     history_manager.update_on_navigate(normalized_path, normalize_path)
     save_state_callback()
     

@@ -11,10 +11,19 @@ from app.ui.widgets.file_tile import FileTile
 
 
 def resize_event(view, event) -> None:
-    """Handle resize to recalculate grid columns."""
+    """Handle resize to recalculate grid columns with debouncing."""
     view.__class__.__bases__[0].resizeEvent(view, event)
-    if view._files:
-        view._refresh_tiles()
+    
+    # Debounce: solo procesar después de 150ms de quietud
+    # Esto evita reconstrucciones excesivas durante resize continuo
+    if not hasattr(view, '_resize_timer'):
+        view._resize_timer = QTimer()
+        view._resize_timer.setSingleShot(True)
+        view._resize_timer.timeout.connect(lambda: view._refresh_tiles() if view._files else None)
+    
+    # Cancelar timer anterior y reiniciar con nuevo delay
+    view._resize_timer.stop()
+    view._resize_timer.start(150)
 
 
 def on_stack_clicked(view, file_stack: FileStack) -> None:

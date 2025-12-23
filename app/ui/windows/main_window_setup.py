@@ -147,6 +147,9 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         app_header.state_button_clicked.connect(file_view_container._on_state_button_clicked)
         app_header.navigation_back.connect(lambda: on_nav_back(file_view_container))
         app_header.navigation_forward.connect(lambda: on_nav_forward(file_view_container))
+        
+        # Conectar secondary header con file view container
+        file_view_container.set_secondary_header(secondary_header)
 
         def apply_visual_separation():
             window_header.setStyleSheet("""

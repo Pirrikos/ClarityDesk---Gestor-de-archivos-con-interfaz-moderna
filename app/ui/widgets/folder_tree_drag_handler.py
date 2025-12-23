@@ -11,10 +11,23 @@ from PySide6.QtGui import QStandardItemModel
 from PySide6.QtWidgets import QAbstractItemView, QTreeView
 
 from app.services.file_move_service import move_file
+from app.services.path_utils import normalize_path
+
+
+def _is_invalid_drop_target(source_path: str, target_path: str) -> bool:
+    """
+    Verificar si el drop es inválido (mismo path o uno dentro del otro).
+    """
+    source_abs = normalize_path(os.path.abspath(source_path))
+    target_abs = normalize_path(os.path.abspath(target_path))
+    return (source_abs == target_abs or 
+            source_abs.startswith(target_abs + os.sep) or 
+            target_abs.startswith(source_abs + os.sep))
 
 
 def handle_drag_enter(event) -> None:
     """Handle drag enter on tree view."""
+    # Drag externo: solo acepta archivos/carpetas con URLs
     mime_data = event.mimeData()
     if mime_data.hasUrls():
         # Check if at least one valid file/folder
@@ -47,14 +60,12 @@ def handle_drag_move(event, tree_view: QTreeView, model: QStandardItemModel) -> 
     
     mime_data = event.mimeData()
     if mime_data.hasUrls():
-        # Validate that we're not dropping into source folder
+        # Validación: target debe ser carpeta válida, bloquear soltar dentro de sí misma
         for url in mime_data.urls():
             file_path = url.toLocalFile()
             if file_path and os.path.exists(file_path):
                 if os.path.isdir(file_path):
-                    source_abs = os.path.abspath(file_path)
-                    target_abs = os.path.abspath(target_path)
-                    if source_abs == target_abs or source_abs.startswith(target_abs + os.sep):
+                    if _is_invalid_drop_target(file_path, target_path):
                         event.ignore()
                         return
         event.accept()
@@ -62,19 +73,8 @@ def handle_drag_move(event, tree_view: QTreeView, model: QStandardItemModel) -> 
         event.ignore()
 
 
-def handle_drop(event, tree_view: QTreeView, model: QStandardItemModel, watcher=None) -> list[str]:
-    """
-    Handle file drop on tree node - move files to target folder.
-    
-    Args:
-        event: Drop event.
-        tree_view: QTreeView instance.
-        model: QStandardItemModel instance.
-        watcher: Optional FileSystemWatcherService to block events during move.
-        
-    Returns:
-        List of successfully moved file paths, empty if none moved.
-    """
+def handle_drop(event, tree_view: QTreeView, model: QStandardItemModel, watcher=None, path_to_item: dict[str, object] = None) -> list[str]:
+    """Mover archivos a carpeta destino al soltar en nodo del árbol."""
     target_path = get_drop_target_path(event, tree_view, model)
     if not target_path:
         return []
@@ -83,12 +83,29 @@ def handle_drop(event, tree_view: QTreeView, model: QStandardItemModel, watcher=
     if not mime_data.hasUrls():
         return []
     
+    # Validación centralizada: rechazar drag externo si el origen está en el sidebar
+    if path_to_item is not None:
+        normalized_target = normalize_path(os.path.abspath(target_path))
+        for url in mime_data.urls():
+            file_path = url.toLocalFile()
+            if file_path and os.path.exists(file_path):
+                normalized_source = normalize_path(os.path.abspath(file_path))
+                # Verificar si source está en el sidebar
+                if normalized_source in path_to_item:
+                    # Source está en el sidebar, rechazar drop completo
+                    return []
+                
+                # También verificar si el target está en el sidebar Y es diferente del source
+                # (esto previene mover carpetas del sidebar a otras carpetas del sidebar)
+                if normalized_target in path_to_item and normalized_source != normalized_target:
+                    # Intentando mover dentro del sidebar, rechazar
+                    return []
+    
     return _process_dropped_files(mime_data, target_path, watcher)
 
 
 def get_drop_target_path(event, tree_view: QTreeView, model: QStandardItemModel) -> str:
     """Get target folder path from drop event (public for reuse)."""
-    """Get target folder path from drop event."""
     tree_pos = tree_view.mapFromParent(event.pos())
     index = tree_view.indexAt(tree_pos)
     if not index.isValid():
@@ -106,17 +123,8 @@ def get_drop_target_path(event, tree_view: QTreeView, model: QStandardItemModel)
 
 
 def _process_dropped_files(mime_data, target_path: str, watcher=None) -> list[str]:
-    """
-    Process dropped files and return list of successfully moved paths.
-    
-    Args:
-        mime_data: MimeData from drop event.
-        target_path: Target folder path.
-        watcher: Optional FileSystemWatcherService to block events during move.
-        
-    Returns:
-        List of successfully moved file paths.
-    """
+    """Procesar archivos soltados y retornar lista de paths movidos exitosamente."""
+    # Drag externo: mover archivos al filesystem según origen
     moved_paths = []
     
     for url in mime_data.urls():
@@ -126,9 +134,7 @@ def _process_dropped_files(mime_data, target_path: str, watcher=None) -> list[st
         
         # Skip if trying to move folder into itself
         if os.path.isdir(file_path):
-            source_abs = os.path.abspath(file_path)
-            target_abs = os.path.abspath(target_path)
-            if source_abs == target_abs or source_abs.startswith(target_abs + os.sep):
+            if _is_invalid_drop_target(file_path, target_path):
                 continue
         
         # Check if file is from Desktop Focus

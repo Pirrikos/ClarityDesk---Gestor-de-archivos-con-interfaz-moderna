@@ -1,24 +1,57 @@
-from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt, QEasingCurve, QTimer, QVariantAnimation
-from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QMouseEvent, QPainter, QPen, QPolygon, QTransform
+from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, QSize, Qt, QEasingCurve, QTimer, QVariantAnimation
+from PySide6.QtGui import QBrush, QColor, QIcon, QMouseEvent, QPainter, QPen, QPolygon, QTransform
 from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QTreeView, QStyle
 
 from app.ui.widgets.folder_tree_menu_utils import calculate_menu_rect_viewport
 from app.ui.widgets.folder_tree_widget_utils import find_sidebar
 
 
-
 class FolderTreeSectionDelegate(QStyledItemDelegate):
     """Delegate de pintura para agrupar visualmente la sección activa como bloque tipo tarjeta."""
+
+    # Constantes para área de controles (tres puntitos + chevron)
+    CONTROLS_AREA_PAD_X_RIGHT = 10  # Separador vertical del sidebar
+    CONTROLS_AREA_PADDING = 4  # Padding interno
+    CONTROLS_AREA_OFFSET = 8  # Offset desde el texto
+    CONTROLS_AREA_BUTTON_SIZE = 24  # Tamaño del área de tres puntitos
+    CONTROLS_AREA_SEPARATOR_MARGIN = 12  # Margen antes del área de controles
+    
+    # Cálculo: separador_x = viewport_width - PAD_X_RIGHT - PADDING - OFFSET - BUTTON_SIZE - SEPARATOR_MARGIN
+    CONTROLS_AREA_TOTAL_OFFSET = (
+        CONTROLS_AREA_PAD_X_RIGHT + 
+        CONTROLS_AREA_PADDING + 
+        CONTROLS_AREA_OFFSET + 
+        CONTROLS_AREA_BUTTON_SIZE + 
+        CONTROLS_AREA_SEPARATOR_MARGIN
+    )  # = 58
+    
+    # Constantes para tres puntitos (menú)
+    MENU_BUTTON_SIZE = 24  # Área de clic del botón de menú
+    MENU_BUTTON_PADDING = 4  # Padding interno del botón
+    MENU_BUTTON_VERTICAL_OFFSET = 6  # Offset vertical desde el centro (hacia arriba)
+    MENU_BUTTON_MIN_TOP_MARGIN = 2  # Margen mínimo desde arriba
+    
+    # Constantes para chevron
+    CHEVRON_SIZE = 14  # Tamaño del chevron tipo Mac (aumentado para más elegancia)
+    CHEVRON_CLICKABLE_WIDTH = 32  # Ancho del área clickeable (izquierda y derecha)
+    CHEVRON_CLICKABLE_HEIGHT = 28  # Alto del área clickeable (especialmente hacia abajo)
+    CHEVRON_VERTICAL_SPACING = 18  # Espacio vertical debajo de los tres puntitos (aumentado para bajar posición)
+    CHEVRON_VERTICAL_OFFSET = 4  # Offset vertical adicional
+    
+    # Constantes para línea separadora vertical
+    SEPARATOR_VERTICAL_COLOR = QColor(255, 255, 255, 40)  # Blanco tenue
+    SEPARATOR_VERTICAL_MARGIN_TOP = 4
+    SEPARATOR_VERTICAL_MARGIN_BOTTOM = 4
+    SEPARATOR_VERTICAL_TEXT_MARGIN = 4  # Margen entre texto y línea para evitar solapamiento
+    
+    # Constantes para línea separadora horizontal (ya existente)
+    SEPARATOR_HORIZONTAL_COLOR = QColor(255, 255, 255, 23)  # rgba(255, 255, 255, 0.09)
 
     def __init__(self, tree_view: QTreeView):
         super().__init__(tree_view)
         self._view = tree_view
-        self._block_bg = QColor("#1A1D22")
         self._hover_bg = QColor("#23262D")
         self._selected_bg = QColor("#23262D")
-        self._text_color = QColor("#E6E6E6")
-        self._radius = 12
-        self._padding = 6
         
         self._animations: dict[object, dict] = {}
         self._setup_animation_tracking()
@@ -224,17 +257,28 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
     
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
-        # Apply animation effects
+        # Siempre obtener el ancho ACTUAL del viewport para evitar desplazamiento de líneas
+        viewport_width = self._view.viewport().width()
+        
+        # Verificar has_chevron una sola vez al inicio
+        item = index.model().itemFromIndex(index) if hasattr(index.model(), 'itemFromIndex') else None
+        has_chevron = item and item.rowCount() > 0
+        is_root = not index.parent().isValid()
+        should_draw_separator = has_chevron or is_root
+        
+        # Aplicar animaciones
         anim_data = self._animations.get(index)
         opacity = 1.0
         icon_rotation = 0.0
         chevron_rotation = None
         chevron_opacity = 1.0
         bg_highlight_opacity = 0.0
+        is_child_anim = False
+        is_chevron_anim = False
         
-        # Detectar si es animación de chevron (nodo padre) o de hijo
-        is_chevron_anim = anim_data and 'chevron_rotation' in anim_data
-        is_child_anim = anim_data and 'opacity' in anim_data and 'chevron_rotation' not in anim_data
+        if anim_data:
+            is_chevron_anim = 'chevron_rotation' in anim_data
+            is_child_anim = 'opacity' in anim_data and 'chevron_rotation' not in anim_data
         
         if is_chevron_anim:
             chevron_rotation = anim_data.get('chevron_rotation', None)
@@ -254,19 +298,15 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                 painter.setBrush(QBrush(highlight_color))
                 painter.drawRoundedRect(option.rect, 6, 6)
             
-            # Aplicar opacidad (solo para hijos)
-            if is_child_anim and opacity < 1.0:
-                painter.setOpacity(opacity)
-            
             # Calcular rectángulo para feedback (hover/selected) - estilo Finder exacto
-            # Finder: el área de selección empieza desde el borde izquierdo del viewport
-            # y tiene margen derecho claro antes del separador
-            pad_x_right = 10  # Margen derecho antes del separador (estilo Finder - más visible)
-            viewport_rect = self._view.viewport().rect()
-            left = 0  # Desde el borde izquierdo del viewport (estilo Finder - empieza en 0)
-            right = viewport_rect.width() - pad_x_right  # Hasta antes del separador (con margen estilo Finder)
-            top = option.rect.top()  # Coordenada Y del item
-            bottom = option.rect.bottom()  # Coordenada Y del item
+            # El hover cubre toda la línea incluyendo controles (chevron y tres puntitos)
+            pad_x_right = self.CONTROLS_AREA_PAD_X_RIGHT  # Padding del sidebar derecho
+            separator_x = self._calculate_separator_line_x(viewport_width)
+            left = 0  # Desde el borde izquierdo del viewport
+            # El hover siempre llega hasta el margen derecho, cubriendo controles
+            right = viewport_width - pad_x_right
+            top = option.rect.top()
+            bottom = option.rect.bottom()
             
             feedback_rect = None
             if right > left and bottom > top:
@@ -285,6 +325,31 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(QBrush(self._hover_bg))
                 painter.drawRect(feedback_rect)  # Rectángulo sin bordes redondeados - estilo Finder
+            
+            # Dibujar líneas separadoras ANTES de aplicar opacidad de animación
+            # para que siempre aparezcan con opacidad 1 (sin retraso visual)
+            separator_y = option.rect.bottom()
+            # Todas las líneas horizontales llegan hasta el final del viewport
+            horizontal_right = viewport_width - pad_x_right
+            
+            # Línea horizontal (siempre hasta el final)
+            painter.setPen(QPen(self.SEPARATOR_HORIZONTAL_COLOR, 1))
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            painter.drawLine(0, separator_y, horizontal_right, separator_y)
+            
+            # Línea vertical (solo si hay controles)
+            if should_draw_separator:
+                painter.setPen(QPen(self.SEPARATOR_VERTICAL_COLOR, 1))
+                painter.drawLine(
+                    int(separator_x), 
+                    int(option.rect.top() + self.SEPARATOR_VERTICAL_MARGIN_TOP), 
+                    int(separator_x), 
+                    int(option.rect.bottom() - self.SEPARATOR_VERTICAL_MARGIN_BOTTOM)
+                )
+            
+            # Aplicar opacidad DESPUÉS de dibujar las líneas (solo para hijos en animación)
+            if is_child_anim and opacity < 1.0:
+                painter.setOpacity(opacity)
             
             # Aplicar rotación del icono (solo al icono, después de pintar el fondo)
             if abs(icon_rotation) > 0.01:
@@ -310,6 +375,16 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             has_icon = icon and isinstance(icon, QIcon) and not icon.isNull()
             is_subfolder = index.parent().isValid()
             
+            # Establecer color diferente para raíces (más fuerte) e hijas (más claro)
+            palette = option.palette
+            if is_subfolder:
+                # Carpetas hijas: gris más claro (más tenue)
+                palette.setColor(palette.ColorRole.Text, QColor("#B0B5BA"))  # Gris claro
+            else:
+                # Carpetas raíz: gris más fuerte (más visible)
+                palette.setColor(palette.ColorRole.Text, QColor("#E6E6E6"))  # Gris más fuerte
+            option.palette = palette
+            
             original_rect = option.rect
             if not has_icon and is_subfolder:
                 icon_size = self._view.iconSize()
@@ -317,24 +392,25 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                     icon_space = icon_size.width() + 4
                     option.rect = option.rect.adjusted(icon_space, 0, 0, 0)
             
+            # Recortar el texto para que no sobrepase la línea separadora
+            if should_draw_separator:
+                text_clip_right = separator_x - self.SEPARATOR_VERTICAL_TEXT_MARGIN
+                if option.rect.right() > text_clip_right:
+                    option.rect.setRight(text_clip_right)
+            
             super().paint(painter, option, index)
             option.state = original_state
             option.rect = original_rect
             
-            # NO pintar chevron personalizado - usar flechas básicas de Qt
-            # (Qt las pintará automáticamente con setRootIsDecorated(True))
+            # Pintar chevron blanco al lado derecho si el item tiene hijos
+            if has_chevron:
+                is_expanded = self._view.isExpanded(index)
+                rotation = 90.0 if is_expanded else 0.0
+                self._paint_chevron_right(painter, option, index, rotation, chevron_opacity)
             
             # Pintar tres puntitos solo en carpetas raíz (sin padre)
-            if not index.parent().isValid():
+            if is_root:
                 self._paint_menu_button(painter, option, index)
-            
-            # Dibujar línea blanca separadora al final de cada item (después del contenido)
-            separator_y = option.rect.bottom()
-            separator_left = 0  # Desde el borde izquierdo del viewport
-            separator_right = viewport_rect.width() - pad_x_right  # Hasta antes del separador vertical
-            separator_color = QColor(255, 255, 255, 23)  # rgba(255, 255, 255, 0.09) - paleta Raycast
-            painter.setPen(QPen(separator_color, 1))
-            painter.drawLine(separator_left, separator_y, separator_right, separator_y)
             
             # Restaurar estado del icono si se aplicó rotación
             if abs(icon_rotation) > 0.01:
@@ -355,8 +431,8 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             sidebar = find_sidebar(self._view)
             is_hovered = sidebar and sidebar._hovered_menu_index == index if sidebar else False
             
-            dot_color = QColor(self._text_color)
-            dot_color.setAlpha(255 if is_hovered else 180)
+            dot_color = QColor(255, 255, 255)  # Color blanco
+            dot_color.setAlpha(255 if is_hovered else 200)  # Ligeramente más transparente cuando no está hover
             
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setPen(Qt.PenStyle.NoPen)
@@ -364,7 +440,7 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             
             dot_radius = 2.0
             dot_spacing = 4
-            center_y = menu_rect_abs.center().y() - 2
+            center_y = menu_rect_abs.center().y() - 4  # Subido 4px más para alineación visual (mantener offset visual)
             start_x = menu_rect_abs.center().x() - dot_spacing
             
             for i in range(3):
@@ -375,33 +451,27 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
     
     def _get_menu_button_rect(self, option: QStyleOptionViewItem, index) -> QRect:
         # Retorna coordenadas RELATIVAS a option.rect (no absolutas del viewport)
-        # Obtener rectángulo del texto para posicionar el botón al lado del texto
-        style = self._view.style()
-        text_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, self._view)
+        # Usar constantes centralizadas
+        button_size = self.MENU_BUTTON_SIZE
         
-        # Calcular posición del botón de forma más robusta
-        button_size = 24  # Área de clic más grande
-        padding = 4
-        
-        # Calcular right en coordenadas absolutas primero
-        if text_rect.isValid():
-            right_abs = text_rect.right() - padding
-        else:
-            # Fallback: calcular basado en el rect del item
-            right_abs = option.rect.right() - padding - 8
-        
-        # Asegurar que no se salga del rect del item
-        right_abs = min(right_abs, option.rect.right() - padding)
+        # Calcular posición desde el borde derecho del viewport para alineación consistente
+        # Los tres puntitos deben estar a la derecha de la línea separadora
+        # Línea está en: viewport_width - TOTAL_OFFSET (58)
+        # Tres puntitos deben estar en: viewport_width - PAD_X_RIGHT - PADDING - OFFSET (22)
+        viewport_width = self._view.viewport().width()
+        right_abs = viewport_width - self.CONTROLS_AREA_PAD_X_RIGHT - self.CONTROLS_AREA_PADDING - self.CONTROLS_AREA_OFFSET
         
         # Convertir a coordenadas RELATIVAS a option.rect
+        # right_abs es coordenada absoluta del viewport, convertir a relativa del item
         left_rel = right_abs - button_size - option.rect.left()
-        left_rel = max(0, left_rel)  # No salirse por la izquierda
+        # Asegurar que no se salga del rect del item por la izquierda (pero permitir que se extienda más allá del right si es necesario para alineación)
+        left_rel = max(0, left_rel)
         
-        # Posición vertical: centrado pero un poco más arriba (RELATIVA)
+        # Posición vertical: más arriba en la esquina (RELATIVA)
         item_height = option.rect.height()
-        center_y_rel = (item_height // 2) - 2  # Subido 2px desde el centro
+        center_y_rel = (item_height // 2) - self.MENU_BUTTON_VERTICAL_OFFSET
         top_rel = center_y_rel - button_size // 2
-        top_rel = max(0, top_rel)  # No salirse por arriba
+        top_rel = max(self.MENU_BUTTON_MIN_TOP_MARGIN, top_rel)  # Mínimo desde arriba para mantener margen
         bottom_rel = min(item_height, top_rel + button_size)  # No salirse por abajo
         
         # Ajustar height si se recortó
@@ -410,22 +480,77 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         # Retornar coordenadas RELATIVAS a option.rect
         return QRect(left_rel, top_rel, button_size, height)
     
-    def _paint_chevron(self, painter: QPainter, option: QStyleOptionViewItem, index, rotation: float, opacity: float) -> None:
-        """Pintar chevron con rotación y fade (sin modificar geometría)."""
-        style = self._view.style()
-        deco_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemDecoration, option, self._view)
-        
-        if not deco_rect.isValid():
-            icon_left = option.rect.left() + 16
+    def _calculate_chevron_center(self, option: QStyleOptionViewItem, index: QModelIndex) -> tuple[int, int]:
+        """
+        Calcular posición central del chevron (center_x, center_y).
+        Usado tanto para dibujo como para área clickeable para asegurar alineación perfecta.
+        """
+        menu_rect = self._get_menu_button_rect(option, index)
+        if not menu_rect.isValid():
+            # Fallback si no hay menú (para items que no son raíz)
+            style = self._view.style()
+            text_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, self._view)
+            if text_rect.isValid():
+                center_x = text_rect.right() - self.CONTROLS_AREA_OFFSET
+            else:
+                center_x = option.rect.right() - self.CONTROLS_AREA_BUTTON_SIZE
+            item_height = option.rect.height()
+            center_y = (item_height // 2) + self.CHEVRON_VERTICAL_OFFSET
         else:
-            icon_left = deco_rect.left()
+            menu_rect_abs = calculate_menu_rect_viewport(menu_rect, option.rect)
+            # Misma posición X que los tres puntitos (centrado)
+            center_x = menu_rect_abs.center().x()
+            # Posición Y: más separado debajo de los tres puntitos
+            # Los tres puntitos están en: menu_rect_abs.center().y() - 4
+            dot_radius = 2.0
+            center_y = menu_rect_abs.center().y() - 4 + dot_radius + self.CHEVRON_VERTICAL_SPACING
         
-        chevron_size = 10  # Tamaño del chevron (10px, más grande)
-        spacing = 4  # Espacio entre chevron e icono
+        return center_x, center_y
+    
+    def _get_chevron_clickable_rect(self, option: QStyleOptionViewItem, index: QModelIndex) -> QRect:
+        """
+        Calcular el área clickeable del chevron en coordenadas RELATIVAS a option.rect.
+        Usa _calculate_chevron_center() para asegurar alineación perfecta con el dibujo.
+        """
+        clickable_width = self.CHEVRON_CLICKABLE_WIDTH
+        clickable_height = self.CHEVRON_CLICKABLE_HEIGHT
         
-        # Posicionar chevron a la izquierda del icono
-        center_x = icon_left - spacing - chevron_size // 2
-        center_y = option.rect.center().y()
+        # Usar método centralizado para calcular posición
+        center_x, center_y = self._calculate_chevron_center(option, index)
+        
+        # Calcular área clickeable centrada en center_x, center_y
+        # Área aumentada hacia abajo, izquierda y derecha para facilitar el click
+        chevron_x_rel = center_x - option.rect.left() - clickable_width // 2
+        chevron_y_rel = center_y - option.rect.top() - 8  # Desplazado hacia arriba para que el área se extienda más hacia abajo
+        
+        # Asegurar que el área clickeable esté dentro del área de controles (a la derecha de la línea)
+        viewport_width = self._view.viewport().width()
+        line_x = self._calculate_separator_line_x(viewport_width)
+        line_x_rel = line_x - option.rect.left()
+        
+        # Asegurar que el área clickeable esté a la derecha de la línea
+        if chevron_x_rel < line_x_rel + 2:
+            chevron_x_rel = line_x_rel + 2
+        
+        # Asegurar que el área no se salga del rect del item
+        chevron_x_rel = max(chevron_x_rel, 0)
+        chevron_y_rel = max(chevron_y_rel, 0)
+        
+        # Ajustar tamaño si se sale del rect
+        available_width = option.rect.width() - chevron_x_rel
+        available_height = option.rect.height() - chevron_y_rel
+        clickable_width = min(clickable_width, available_width)
+        clickable_height = min(clickable_height, available_height)
+        
+        # Retornar coordenadas RELATIVAS a option.rect
+        return QRect(chevron_x_rel, chevron_y_rel, clickable_width, clickable_height)
+    
+    def _paint_chevron_right(self, painter: QPainter, option: QStyleOptionViewItem, index, rotation: float, opacity: float) -> None:
+        """Pintar chevron blanco elegante tipo Mac debajo de los tres puntitos."""
+        chevron_size = self.CHEVRON_SIZE
+        
+        # Usar método centralizado para calcular posición (mismo que área clickeable)
+        center_x, center_y = self._calculate_chevron_center(option, index)
         
         painter.save()
         try:
@@ -440,25 +565,45 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             chevron_transform.translate(-center_x, -center_y)
             painter.setTransform(chevron_transform, combine=True)
             
-            # Pintar chevron como triángulo (▶ cuando colapsado, ▼ cuando expandido)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setPen(QPen(self._text_color, 1.5))
-            painter.setBrush(QBrush(self._text_color))
+            # Color gris claro elegante tipo Mac
+            chevron_color = QColor("#D0D5DA")
+            chevron_color.setAlpha(int(255 * opacity))
             
-            # Triángulo apuntando a la derecha (▶), rotado según el estado
-            # Base: triángulo pequeño que apunta a la derecha
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            
+            # Chevron hueco: solo contorno, sin relleno - estilo Mac elegante
+            pen_width = 2.0  # Grosor del contorno aumentado para más presencia y elegancia
+            chevron_pen = QPen(chevron_color, pen_width)
+            chevron_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            chevron_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(chevron_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)  # Sin relleno
+            
+            # Diseño elegante tipo Mac: chevron más ancho y equilibrado
+            # Estilo SF Symbols de macOS: proporciones más generosas y elegantes
             half_size = chevron_size * 0.5
-            points = [
-                (center_x - half_size * 0.4, center_y - half_size),  # Izquierda arriba
-                (center_x - half_size * 0.4, center_y + half_size),  # Izquierda abajo
-                (center_x + half_size * 0.6, center_y)  # Punta derecha
-            ]
+            # Proporciones tipo Mac mejoradas: más ancho y elegante
+            width_factor = 0.65  # Ancho aumentado para más presencia (antes 0.5)
+            height_factor = 0.9  # Altura ligeramente aumentada para mejor proporción
             
-            polygon = QPolygon([QPoint(int(p[0]), int(p[1])) for p in points])
-            painter.drawPolygon(polygon)
+            # Puntos para el chevron (sin base): solo dos líneas en V más anchas
+            # Lado izquierdo más separado para crear un chevron más ancho
+            left_offset = half_size * width_factor
+            top_left = QPoint(int(center_x - left_offset), int(center_y - half_size * height_factor))  # Izquierda arriba
+            bottom_left = QPoint(int(center_x - left_offset), int(center_y + half_size * height_factor))  # Izquierda abajo
+            # Punta derecha más pronunciada y equilibrada
+            tip_right = QPoint(int(center_x + half_size * 0.7), int(center_y))  # Punta derecha más ancha y elegante
+            
+            # Dibujar solo las dos líneas del chevron (sin la base)
+            painter.drawLine(top_left, tip_right)  # Línea superior
+            painter.drawLine(tip_right, bottom_left)  # Línea inferior
         finally:
             painter.restore()
 
+    def _calculate_separator_line_x(self, viewport_width: int) -> int:
+        """Calcular posición X de la línea separadora desde el borde derecho del viewport."""
+        return viewport_width - self.CONTROLS_AREA_TOTAL_OFFSET
+    
     def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:
         """Mantener tamaño estándar; delegar en comportamiento por defecto."""
         return super().sizeHint(option, index)

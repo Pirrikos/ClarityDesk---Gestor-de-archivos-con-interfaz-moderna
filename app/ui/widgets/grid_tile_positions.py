@@ -103,10 +103,18 @@ def add_tile_to_normal_grid(
             
             # Agregar tiles de archivos de esta categoría
             for idx, file_path in enumerate(files):
-                tile = create_file_tile(
-                    file_path, view, view._icon_service, view._state_manager,
-                    dock_style=view._is_desktop_window
-                )
+                # Reutilizar tile del cache si existe, sino crear nuevo
+                if file_path in view._tile_cache:
+                    tile = view._tile_cache[file_path]
+                    # Resetear estado visual (selección, animaciones)
+                    tile.set_selected(False)
+                    tile.setParent(view._content_widget)
+                else:
+                    tile = create_file_tile(
+                        file_path, view, view._icon_service, view._state_manager,
+                        dock_style=view._is_desktop_window
+                    )
+                    view._tile_cache[file_path] = tile
                 file_row = idx // columns
                 file_col = (idx % columns) + col_offset
                 grid_layout.addWidget(tile, current_row + file_row, file_col)
@@ -122,10 +130,18 @@ def add_tile_to_normal_grid(
                 tile.stack_clicked.connect(view._on_stack_clicked)
                 tile.open_file.connect(view.open_file.emit)
             else:
-                tile = create_file_tile(
-                    item, view, view._icon_service, view._state_manager,
-                    dock_style=view._is_desktop_window
-                )
+                # Reutilizar tile del cache si existe, sino crear nuevo
+                if item in view._tile_cache:
+                    tile = view._tile_cache[item]
+                    # Resetear estado visual (selección, animaciones)
+                    tile.set_selected(False)
+                    tile.setParent(view._content_widget)
+                else:
+                    tile = create_file_tile(
+                        item, view, view._icon_service, view._state_manager,
+                        dock_style=view._is_desktop_window
+                    )
+                    view._tile_cache[item] = tile
             row = idx // columns
             col = (idx % columns) + col_offset
             grid_layout.addWidget(tile, row, col)

@@ -43,7 +43,7 @@ def handle_tile_drag(
         True if drag was initiated, False otherwise.
     """
     distance = (mouse_pos - drag_start_position).manhattanLength()
-    if distance <= 3:
+    if distance <= 4:
         return False
 
     # Use all_files if provided (for stacks), otherwise get from selected tiles

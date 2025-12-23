@@ -81,7 +81,8 @@ class WorkspaceManager(QObject):
             'tabs': [],
             'active_tab': None,
             'focus_tree_paths': [],
-            'expanded_nodes': []
+            'expanded_nodes': [],
+            'root_folders_order': []
         })
         
         self.workspace_created.emit(workspace_id)
@@ -167,6 +168,7 @@ class WorkspaceManager(QObject):
         active_tab = state.get('active_tab') if state else None
         focus_paths = state.get('focus_tree_paths', []) if state else []
         expanded_nodes = state.get('expanded_nodes', []) if state else []
+        root_folders_order = state.get('root_folders_order') if state else None
         
         # Cargar estado en TabManager sin emitir señales
         tab_manager.load_workspace_state({
@@ -176,7 +178,7 @@ class WorkspaceManager(QObject):
         
         # Reconstruir sidebar explícitamente una sola vez desde aquí
         # (El reseteo visual se hace dentro de restore_tree con señales bloqueadas)
-        sidebar.load_workspace_state(focus_paths, expanded_nodes)
+        sidebar.load_workspace_state(focus_paths, expanded_nodes, root_folders_order)
         
         # Reconectar señales
         if signal_controller and hasattr(signal_controller, 'reconnect_signals'):
@@ -216,13 +218,15 @@ class WorkspaceManager(QObject):
         
         # Recopilar estado de Sidebar
         sidebar_paths, sidebar_expanded = sidebar.get_current_state()
+        root_folders_order = sidebar.get_root_folders_order()
         
         # Construir estado completo
         state = {
             'tabs': tab_state.get('tabs', []),
             'active_tab': tab_state.get('active_tab'),
             'focus_tree_paths': sidebar_paths,
-            'expanded_nodes': sidebar_expanded
+            'expanded_nodes': sidebar_expanded,
+            'root_folders_order': root_folders_order
         }
         
         # Persistir estado

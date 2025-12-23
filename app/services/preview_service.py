@@ -1,8 +1,8 @@
 """
-PreviewService - File preview generation.
+PreviewService - File preview generation utilities.
 
-Handles file preview generation including scaling and SVG fallback logic.
-Supports real PDF and DOCX rendering via PDF conversion.
+Provides utility functions for file preview generation including scaling and SVG fallback logic.
+For PDF/DOCX preview rendering, use PreviewPdfService directly.
 """
 
 import os
@@ -26,9 +26,6 @@ from app.services.icon_extraction_fallbacks import (
 from app.services.windows_icon_extractor import get_icon_via_imagelist
 from app.services.preview_scaling import scale_pixmap_to_size, scale_if_needed
 
-# Import PreviewPdfService and create alias for compatibility
-from app.services.preview_pdf_service import PreviewPdfService
-PreviewService = PreviewPdfService  # Alias for backward compatibility
 
 
 def get_file_preview(

@@ -10,6 +10,7 @@ normalization, use IconRenderService.
 """
 
 import os
+import time
 from collections import deque
 from typing import Callable, List, Optional, Tuple
 
@@ -45,6 +46,9 @@ class IconService:
         self._cache_access_counter = 0  # Counter for LRU ordering
         self._active_workers: List[IconBatchWorker] = []  # Lista de workers activos
         self._pending_jobs: deque = deque()  # Cola de trabajos pendientes
+        # Cache de timestamps de verificación de mtime (optimización)
+        self._mtime_cache_timestamp: dict[str, float] = {}  # Última vez que se verificó mtime
+        self._mtime_check_interval: float = 5.0  # Verificar mtime máximo cada 5 segundos
 
     def get_file_icon(self, file_path: str, size: QSize = None) -> QIcon:
         """Get native Windows icon for a file."""
@@ -58,9 +62,22 @@ class IconService:
         
         # Check cache validity: verify file mtime hasn't changed
         if cache_key in self._icon_cache:
+            # Optimización: solo verificar mtime si pasó tiempo suficiente desde última verificación
+            last_check = self._mtime_cache_timestamp.get(cache_key, 0)
+            current_time = time.time()
+            
+            if current_time - last_check < self._mtime_check_interval:
+                # Aún dentro del intervalo, usar cache sin verificar mtime
+                self._cache_access_counter += 1
+                self._icon_cache_access[cache_key] = self._cache_access_counter
+                return self._icon_cache[cache_key]
+            
+            # Verificar mtime solo si pasó tiempo suficiente
             cached_mtime = self._icon_cache_mtime.get(cache_key, 0)
             try:
                 current_mtime = os.path.getmtime(file_path)
+                self._mtime_cache_timestamp[cache_key] = current_time  # Actualizar timestamp de verificación
+                
                 if current_mtime == cached_mtime:
                     # Actualizar acceso LRU
                     self._cache_access_counter += 1
@@ -294,6 +311,8 @@ class IconService:
             del self._icon_cache_access[cache_key]
         if cache_key in self._icon_cache_size:
             del self._icon_cache_size[cache_key]
+        if cache_key in self._mtime_cache_timestamp:
+            del self._mtime_cache_timestamp[cache_key]
     
     def _ensure_cache_space(self, new_entry_size: int) -> None:
         """
@@ -327,6 +346,7 @@ class IconService:
         self._icon_cache_mtime.clear()
         self._icon_cache_access.clear()
         self._icon_cache_size.clear()
+        self._mtime_cache_timestamp.clear()
         self._cache_access_counter = 0
     
     def cancel_all_workers(self) -> None:

@@ -17,7 +17,7 @@ from app.services.desktop_path_helper import is_desktop_focus
 from app.services.file_open_service import open_file_with_system
 from app.services.icon_service import IconService
 from app.services.path_utils import normalize_path
-from app.services.preview_service import PreviewService
+from app.services.preview_pdf_service import PreviewPdfService
 from app.ui.windows.desktop_window import DesktopWindow
 from app.ui.windows.main_window_file_handler import filter_previewable_files
 from app.ui.windows.main_window_setup import setup_ui
@@ -51,7 +51,7 @@ class MainWindow(QWidget):
             self._tab_manager = tab_manager
             self._workspace_manager = workspace_manager
             self._icon_service = IconService()
-            self._preview_service = PreviewService(self._icon_service)
+            self._preview_service = PreviewPdfService(self._icon_service)
             self._current_preview_window = None
             self._is_initializing = True
             
@@ -125,6 +125,10 @@ class MainWindow(QWidget):
             watcher.folder_renamed.connect(self._sidebar.update_focus_path)
             watcher.folder_disappeared.connect(self._on_folder_disappeared)
             watcher.structural_change_detected.connect(self._on_structural_change_detected)
+            
+            # Nuevas conexiones para actualización granular
+            watcher.folder_created.connect(self._on_folder_created)
+            watcher.folder_deleted.connect(self._on_folder_deleted)
         
         self._workspace_selector.workspace_selected.connect(self._on_workspace_selected)
         self._workspace_manager.workspace_changed.connect(self._on_workspace_changed)
@@ -132,6 +136,9 @@ class MainWindow(QWidget):
         # File box signals
         self._app_header.file_box_button_clicked.connect(self._on_file_box_button_clicked)
         self._app_header.history_panel_toggle_requested.connect(self._on_history_panel_toggle)
+        
+        # Secondary header signals
+        self._secondary_header.rename_clicked.connect(self._file_view_container._on_rename_clicked)
 
     def _load_app_state(self) -> None:
         """Load complete application state and restore UI."""
@@ -158,7 +165,8 @@ class MainWindow(QWidget):
             
             self._sidebar.load_workspace_state(
                 state.get('focus_tree_paths', []),
-                state.get('expanded_nodes', [])
+                state.get('expanded_nodes', []),
+                state.get('root_folders_order')
             )
         else:
             self._tab_manager.load_workspace_state({
@@ -264,27 +272,76 @@ class MainWindow(QWidget):
         if not folder_path:
             return
         
-        normalized_path = os.path.normpath(folder_path)
+        normalized_path = normalize_path(folder_path)
         
         if normalized_path not in self._sidebar._path_to_item:
             return
         
         tabs = self._tab_manager.get_tabs()
-        normalized_tabs = {os.path.normpath(tab) for tab in tabs}
+        normalized_tabs = {normalize_path(tab) for tab in tabs}
         
         if normalized_path in normalized_tabs:
             self._schedule_sidebar_sync(structural=True)
         else:
             self._sidebar.remove_focus_path(normalized_path)
     
+    def _get_folder_children(self, folder_path: str) -> set[str]:
+        """
+        Obtener lista de hijos (carpetas) de una carpeta.
+        
+        Returns:
+            Set de paths normalizados de carpetas hijas.
+        """
+        children = set()
+        try:
+            if os.path.isdir(folder_path):
+                for item_name in os.listdir(folder_path):
+                    item_path = os.path.join(folder_path, item_name)
+                    if os.path.isdir(item_path):
+                        children.add(normalize_path(item_path))
+        except (OSError, PermissionError):
+            pass
+        return children
+    
     def _on_structural_change_detected(self, watched_folder: str) -> None:
         """
-        Handle structural changes detected (moves between parents).
+        Actualizar solo la carpeta afectada en el sidebar.
         
-        Disabled to prevent sidebar flash when creating/deleting files/folders.
-        Sidebar syncs only when tabs change explicitly.
+        Si la carpeta está en el sidebar, sincroniza solo sus hijos.
         """
-        pass
+        normalized_watched = normalize_path(watched_folder)
+        
+        if self._sidebar.has_path(normalized_watched):
+            # Obtener hijos reales del filesystem (una sola vez)
+            real_children = self._get_folder_children(normalized_watched)
+            
+            # Pedir al sidebar que sincronice solo este nodo
+            self._sidebar.sync_children(normalized_watched, real_children)
+    
+    def _on_folder_created(self, folder_path: str) -> None:
+        """
+        Manejar creación de carpeta: agregar al sidebar si su padre existe.
+        """
+        normalized_path = normalize_path(folder_path)
+        parent_path = os.path.dirname(normalized_path)
+        normalized_parent = normalize_path(parent_path)
+        
+        # Solo agregar si el padre existe en el sidebar
+        if self._sidebar.has_path(normalized_parent):
+            # Verificar que la carpeta realmente existe
+            if os.path.exists(normalized_path) and os.path.isdir(normalized_path):
+                # Obtener hijos reales del padre para sincronización completa
+                real_children = self._get_folder_children(normalized_parent)
+                self._sidebar.sync_children(normalized_parent, real_children)
+    
+    def _on_folder_deleted(self, folder_path: str) -> None:
+        """
+        Manejar eliminación de carpeta: eliminar del sidebar si existe.
+        """
+        normalized_path = normalize_path(folder_path)
+        
+        if self._sidebar.has_path(normalized_path):
+            self._sidebar.remove_path(normalized_path)
     
     def _schedule_sidebar_sync(self, structural: bool = False) -> None:
         if not hasattr(self, '_sidebar_sync_timer'):
@@ -329,29 +386,20 @@ class MainWindow(QWidget):
             return Qt.Edges()
     
     def _resync_sidebar_from_tabs(self) -> None:
-        expanded_paths = self._sidebar.get_expanded_paths()
+        """
+        Asegurar que todos los tabs raíz existen en el sidebar.
         
-        self._sidebar._tree_view.setUpdatesEnabled(False)
-        try:
-            all_paths = list(self._sidebar._path_to_item.keys())
-            for path in all_paths:
-                self._sidebar.remove_focus_path(path)
-            
-            tabs = self._tab_manager.get_tabs()
-            for tab_path in tabs:
-                normalized_tab = os.path.normpath(tab_path)
-                if os.path.exists(normalized_tab) and os.path.isdir(normalized_tab):
-                    self._sidebar.add_focus_path(normalized_tab)
-        finally:
-            self._sidebar._tree_view.setUpdatesEnabled(True)
+        Método idempotente e incremental: solo añade tabs que faltan,
+        no borra ni reconstruye nada.
+        """
+        tabs = self._tab_manager.get_tabs()
         
-        for path in expanded_paths:
-            normalized_path = os.path.normpath(path)
-            if normalized_path in self._sidebar._path_to_item:
-                item = self._sidebar._path_to_item[normalized_path]
-                index = self._sidebar._model.indexFromItem(item)
-                if index.isValid():
-                    self._sidebar._tree_view.expand(index)
+        # Solo añadir tabs raíz que no existen en el sidebar
+        for tab_path in tabs:
+            normalized_tab = normalize_path(tab_path)
+            if normalized_tab not in self._sidebar._path_to_item:
+                if os.path.exists(tab_path) and os.path.isdir(tab_path):
+                    self._sidebar.add_focus_path(tab_path)
 
     def _on_file_open(self, file_path: str) -> None:
         if os.path.isdir(file_path):
@@ -489,6 +537,14 @@ class MainWindow(QWidget):
         else:
             self._tab_manager.add_tab(folder_path)
         
+        # Añadir subcarpeta al sidebar si su padre existe
+        parent_path = os.path.dirname(normalized_path)
+        normalized_parent = normalize_path(parent_path)
+        
+        if self._sidebar.has_path(normalized_parent):
+            # El padre existe en el sidebar, añadir esta carpeta como hija
+            self._sidebar.add_path(folder_path)
+        
         self._file_view_container.set_desktop_mode(is_desktop)
     
     def _on_sidebar_folder_selected(self, path: str) -> None:
@@ -497,7 +553,7 @@ class MainWindow(QWidget):
     
     def _on_sidebar_remove_focus(self, path: str) -> None:
         """Handle focus removal request from sidebar - solo permite eliminar carpetas raíz."""
-        normalized_path = os.path.normpath(path)
+        normalized_path = normalize_path(path)
         
         if normalized_path not in self._sidebar._path_to_item:
             return
@@ -511,8 +567,8 @@ class MainWindow(QWidget):
         try:
             active = self._tab_manager.get_active_folder()
             if active:
-                norm_removed = os.path.normpath(path)
-                norm_active = os.path.normpath(active)
+                norm_removed = normalize_path(path)
+                norm_active = normalize_path(active)
                 if norm_active == norm_removed or norm_active.startswith(norm_removed + os.sep):
                     self._file_view_container.clear_current_focus()
         except Exception as e:

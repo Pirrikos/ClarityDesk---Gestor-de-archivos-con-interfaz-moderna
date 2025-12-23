@@ -9,6 +9,7 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -42,15 +43,18 @@ class BulkRenameDialog(QDialog):
         self._file_paths = file_paths
         self._rename_service = RenameService()
         self._base_dir = os.path.dirname(file_paths[0]) if file_paths else ""
+        self._is_single_file = len(file_paths) == 1
         self._setup_ui()
         self._load_templates()
         self._update_preview()
     
     def _setup_ui(self) -> None:
         """Build the dialog UI."""
-        self.setWindowTitle("Renombrar archivos")
+        file_count = len(self._file_paths)
+        title = f"Renombrar archivo" if file_count == 1 else f"Renombrar {file_count} archivos"
+        self.setWindowTitle(title)
         self.setMinimumWidth(500)
-        self.setMinimumHeight(400)
+        self.setMinimumHeight(500)
         
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
@@ -63,13 +67,27 @@ class BulkRenameDialog(QDialog):
         layout.addWidget(pattern_label)
         
         self._pattern_input = QLineEdit()
-        self._pattern_input.setPlaceholderText("Ejemplo: {name}_{date}_{n}")
+        if self._is_single_file:
+            self._pattern_input.setPlaceholderText("Ejemplo: {name}_{date}")
+            help_text = "Usa {name} para nombre original, {date} para fecha. {n} se ignora automáticamente."
+        else:
+            self._pattern_input.setPlaceholderText("Ejemplo: {name}_{date}_{n}")
+            help_text = "Usa {n} para numeración, {name} para nombre original, {date} para fecha"
+        
         self._pattern_input.textChanged.connect(self._update_preview)
+        # Enter en "Patrón" → aplicar cambios
+        self._pattern_input.returnPressed.connect(self._on_apply)
         layout.addWidget(self._pattern_input)
         
-        help_label = QLabel("Usa {n} para numeración, {name} para nombre original, {date} para fecha")
+        help_label = QLabel(help_text)
         help_label.setStyleSheet("color: #8e8e93; /* font-size: establecido explícitamente */")
         layout.addWidget(help_label)
+        
+        # Búsqueda y reemplazo
+        self._setup_search_replace(layout)
+        
+        # Opciones de formato
+        self._setup_format_options(layout)
         
         preview_label = QLabel("Vista previa:")
         preview_label.setStyleSheet("font-weight: 600; /* font-size: establecido explícitamente */ margin-top: 8px;")
@@ -95,14 +113,107 @@ class BulkRenameDialog(QDialog):
         )
         buttons.accepted.connect(self._on_apply)
         buttons.rejected.connect(self.reject)
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Aplicar")
+        ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
+        ok_button.setText("Aplicar")
+        ok_button.setDefault(False)  # Desactivar comportamiento por defecto
+        ok_button.setAutoDefault(False)  # Desactivar auto-default
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancelar")
         layout.addWidget(buttons)
+    
+    def _setup_search_replace(self, layout: QVBoxLayout) -> None:
+        """Setup search and replace section."""
+        search_replace_label = QLabel("Buscar y reemplazar:")
+        search_replace_label.setStyleSheet("font-weight: 600; /* font-size: establecido explícitamente */ margin-top: 8px;")
+        layout.addWidget(search_replace_label)
+        
+        search_replace_layout = QHBoxLayout()
+        search_replace_layout.setSpacing(8)
+        
+        # Crear ambos campos primero
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("Texto a buscar")
+        self._search_input.textChanged.connect(self._update_preview)
+        
+        self._replace_input = QLineEdit()
+        self._replace_input.setPlaceholderText("Texto de reemplazo")
+        self._replace_input.textChanged.connect(self._update_preview)
+        
+        # Conectar señales con funciones intermedias para evitar conflictos
+        # Enter en "Buscar" → mover foco a "Reemplazar"
+        def _on_search_enter():
+            self._replace_input.setFocus()
+        self._search_input.returnPressed.connect(_on_search_enter)
+        
+        # Enter en "Reemplazar" → mover foco a "Patrón"
+        def _on_replace_enter():
+            self._pattern_input.setFocus()
+        self._replace_input.returnPressed.connect(_on_replace_enter)
+        
+        search_replace_layout.addWidget(QLabel("Buscar:"))
+        search_replace_layout.addWidget(self._search_input, 1)
+        search_replace_layout.addWidget(QLabel("Reemplazar:"))
+        search_replace_layout.addWidget(self._replace_input, 1)
+        
+        layout.addLayout(search_replace_layout)
+    
+    def _setup_format_options(self, layout: QVBoxLayout) -> None:
+        """Setup format options checkboxes."""
+        format_label = QLabel("Formato:")
+        format_label.setStyleSheet("font-weight: 600; /* font-size: establecido explícitamente */ margin-top: 8px;")
+        layout.addWidget(format_label)
+        
+        format_layout = QHBoxLayout()
+        format_layout.setSpacing(16)
+        
+        self._uppercase_check = QCheckBox("Mayúsculas")
+        self._uppercase_check.stateChanged.connect(self._on_format_changed)
+        format_layout.addWidget(self._uppercase_check)
+        
+        self._lowercase_check = QCheckBox("Minúsculas")
+        self._lowercase_check.stateChanged.connect(self._on_format_changed)
+        format_layout.addWidget(self._lowercase_check)
+        
+        self._title_case_check = QCheckBox("Capitalizar palabras")
+        self._title_case_check.stateChanged.connect(self._on_format_changed)
+        format_layout.addWidget(self._title_case_check)
+        
+        format_layout.addStretch()
+        layout.addLayout(format_layout)
+    
+    def _on_format_changed(self) -> None:
+        """Handle format checkbox changes - ensure only one is selected."""
+        sender = self.sender()
+        
+        if sender == self._uppercase_check and self._uppercase_check.isChecked():
+            self._lowercase_check.setChecked(False)
+            self._title_case_check.setChecked(False)
+        elif sender == self._lowercase_check and self._lowercase_check.isChecked():
+            self._uppercase_check.setChecked(False)
+            self._title_case_check.setChecked(False)
+        elif sender == self._title_case_check and self._title_case_check.isChecked():
+            self._uppercase_check.setChecked(False)
+            self._lowercase_check.setChecked(False)
+        
+        self._update_preview()
     
     def _update_preview(self) -> None:
         """Update preview list with generated names."""
         pattern = self._pattern_input.text() or "{name}"
-        preview_names = self._rename_service.generate_preview(self._file_paths, pattern)
+        search_text = self._search_input.text() if hasattr(self, '_search_input') else ""
+        replace_text = self._replace_input.text() if hasattr(self, '_replace_input') else ""
+        use_uppercase = self._uppercase_check.isChecked() if hasattr(self, '_uppercase_check') else False
+        use_lowercase = self._lowercase_check.isChecked() if hasattr(self, '_lowercase_check') else False
+        use_title_case = self._title_case_check.isChecked() if hasattr(self, '_title_case_check') else False
+        
+        preview_names = self._rename_service.generate_preview(
+            self._file_paths,
+            pattern,
+            search_text=search_text,
+            replace_text=replace_text,
+            use_uppercase=use_uppercase,
+            use_lowercase=use_lowercase,
+            use_title_case=use_title_case
+        )
         
         self._preview_list.clear()
         for i, (old_path, new_name) in enumerate(zip(self._file_paths, preview_names)):
@@ -114,7 +225,21 @@ class BulkRenameDialog(QDialog):
     def _on_apply(self) -> None:
         """Handle apply button click."""
         pattern = self._pattern_input.text() or "{name}"
-        new_names = self._rename_service.generate_preview(self._file_paths, pattern)
+        search_text = self._search_input.text() if hasattr(self, '_search_input') else ""
+        replace_text = self._replace_input.text() if hasattr(self, '_replace_input') else ""
+        use_uppercase = self._uppercase_check.isChecked() if hasattr(self, '_uppercase_check') else False
+        use_lowercase = self._lowercase_check.isChecked() if hasattr(self, '_lowercase_check') else False
+        use_title_case = self._title_case_check.isChecked() if hasattr(self, '_title_case_check') else False
+        
+        new_names = self._rename_service.generate_preview(
+            self._file_paths,
+            pattern,
+            search_text=search_text,
+            replace_text=replace_text,
+            use_uppercase=use_uppercase,
+            use_lowercase=use_lowercase,
+            use_title_case=use_title_case
+        )
         
         is_valid, error_msg = self._rename_service.validate_names(new_names, self._base_dir)
         if not is_valid:

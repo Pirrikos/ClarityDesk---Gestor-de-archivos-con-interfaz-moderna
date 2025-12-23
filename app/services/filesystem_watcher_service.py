@@ -19,6 +19,8 @@ class FileSystemWatcherService(QObject):
     folder_renamed = Signal(str, str)  # Emitted when folder is renamed/moved (old_path, new_path)
     folder_disappeared = Signal(str)  # Emitted when folder disappears without replacement (folder_path)
     structural_change_detected = Signal(str)  # Emitted when structural changes detected (moves between parents)
+    folder_created = Signal(str)  # Emitted when folder is created (folder_path)
+    folder_deleted = Signal(str)  # Emitted when folder is deleted (folder_path)
 
     def __init__(self, parent=None, debounce_delay: int = FILE_SYSTEM_DEBOUNCE_MS):
         """
@@ -33,7 +35,7 @@ class FileSystemWatcherService(QObject):
         self._watched_folder: Optional[str] = None
         self._ignore_events: bool = False
         self._debounce_delay = debounce_delay
-        self._previous_snapshot: Optional[list[tuple[str, float]]] = None
+        self._previous_snapshot: Optional[list[tuple[str, float, bool, int]]] = None
         
         # Debounce timer
         self._debounce_timer = QTimer(self)
@@ -230,6 +232,25 @@ class FileSystemWatcherService(QObject):
         
         return disappeared_paths
     
+    def _detect_appeared_folders(
+        self,
+        old_snapshot: list[tuple[str, float, bool, int]],
+        new_snapshot: list[tuple[str, float, bool, int]],
+        watched_folder: str
+    ) -> list[str]:
+        """Detect folders that appeared (were created)."""
+        old_folders = {name for name, mtime, is_dir, size in old_snapshot if is_dir}
+        new_folders = {name for name, mtime, is_dir, size in new_snapshot if is_dir}
+        
+        appeared = new_folders - old_folders
+        appeared_paths = []
+        for folder_name in appeared:
+            folder_path = os.path.join(watched_folder, folder_name)
+            if os.path.exists(folder_path) and os.path.isdir(folder_path):
+                appeared_paths.append(folder_path)
+        
+        return appeared_paths
+    
     def _has_structural_changes(
         self,
         old_snapshot: list[tuple[str, float, bool, int]],
@@ -334,7 +355,17 @@ class FileSystemWatcherService(QObject):
                     self._watched_folder
                 )
                 for folder_path in disappeared_folders:
+                    self.folder_deleted.emit(folder_path)
                     self.folder_disappeared.emit(folder_path)
+                
+                # Detect folders that appeared (were created)
+                appeared_folders = self._detect_appeared_folders(
+                    self._previous_snapshot,
+                    current_snapshot,
+                    self._watched_folder
+                )
+                for folder_path in appeared_folders:
+                    self.folder_created.emit(folder_path)
                 
                 # Detect structural changes (moves between parents, multiple changes)
                 # Si hay cambios que no son renames simples, requiere resincronización estructural

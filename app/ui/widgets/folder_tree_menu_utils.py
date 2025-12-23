@@ -12,7 +12,6 @@ def calculate_menu_rect_viewport(
     menu_rect: QRect,
     visual_rect: QRect
 ) -> QRect:
-    """Convertir menu_rect (relativo) a coordenadas absolutas del viewport."""
     return QRect(
         visual_rect.left() + menu_rect.left(),
         visual_rect.top() + menu_rect.top(),
@@ -25,7 +24,6 @@ def create_option_from_index(
     tree_view: QTreeView,
     index: QModelIndex
 ) -> tuple[QStyleOptionViewItem | None, QRect | None]:
-    """Crear QStyleOptionViewItem y visual_rect para un índice."""
     visual_rect = tree_view.visualRect(index)
     if not visual_rect.isValid():
         return None, None

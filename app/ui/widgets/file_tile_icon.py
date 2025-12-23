@@ -6,7 +6,7 @@ Handles icon loading and sizing.
 
 from typing import TYPE_CHECKING, Optional
 
-from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtCore import QRect, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPaintEvent, QPixmap
 from PySide6.QtWidgets import QLabel, QGraphicsDropShadowEffect, QVBoxLayout, QWidget
 
@@ -86,30 +86,75 @@ class IconWidget(QWidget):
         painter.drawEllipse(dot_x, dot_y, dot_size, dot_size)
 
 
-def add_icon_zone(tile: 'FileTile', layout: QVBoxLayout, icon_service: IconService) -> None:
-    """Add icon zone with shadow - mismo tamaño y estilo para Dock y Grid."""
-    render_service = IconRenderService(icon_service)
+def _create_placeholder_pixmap(size: QSize) -> QPixmap:
+    """Crear pixmap placeholder transparente mientras se carga el icono."""
+    pixmap = QPixmap(size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    return pixmap
+
+
+def _load_icon_async(tile: 'FileTile', icon_service: IconService, icon_label) -> None:
+    """Cargar icono de forma diferida para no bloquear la construcción del tile."""
+    # Verificar que el tile aún existe
+    if not hasattr(tile, '_file_path') or not tile._file_path:
+        return
     
+    file_path = tile._file_path
+    
+    # Cargar icono de forma diferida usando QTimer
+    # Esto permite que la UI se construya primero y luego se carguen los iconos progresivamente
+    def load_icon():
+        # Verificar que el tile aún existe y la ruta no cambió
+        if not hasattr(tile, '_file_path') or tile._file_path != file_path:
+            return
+        
+        try:
+            render_service = IconRenderService(icon_service)
+            pixmap = render_service.get_file_preview(file_path, QSize(48, 48))
+            
+            # Verificar nuevamente antes de actualizar
+            if not hasattr(tile, '_file_path') or tile._file_path != file_path:
+                return
+            
+            if pixmap and not pixmap.isNull():
+                tile._icon_pixmap = pixmap
+                if hasattr(icon_label, 'set_pixmap'):
+                    icon_label.set_pixmap(pixmap)
+                elif hasattr(icon_label, 'setPixmap'):
+                    icon_label.setPixmap(pixmap)
+        except (RuntimeError, AttributeError):
+            # Tile fue destruido, ignorar
+            pass
+    
+    # Cargar con pequeño delay para no bloquear construcción inicial
+    QTimer.singleShot(10, load_icon)
+
+
+def add_icon_zone(tile: 'FileTile', layout: QVBoxLayout, icon_service: IconService) -> None:
+    """Add icon zone with shadow - carga asíncrona de iconos para mejor rendimiento."""
     icon_width = 48
     icon_height = 48
-    pixmap = render_service.get_file_preview(tile._file_path, QSize(48, 48))
     
-    tile._icon_pixmap = pixmap
+    # Crear placeholder mientras se carga el icono
+    placeholder_pixmap = _create_placeholder_pixmap(QSize(icon_width, icon_height))
+    tile._icon_pixmap = placeholder_pixmap
     
     use_grid_widget = not tile._dock_style and is_grid_view(tile)
     
     if use_grid_widget:
         icon_widget = IconWidget(tile)
         icon_widget.setFixedSize(icon_width, icon_height)
-        icon_widget.set_pixmap(pixmap)
+        icon_widget.set_pixmap(placeholder_pixmap)
         icon_shadow = _create_icon_shadow(icon_widget)
         icon_widget.setGraphicsEffect(icon_shadow)
         tile._icon_label = icon_widget
         tile._icon_shadow = icon_shadow
+        # Cargar icono real de forma asíncrona
+        QTimer.singleShot(0, lambda: _load_icon_async(tile, icon_service, icon_widget))
     else:
         icon_label = QLabel()
         icon_label.setFixedSize(icon_width, icon_height)
-        icon_label.setPixmap(pixmap)
+        icon_label.setPixmap(placeholder_pixmap)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         icon_label.setAutoFillBackground(False)
@@ -118,6 +163,8 @@ def add_icon_zone(tile: 'FileTile', layout: QVBoxLayout, icon_service: IconServi
         icon_label.setGraphicsEffect(icon_shadow)
         tile._icon_label = icon_label
         tile._icon_shadow = icon_shadow
+        # Cargar icono real de forma asíncrona
+        QTimer.singleShot(0, lambda: _load_icon_async(tile, icon_service, icon_label))
     
     layout.addWidget(tile._icon_label, 0, Qt.AlignmentFlag.AlignHCenter)
 

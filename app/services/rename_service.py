@@ -19,30 +19,78 @@ class RenameService:
         self._templates_file = Path(__file__).parent.parent / "data" / "rename_templates.json"
         self._templates_file.parent.mkdir(parents=True, exist_ok=True)
 
-    def generate_preview(self, paths: list[str], pattern: str) -> list[str]:
+    def generate_preview(
+        self, 
+        paths: list[str], 
+        pattern: str,
+        search_text: str = "",
+        replace_text: str = "",
+        use_uppercase: bool = False,
+        use_lowercase: bool = False,
+        use_title_case: bool = False
+    ) -> list[str]:
         """
         Generate preview of new filenames based on pattern.
         
         Args:
             paths: List of file paths to rename.
             pattern: Pattern string with {n}, {name}, {date} placeholders.
+            search_text: Text to search for (simple literal, no regex).
+            replace_text: Text to replace with.
+            use_uppercase: Convert to uppercase.
+            use_lowercase: Convert to lowercase.
+            use_title_case: Capitalize words.
         
         Returns:
             List of new filenames (without paths).
         """
-        if "{n}" not in pattern:
+        is_single_file = len(paths) == 1
+        
+        # Solo agregar {n} automáticamente si hay múltiples archivos
+        if not is_single_file and "{n}" not in pattern:
             pattern = pattern + " {n}"
         
         preview = []
         for i, path in enumerate(paths):
-            new_name = self._apply_pattern(path, pattern, i + 1, len(paths))
-            preview.append(new_name)
+            # Obtener extensión original del archivo
+            _, original_ext = os.path.splitext(path)
+            
+            # Aplicar patrón (devuelve nombre sin extensión)
+            new_name = self._apply_pattern(path, pattern, i + 1, len(paths), is_single_file)
+            
+            # Aplicar búsqueda/reemplazo si está configurado
+            if search_text:
+                new_name = new_name.replace(search_text, replace_text)
+            
+            # Aplicar formato de texto (solo al nombre, no a la extensión)
+            if use_uppercase:
+                new_name = new_name.upper()
+            elif use_lowercase:
+                new_name = new_name.lower()
+            elif use_title_case:
+                new_name = new_name.title()
+            
+            # Preservar extensión original siempre
+            preview.append(new_name + original_ext)
+        
         return preview
     
-    def _apply_pattern(self, path: str, pattern: str, index: int, total: int) -> str:
-        """Apply pattern to single file path."""
+    def _apply_pattern(self, path: str, pattern: str, index: int, total: int, is_single_file: bool = False) -> str:
+        """
+        Apply pattern to single file path.
+        
+        Args:
+            path: File path.
+            pattern: Pattern string with placeholders.
+            index: Current file index (1-based).
+            total: Total number of files.
+            is_single_file: If True, ignore {n} placeholder.
+        
+        Returns:
+            New filename WITHOUT extension (la extensión se preserva en generate_preview).
+        """
         filename = os.path.basename(path)
-        name, ext = os.path.splitext(filename)
+        name, _ = os.path.splitext(filename)
         
         try:
             mtime = os.path.getmtime(path)
@@ -51,14 +99,24 @@ class RenameService:
         except (OSError, ValueError):
             date_str = datetime.now().strftime("%Y-%m-%d")
         
-        number_str = f"{index:02d}"
-        
         new_name = pattern
-        new_name = new_name.replace("{n}", number_str)
+        
+        # Reemplazar placeholders
         new_name = new_name.replace("{name}", name)
         new_name = new_name.replace("{date}", date_str)
         
-        return new_name + ext
+        # {n} solo se aplica si NO es un archivo único
+        if not is_single_file:
+            number_str = f"{index:02d}"
+            new_name = new_name.replace("{n}", number_str)
+        else:
+            # Si es archivo único, eliminar {n} silenciosamente
+            new_name = new_name.replace("{n}", "")
+        
+        # Limpiar espacios dobles que puedan quedar al eliminar {n}
+        new_name = " ".join(new_name.split())
+        
+        return new_name
     
     def validate_names(self, names: list[str], base_dir: str) -> tuple[bool, Optional[str]]:
         """

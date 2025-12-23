@@ -52,7 +52,8 @@ def find_or_add_tab(tabs: List[str], folder_path: str) -> int:
     tab_index = find_tab_index(tabs, normalized_path)
     
     if tab_index is None:
-        tabs.append(normalized_path)
+        # Guardar el path ORIGINAL (case-preserving) para consistencia con add_tab()
+        tabs.append(folder_path)
         tab_index = len(tabs) - 1
     
     return tab_index

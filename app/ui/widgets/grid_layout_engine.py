@@ -52,9 +52,17 @@ def build_dock_layout(
     """Build Dock-style layout with stacks and expanded files."""
     _emit_expansion_height(view)
     setup_dock_layout_config(grid_layout)
-    animate_old_tiles_exit(view, old_expanded_tiles_to_animate)
-    stack_col_map = _build_stack_tiles(view, items_to_render, grid_layout)
-    _build_expanded_files(view, stack_col_map, grid_layout)
+    
+    # Deshabilitar updates durante construcción masiva para evitar repaints redundantes
+    content_widget = view._content_widget
+    updates_enabled = content_widget.updatesEnabled()
+    try:
+        content_widget.setUpdatesEnabled(False)
+        animate_old_tiles_exit(view, old_expanded_tiles_to_animate)
+        stack_col_map = _build_stack_tiles(view, items_to_render, grid_layout)
+        _build_expanded_files(view, stack_col_map, grid_layout)
+    finally:
+        content_widget.setUpdatesEnabled(updates_enabled)
 
 
 def build_normal_grid(view, items_to_render: list, grid_layout: QGridLayout) -> None:
@@ -63,9 +71,25 @@ def build_normal_grid(view, items_to_render: list, grid_layout: QGridLayout) -> 
     setup_normal_grid_config(grid_layout)
     
     col_offset = get_col_offset_for_desktop_window(view._is_desktop_window)
-    columns = calculate_columns_for_normal_grid(view.width())
     
-    add_tile_to_normal_grid(view, items_to_render, grid_layout, columns, col_offset)
+    # Cache de cálculo de columnas: solo recalcular si cambio significativo (>10px)
+    current_width = view.width()
+    if (view._cached_columns is None or 
+        view._cached_width is None or 
+        abs(current_width - view._cached_width) > 10):
+        view._cached_columns = calculate_columns_for_normal_grid(current_width)
+        view._cached_width = current_width
+    
+    columns = view._cached_columns
+    
+    # Deshabilitar updates durante construcción masiva para evitar repaints redundantes
+    content_widget = view._content_widget
+    updates_enabled = content_widget.updatesEnabled()
+    try:
+        content_widget.setUpdatesEnabled(False)
+        add_tile_to_normal_grid(view, items_to_render, grid_layout, columns, col_offset)
+    finally:
+        content_widget.setUpdatesEnabled(updates_enabled)
 
 
 def _build_stack_tiles(view, items_to_render: list, grid_layout: QGridLayout) -> dict:

@@ -77,6 +77,7 @@ def get_tree_base_stylesheet() -> str:
         QTreeView::viewport {
             background: transparent;
             padding-left: 0px;
+            /* padding-right se establece dinámicamente en código según ancho real de scrollbar */
         }
         
         QTreeView::item {
@@ -159,6 +160,7 @@ def get_tree_branch_stylesheet() -> str:
             border-image: none;
             background: transparent;
             margin: 0px;
+            image: none;
         }
         
         QTreeView::branch:open:has-children:!has-siblings,
@@ -167,6 +169,7 @@ def get_tree_branch_stylesheet() -> str:
             border-image: none;
             background: transparent;
             margin: 0px;
+            image: none;
         }
     """
 

@@ -33,7 +33,8 @@ def load_app_state(window, tab_manager) -> None:
         # Restore sidebar tree with preserved root folder order
         if hasattr(window, '_sidebar') and validated_state.get('focus_tree_paths'):
             expanded_paths = validated_state.get('expanded_nodes', [])
-            window._sidebar.restore_tree(validated_state['focus_tree_paths'], expanded_paths)
+            root_folders_order = validated_state.get('root_folders_order')
+            window._sidebar.restore_tree(validated_state['focus_tree_paths'], expanded_paths, root_folders_order)
 
 
 def save_app_state(window, tab_manager) -> None:
@@ -47,9 +48,11 @@ def save_app_state(window, tab_manager) -> None:
     # Get sidebar tree state (with preserved root folder order)
     focus_tree_paths = []
     expanded_nodes = []
+    root_folders_order = None
     if hasattr(window, '_sidebar'):
         focus_tree_paths = window._sidebar.get_focus_tree_paths()
         expanded_nodes = window._sidebar.get_expanded_paths()
+        root_folders_order = window._sidebar.get_root_folders_order()
     
     # Build state dict
     state_manager = tab_manager.get_state_manager()
@@ -59,7 +62,8 @@ def save_app_state(window, tab_manager) -> None:
         history=history,
         history_index=history_index,
         focus_tree_paths=focus_tree_paths,
-        expanded_nodes=expanded_nodes
+        expanded_nodes=expanded_nodes,
+        root_folders_order=root_folders_order
     )
     
     # Save state

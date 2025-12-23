@@ -11,13 +11,13 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QPixmap
 
 from app.services.docx_converter import DocxConverter
-from app.services.preview_service import PreviewService
+from app.services.preview_pdf_service import PreviewPdfService
 
 
 class QuickPreviewPdfHandler:
     """Handles PDF-specific preview logic."""
     
-    def __init__(self, preview_service: PreviewService):
+    def __init__(self, preview_service: PreviewPdfService):
         """Initialize PDF handler."""
         self._preview_service = preview_service
         self._docx_converter = DocxConverter()

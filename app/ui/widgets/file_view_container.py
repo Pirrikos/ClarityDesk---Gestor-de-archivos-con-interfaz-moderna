@@ -110,6 +110,9 @@ class FileViewContainer(QWidget):
         if selected_count != self._last_selection_count:
             self._last_selection_count = selected_count
             self._focus_panel.update_selection_count(selected_count)
+            # Actualizar también el secondary header si existe
+            if hasattr(self, '_secondary_header') and self._secondary_header:
+                self._secondary_header.update_selection_count(selected_count)
 
     def set_desktop_mode(self, is_desktop: bool) -> None:
         """
@@ -292,6 +295,10 @@ class FileViewContainer(QWidget):
         de botones de vista delegando en el header cuando no hay toolbar interna.
         """
         self._header = header
+    
+    def set_secondary_header(self, header) -> None:
+        """Inyectar referencia al SecondaryHeader para actualizar estado del botón."""
+        self._secondary_header = header
     
     def closeEvent(self, event) -> None:
         """Cleanup timers before closing."""

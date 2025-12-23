@@ -92,6 +92,16 @@ class FileGridView(QWidget):
         self._desktop_window = desktop_window
         # Desktop files are always visible - stacks are always shown
         self._desktop_files_hidden = True  # Always True - stacks always visible
+        # Cache para optimización de cálculo de columnas
+        self._cached_columns: Optional[int] = None
+        self._cached_width: int = 0
+        # Cache para categorización de archivos
+        self._cached_categorized_files: Optional[Union[List[str], List[Tuple[str, List[str]]]]] = None
+        self._cached_file_list_hash: Optional[int] = None
+        # Cache para reutilización de tiles
+        self._tile_cache: dict[str, FileTile] = {}
+        # Estado anterior para actualización incremental
+        self._previous_files: Optional[Union[List[str], List[Tuple[str, List[str]]]]] = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -131,7 +141,7 @@ class FileGridView(QWidget):
         self._use_stacks = is_desktop
     
     def update_files(self, file_list: list) -> None:
-        """Update displayed files or stacks."""
+        """Update displayed files or stacks with incremental updates when possible."""
         if file_list and isinstance(file_list[0], FileStack):
             old_expanded = self._expanded_stacks.copy()
             self._expanded_stacks = {}
@@ -140,21 +150,103 @@ class FileGridView(QWidget):
             for stack in self._stacks:
                 if stack.stack_type in old_expanded:
                     self._expanded_stacks[stack.stack_type] = stack.files
+            # Limpiar cache de categorización cuando hay stacks
+            self._cached_categorized_files = None
+            self._cached_file_list_hash = None
+            self._previous_files = None
         else:
             # Categorizar archivos solo en MainWindow (no en DesktopWindow)
             if not self._is_desktop_window:
-                self._files = get_categorized_files_with_labels(file_list)
+                # Cache de categorización: solo recalcular si lista de archivos cambió
+                file_list_hash = hash(tuple(file_list) if file_list else ())
+                if (self._cached_categorized_files is None or 
+                    self._cached_file_list_hash != file_list_hash):
+                    self._files = get_categorized_files_with_labels(file_list)
+                    self._cached_categorized_files = self._files
+                    self._cached_file_list_hash = file_list_hash
+                else:
+                    # Reutilizar resultado cacheado
+                    self._files = self._cached_categorized_files
             else:
                 self._files = file_list
-                self._stacks = []
-                self._expanded_stacks = {}
+                # Limpiar cache de categorización cuando es desktop window
+                self._cached_categorized_files = None
+                self._cached_file_list_hash = None
+            self._stacks = []
+            self._expanded_stacks = {}
+            
+            # Intentar actualización incremental si hay estado anterior
+            if self._previous_files is not None and self._try_incremental_update(file_list):
+                # Actualización incremental exitosa, no necesitamos refresh completo
+                self._previous_files = self._files.copy() if hasattr(self._files, 'copy') else self._files
+                return
+        
+        # Refresh completo si no se puede hacer incremental
+        self._previous_files = self._files.copy() if hasattr(self._files, 'copy') else self._files
         self._refresh_tiles()
+    
+    def _try_incremental_update(self, new_file_list: list) -> bool:
+        """Intentar actualización incremental - solo actualizar tiles que cambiaron."""
+        # Extraer lista plana de archivos anteriores
+        previous_files_set = set()
+        if isinstance(self._previous_files[0], tuple) if self._previous_files else False:
+            for _, files in self._previous_files:
+                previous_files_set.update(files)
+        else:
+            previous_files_set.update(self._previous_files)
+        
+        # Extraer lista plana de archivos nuevos
+        new_files_set = set(new_file_list)
+        
+        # Detectar cambios
+        files_added = new_files_set - previous_files_set
+        files_removed = previous_files_set - new_files_set
+        
+        # Si hay muchos cambios, es mejor hacer refresh completo
+        total_changes = len(files_added) + len(files_removed)
+        total_files = len(new_files_set)
+        if total_changes > total_files * 0.3:  # Si más del 30% cambió, refresh completo
+            return False
+        
+        # Actualización incremental: solo crear tiles nuevos y destruir tiles eliminados
+        # Los tiles existentes se mantienen y se reorganizan en el layout
+        for file_path in files_removed:
+            if file_path in self._tile_cache:
+                tile = self._tile_cache.pop(file_path)
+                # Remover del layout
+                self._grid_layout.removeWidget(tile)
+                tile.deleteLater()
+        
+        # Los archivos nuevos se crearán en _refresh_tiles() normal
+        # Pero podemos optimizar aquí si es necesario
+        
+        # Reorganizar layout con tiles existentes
+        # Esto se hace en _refresh_tiles() que reorganiza todos los tiles
+        return False  # Por ahora, siempre hacer refresh completo para mantener consistencia
 
     def _refresh_tiles(self) -> None:
         """Rebuild file tiles or stack tiles in grid layout."""
         clear_selection(self)
         old_expanded_tiles_to_animate = clear_old_tiles(self)
         items_to_render = self._stacks if self._stacks else self._files
+        
+        # Limpiar tiles del cache que ya no están en la lista actual
+        if not self._stacks:
+            current_files_set = set()
+            if isinstance(self._files[0], tuple) if self._files else False:
+                # Lista categorizada
+                for _, files in self._files:
+                    current_files_set.update(files)
+            else:
+                # Lista simple
+                current_files_set.update(self._files)
+            
+            # Remover tiles del cache que ya no están en la lista
+            tiles_to_remove = [path for path in self._tile_cache.keys() if path not in current_files_set]
+            for path in tiles_to_remove:
+                tile = self._tile_cache.pop(path, None)
+                if tile:
+                    tile.deleteLater()
         
         if self._is_desktop_window:
             build_dock_layout(self, items_to_render, old_expanded_tiles_to_animate, self._grid_layout)

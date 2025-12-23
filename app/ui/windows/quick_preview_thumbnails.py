@@ -10,7 +10,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 from app.ui.windows.quick_preview_constants import GENERATING_THUMBNAILS, DOCUMENT_READY
 
-from app.services.preview_service import PreviewService
+from app.services.preview_pdf_service import PreviewPdfService
 from app.ui.windows.quick_preview_styles import get_thumbnail_scrollbar_style
 from app.ui.windows.quick_preview_thumbnail_widget import QuickPreviewThumbnailWidget
 
@@ -18,12 +18,12 @@ from app.ui.windows.quick_preview_thumbnail_widget import QuickPreviewThumbnailW
 class QuickPreviewThumbnails:
     """Manages PDF page thumbnail panel."""
     
-    def __init__(self, preview_service: PreviewService):
+    def __init__(self, preview_service: PreviewPdfService):
         """
         Initialize thumbnail panel.
         
         Args:
-            preview_service: PreviewService instance.
+            preview_service: PreviewPdfService instance.
         """
         self._preview_service = preview_service
         self._panel = None
