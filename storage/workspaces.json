@@ -2,23 +2,18 @@
   "workspaces": [
     {
       "id": "29d2faa6-3b94-42d9-8b77-637630c50154",
-      "name": "LECHES",
-      "created_at": "2025-12-24T10:24:02.560854"
+      "name": "AMIGOS",
+      "created_at": "2025-12-24T20:24:12.180665"
     },
     {
       "id": "226d2dd0-1c19-420f-a583-5a2e6b9e1a9b",
       "name": "probando",
-      "created_at": "2025-12-24T10:24:02.560861"
+      "created_at": "2025-12-24T20:24:12.180674"
     },
     {
       "id": "69ccc392-87c8-4d41-84c7-53f99e0edb50",
       "name": "loco",
-      "created_at": "2025-12-24T10:24:02.560864"
-    },
-    {
-      "id": "2ae520fc-b301-4928-b558-1f21d5dbe019",
-      "name": "pepiuoepriorejiorejioewjoirjiore",
-      "created_at": "2025-12-24T10:24:02.560866"
+      "created_at": "2025-12-24T20:24:12.180676"
     }
   ],
   "active_workspace_id": "29d2faa6-3b94-42d9-8b77-637630c50154"

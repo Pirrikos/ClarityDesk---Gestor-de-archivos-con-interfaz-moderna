@@ -9,13 +9,15 @@ import os
 from typing import Optional, Callable
 
 from PySide6.QtGui import QContextMenuEvent
-from PySide6.QtWidgets import QInputDialog, QMenu, QMessageBox, QWidget
+from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox, QWidget
 
 from app.core.logger import get_logger
 from app.managers.tab_manager import TabManager
+from app.managers.file_clipboard_manager import FileClipboardManager
 from app.services.folder_creation_service import create_folder
 from app.services.file_deletion_service import is_folder_empty
 from app.services.file_delete_service import delete_file
+from app.services.file_move_service import copy_path, move_file
 from app.services.file_creation_service import (
     create_text_file,
     create_markdown_file,
@@ -80,6 +82,16 @@ def show_background_menu(
         lambda: _create_folder_dialog(widget, active_folder, on_refresh_callback)
     )
     
+    # Acción: Pegar (solo si hay datos en clipboard)
+    clipboard = FileClipboardManager()
+    if clipboard.has_data():
+        menu.addSeparator()
+        paste_action = menu.addAction("Pegar")
+        paste_action.triggered.connect(
+            lambda: _paste_items(widget, clipboard, active_folder, tab_manager, on_refresh_callback)
+        )
+        menu.addSeparator()
+    
     # Separador antes del submenú "Nuevo"
     menu.addSeparator()
     
@@ -124,6 +136,21 @@ def show_item_menu(
     # Crear menú
     menu = QMenu(widget)
     menu.setStyleSheet(get_menu_stylesheet())
+    
+    # Obtener instancia del clipboard manager
+    clipboard = FileClipboardManager()
+    
+    # Acción: Copiar
+    copy_action = menu.addAction("Copiar")
+    copy_action.triggered.connect(
+        lambda: clipboard.set_copy(item_paths)
+    )
+    
+    # Acción: Cortar
+    cut_action = menu.addAction("Cortar")
+    cut_action.triggered.connect(
+        lambda: clipboard.set_cut(item_paths)
+    )
     
     # Separador antes de la acción de eliminar
     menu.addSeparator()
@@ -295,6 +322,108 @@ def _show_confirmation_dialog(parent: QWidget, item_paths: list[str]) -> bool:
     reply = msg_box.exec()
     
     return reply == QMessageBox.StandardButton.Yes
+
+
+def _paste_items(
+    parent: QWidget,
+    clipboard: FileClipboardManager,
+    destination_folder: str,
+    tab_manager: Optional[TabManager],
+    on_refresh_callback: Optional[Callable[[], None]] = None
+) -> None:
+    """
+    Pegar elementos desde clipboard al destino.
+    
+    Prioriza clipboard interno, si está vacío lee del clipboard de Windows.
+    
+    Args:
+        parent: Parent widget for dialogs.
+        clipboard: FileClipboardManager instance with clipboard data.
+        destination_folder: Destination folder path.
+        tab_manager: TabManager instance to get watcher if available.
+        on_refresh_callback: Optional callback to refresh view after paste.
+    """
+    if not destination_folder:
+        return
+    
+    # Inicializar variables
+    paths: list[str] = []
+    mode: Optional[str] = None
+    
+    # Prioridad 1: Clipboard interno
+    if clipboard.has_data():
+        paths = clipboard.get_paths()
+        mode = clipboard.get_mode()
+        logger.debug(f"Using internal clipboard: {len(paths)} path(s) in {mode} mode")
+    
+    # Prioridad 2: Clipboard del sistema (Windows) si interno está vacío
+    if not paths:
+        paths, mode = clipboard.get_system_clipboard_data()
+        if paths:
+            logger.debug(f"Using system clipboard: {len(paths)} path(s) in {mode} mode")
+    
+    # Validación final
+    if not paths or not mode:
+        QMessageBox.warning(
+            parent,
+            "Error al pegar",
+            "No hay datos para pegar en el clipboard."
+        )
+        return
+    
+    # Obtener watcher del tab_manager si está disponible
+    watcher = None
+    if tab_manager and hasattr(tab_manager, 'get_watcher'):
+        watcher = tab_manager.get_watcher()
+    
+    # Ejecutar operaciones según modo
+    success_count = 0
+    error_messages = []
+    
+    for path in paths:
+        # Validar que el path existe antes de operar
+        if not os.path.exists(path):
+            error_messages.append(f"{os.path.basename(path)}: El archivo o carpeta ya no existe")
+            continue
+        
+        # Ejecutar operación según modo
+        if mode == "copy":
+            result = copy_path(path, destination_folder, watcher)
+        elif mode == "cut":
+            result = move_file(path, destination_folder, watcher)
+        else:
+            continue
+        
+        if result.success:
+            success_count += 1
+        else:
+            error_messages.append(f"{os.path.basename(path)}: {result.error_message}")
+    
+    # Limpieza: limpiar clipboard interno solo si mode == "cut" y hubo éxito
+    if mode == "cut" and success_count > 0:
+        clipboard.clear()
+        # También limpiar clipboard del sistema tras consumir un "cut" real
+        try:
+            system_clipboard = QApplication.clipboard()
+            if system_clipboard:
+                system_clipboard.clear()
+        except Exception as e:
+            logger.warning(f"Error clearing system clipboard: {e}")
+    
+    # Mostrar errores si los hay
+    if error_messages:
+        error_text = "\n".join(error_messages)
+        QMessageBox.warning(
+            parent,
+            "Error al pegar",
+            f"No se pudieron pegar algunos elementos:\n\n{error_text}"
+        )
+    
+    # Refrescar vista si hubo éxito
+    if success_count > 0:
+        if on_refresh_callback:
+            on_refresh_callback()
+        logger.info(f"{success_count} elemento(s) pegado(s) en {destination_folder}")
 
 
 def _create_file_dialog(

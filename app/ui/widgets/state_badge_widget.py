@@ -28,12 +28,12 @@ STATE_LABELS = {
     STATE_REVIEW: "REVISAR",
 }
 
-# State colors (Windows Fluent Design palette)
+# State colors (Windows Fluent Design palette - versión tenue)
 STATE_COLORS = {
-    STATE_PENDING: QColor(255, 184, 0),      # #FFB800 - Amarillo
-    STATE_DELIVERED: QColor(0, 120, 212),    # #0078D4 - Azul
-    STATE_CORRECTED: QColor(16, 124, 16),    # #107C10 - Verde
-    STATE_REVIEW: QColor(209, 52, 56),       # #D13438 - Rojo
+    STATE_PENDING: QColor(255, 220, 120),    # Amarillo más tenue
+    STATE_DELIVERED: QColor(120, 180, 240),  # Azul más tenue
+    STATE_CORRECTED: QColor(120, 200, 120),   # Verde más tenue
+    STATE_REVIEW: QColor(240, 140, 140),     # Rojo más tenue
 }
 
 
@@ -141,10 +141,11 @@ class StateBadgeWidget(QWidget):
         painter.setBrush(bar_color)
         painter.drawRoundedRect(rect, 4, 4)
         
-        # Draw white text
+        # Draw text with appropriate color for contrast (darker for lighter backgrounds)
         font = FontManager.create_font("Segoe UI", FontManager.SIZE_SMALL, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.setPen(QColor(255, 255, 255))
+        # Use darker text color for better contrast with lighter backgrounds
+        painter.setPen(QColor(60, 60, 60))
         
         # Center text horizontally and vertically
         metrics = QFontMetrics(font)

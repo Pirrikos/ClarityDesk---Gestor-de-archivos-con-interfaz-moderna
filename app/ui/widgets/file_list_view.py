@@ -7,8 +7,8 @@ Emits signal on double-click to open file.
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QContextMenuEvent, QMouseEvent, QEnterEvent
+from PySide6.QtCore import QModelIndex, Qt, Signal
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent
 from PySide6.QtWidgets import QCheckBox, QTableWidget, QTableWidgetItem
 
 try:
@@ -79,7 +79,7 @@ class FileListView(QTableWidget):
 
     def startDrag(self, supported_actions) -> None:
         """Handle drag start for file copy or move using checkbox selection."""
-        start_drag(self, supported_actions, self._icon_service, self.file_deleted)
+        start_drag(self, self._icon_service, self.file_deleted)
 
     def dragEnterEvent(self, event) -> None:
         """Handle drag enter for file drop."""
@@ -135,7 +135,6 @@ class FileListView(QTableWidget):
         if row < 0 or row >= self.rowCount():
             return
         # Actualizar toda la fila usando visualRect
-        from PySide6.QtCore import QModelIndex
         index = self.model().index(row, 0)
         if index.isValid():
             rect = self.visualRect(index)
@@ -181,38 +180,34 @@ class FileListView(QTableWidget):
         """Select all files by checking all checkboxes."""
         if not self._files:
             return
-        
-        # Bloquear actualización del header durante la operación masiva
-        if self._header_checkbox:
-            self._header_checkbox.blockSignals(True)
-        
-        for file_path in self._files:
-            self._checked_paths.add(file_path)
-            checkbox = self._get_checkbox_from_row(self.row_from_path(file_path))
-            if checkbox:
-                checkbox.setChecked(True)
-        
+        self._update_all_checkboxes(checked=True)
         if self._header_checkbox:
             self._header_checkbox.setCheckState(Qt.CheckState.Checked)
-            self._header_checkbox.blockSignals(False)
     
     def deselect_all_files(self) -> None:
         """Deselect all files by unchecking all checkboxes."""
         if not self._files:
             return
-        
-        # Bloquear actualización del header durante la operación masiva
+        self._update_all_checkboxes(checked=False)
+        if self._header_checkbox:
+            self._header_checkbox.setCheckState(Qt.CheckState.Unchecked)
+    
+    def _update_all_checkboxes(self, checked: bool) -> None:
+        """Update all checkboxes state and selection set."""
         if self._header_checkbox:
             self._header_checkbox.blockSignals(True)
         
         for file_path in self._files:
-            self._checked_paths.discard(file_path)
+            if checked:
+                self._checked_paths.add(file_path)
+            else:
+                self._checked_paths.discard(file_path)
+            
             checkbox = self._get_checkbox_from_row(self.row_from_path(file_path))
             if checkbox:
-                checkbox.setChecked(False)
+                checkbox.setChecked(checked)
         
         if self._header_checkbox:
-            self._header_checkbox.setCheckState(Qt.CheckState.Unchecked)
             self._header_checkbox.blockSignals(False)
     
     def _get_checkbox_from_row(self, row: int) -> Optional[QCheckBox]:

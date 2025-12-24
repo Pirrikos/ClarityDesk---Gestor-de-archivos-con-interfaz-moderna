@@ -4,6 +4,8 @@ Application-wide constants.
 Centralizes magic numbers and configuration values for better maintainability.
 """
 
+from PySide6.QtGui import QColor
+
 # Timer intervals (milliseconds)
 SELECTION_UPDATE_INTERVAL_MS = 200
 DOUBLE_CLICK_THRESHOLD_MS = 350
@@ -30,6 +32,19 @@ ROUNDED_BG_RADIUS = 12
 CENTRAL_AREA_BG = "#202326"
 SIDEBAR_BG = "#1A1D22"
 SEPARATOR_LINE_COLOR = "rgba(255, 255, 255, 0.15)"
+
+# File Box Panel colors
+FILE_BOX_PANEL_BG = "#14171C"
+FILE_BOX_HEADER_BG = "#1C2027"
+FILE_BOX_BORDER_LEFT = "#2F3440"
+FILE_BOX_BORDER = "#2A2E36"
+FILE_BOX_LIST_BG = "#1A1E25"
+FILE_BOX_HOVER_BG = "#252A31"
+FILE_BOX_TEXT = "#e6edf3"
+FILE_BOX_BUTTON_TEXT = "#888888"
+FILE_BOX_BUTTON_PRIMARY = "#007AFF"
+FILE_BOX_BUTTON_PRIMARY_HOVER = "#0056CC"
+FILE_BOX_BUTTON_PRIMARY_PRESSED = "#004499"
 
 # Header and menu colors
 APP_HEADER_BG = "#1A1D22"
@@ -83,6 +98,11 @@ CHECKBOX_BORDER = "rgba(255, 255, 255, 0.3)"
 CHECKBOX_BORDER_HOVER = "#80C5FF"
 CHECKBOX_BG_CHECKED = "#80C5FF"
 CHECKBOX_BG_CHECKED_HOVER = "#66B3FF"
+
+# Selection colors (list and grid views)
+from PySide6.QtGui import QColor
+SELECTION_BORDER_COLOR = QColor(100, 150, 255)  # Azul suave para borde de selección
+SELECTION_BG_COLOR = QColor(100, 150, 255, 15)  # Azul suave semitransparente para fondo de selección
 
 # Header colors (list view)
 HEADER_BG = "#1A1D22"  # Gris más oscuro que CENTRAL_AREA_BG (#202326)

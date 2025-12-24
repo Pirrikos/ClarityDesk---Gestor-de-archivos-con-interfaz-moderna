@@ -91,17 +91,13 @@ class FileTile(QWidget):
     
     def enterEvent(self, event: QEnterEvent) -> None:
         """Handle mouse enter - activate hover effect."""
-        logger.info(f"[HOVER DEBUG] enterEvent called for tile: {self._file_path}")
         self._is_hovered = True
-        logger.info(f"[HOVER DEBUG] _is_hovered set to True, calling update()")
         self.update()
         super().enterEvent(event)
     
     def leaveEvent(self, event) -> None:
         """Handle mouse leave - deactivate hover effect."""
-        logger.info(f"[HOVER DEBUG] leaveEvent called for tile: {self._file_path}")
         self._is_hovered = False
-        logger.info(f"[HOVER DEBUG] _is_hovered set to False, calling update()")
         self.update()
         super().leaveEvent(event)
 

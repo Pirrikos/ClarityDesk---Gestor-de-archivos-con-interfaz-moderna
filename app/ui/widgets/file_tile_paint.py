@@ -28,12 +28,6 @@ def paint_dock_style(tile: 'FileTile', event: QPaintEvent) -> None:
     is_selected = tile._is_selected
     is_hovered = getattr(tile, '_is_hovered', False)
     
-    # Debug logging
-    if is_hovered:
-        from app.core.logger import get_logger
-        logger = get_logger(__name__)
-        logger.info(f"[HOVER DEBUG] paint_dock_style: is_hovered=True, is_selected={is_selected}, file={getattr(tile, '_file_path', 'unknown')}")
-    
     # Fondo gris claro para todos los tiles
     bg_color = QColor(190, 190, 190)  # #BEBEBE
     border_color = QColor(160, 160, 160)  # Borde gris más oscuro

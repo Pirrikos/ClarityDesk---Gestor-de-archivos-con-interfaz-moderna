@@ -85,6 +85,7 @@ LIST_VIEW_STYLESHEET = f"""
         border-top: none;
         border-bottom: none;
     }}
+    }}
     /* Checkboxes estilo Finder claro */
     QCheckBox {{
         spacing: 0px;
@@ -122,8 +123,8 @@ LIST_VIEW_STYLESHEET = f"""
         background-color: {HEADER_BG};
         color: {HEADER_TEXT_COLOR};
         border: none !important;
-        border-right: none !important;  /* Temporalmente deshabilitado */
-        border-bottom: none !important;  /* Temporalmente deshabilitado */
+        border-right: none !important;
+        border-bottom: none !important;
         padding: 6px 10px;
         font-family: 'Segoe UI', sans-serif;
         font-weight: 500;
@@ -141,9 +142,6 @@ LIST_VIEW_STYLESHEET = f"""
     }}
     QHeaderView::section:hover {{
         color: {HEADER_TEXT_HOVER};
-    }}
-    QHeaderView::section:first {{
-        border-left: none !important;
     }}
     QHeaderView::section:last {{
         border-right: none !important;

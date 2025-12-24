@@ -4,7 +4,7 @@ Rendering helpers for FileListView.
 Handles UI setup and table row creation.
 """
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QCheckBox, QHeaderView, QTableWidget, QVBoxLayout, QWidget
 
@@ -21,6 +21,14 @@ from app.ui.widgets.list_row_factory import (
 )
 from app.ui.widgets.list_styles import LIST_VIEW_STYLESHEET
 from app.core.constants import CENTRAL_AREA_BG
+
+
+def _ensure_column_count(view: QTableWidget, count: int) -> None:
+    """Ensure table has exactly the specified number of columns."""
+    if view.columnCount() > count:
+        view.setColumnCount(count)
+    for i in range(count, view.columnCount()):
+        view.setColumnHidden(i, True)
 
 
 def create_header_checkbox(view) -> QCheckBox:
@@ -47,6 +55,28 @@ def create_header_checkbox(view) -> QCheckBox:
     return checkbox
 
 
+def _update_header_checkbox_position(container: QWidget, header: QHeaderView) -> None:
+    """Update checkbox position when header is resized."""
+    if header.count() > 0:
+        section_x = header.sectionPosition(0)
+        section_width = header.sectionSize(0)
+        header_height = header.height()
+        # Desplazado 8px a la derecha y 2px hacia abajo para alineación visual
+        container.setGeometry(section_x + 8, 2, max(section_width, 20), header_height)
+
+
+def _update_header_checkbox_visibility(container: QWidget, view: QTableWidget) -> None:
+    """Update checkbox visibility based on horizontal scroll."""
+    scrollbar = view.horizontalScrollBar()
+    if scrollbar:
+        scroll_value = scrollbar.value()
+        # Mostrar solo cuando value == 0, ocultar cuando value > 0
+        if scroll_value == 0:
+            container.show()
+        else:
+            container.hide()
+
+
 def setup_header_checkbox(view, header: QHeaderView) -> None:
     """Setup checkbox widget in header's first section."""
     checkbox = create_header_checkbox(view)
@@ -60,31 +90,25 @@ def setup_header_checkbox(view, header: QHeaderView) -> None:
     layout.setSpacing(0)
     layout.addWidget(checkbox)
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    # Asegurar que el checkbox tenga un tamaño adecuado para ser clicable
     checkbox.setFixedSize(15, 15)
     
-    # Posicionar el widget en la primera sección del header
-    def update_checkbox_position():
-        """Update checkbox position when header is resized."""
-        if header.count() > 0:
-            section_x = header.sectionPosition(0)
-            section_width = header.sectionSize(0)
-            header_height = header.height()
-            
-            # El contenedor es hijo del header, así que section_x ya es la posición correcta
-            # Desplazado 8px a la derecha para alineación visual
-            # Asegurar que el contenedor tenga suficiente ancho para capturar clics
-            # El layout centra automáticamente el checkbox dentro del contenedor
-            container.setGeometry(section_x + 8, 0, max(section_width, 20), header_height)
-    
     # Conectar señal de cambio de tamaño del header
-    header.sectionResized.connect(lambda logical_index, old_size, new_size: update_checkbox_position() if logical_index == 0 else None)
-    header.geometriesChanged.connect(lambda: update_checkbox_position())
+    def on_section_resized(logical_index: int, old_size: int, new_size: int) -> None:
+        if logical_index == 0:
+            _update_header_checkbox_position(container, header)
+    
+    header.sectionResized.connect(on_section_resized)
+    header.geometriesChanged.connect(lambda: _update_header_checkbox_position(container, header))
+    
+    # Conectar scroll horizontal para mostrar/ocultar checkbox
+    scrollbar = view.horizontalScrollBar()
+    if scrollbar:
+        scrollbar.valueChanged.connect(lambda: _update_header_checkbox_visibility(container, view))
     
     # Posicionar inicialmente después de que el header esté visible
-    from PySide6.QtCore import QTimer
-    QTimer.singleShot(0, update_checkbox_position)
-    container.show()
+    QTimer.singleShot(0, lambda: _update_header_checkbox_position(container, header))
+    # Actualizar visibilidad inicial
+    _update_header_checkbox_visibility(container, view)
 
 
 def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
@@ -114,30 +138,19 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     # No estirar la última columna - la columna "Nombre" asume la expansión
     header.setSectionsMovable(False)
     
-    # Asegurar que solo haya exactamente 5 columnas y ocultar cualquier columna extra
-    if view.columnCount() > 5:
-        # Si hay más columnas, reducir a 5
-        view.setColumnCount(5)
-    # Ocultar cualquier columna extra que pueda aparecer después
-    for i in range(5, view.columnCount()):
-        view.setColumnHidden(i, True)
+    _ensure_column_count(view, 5)
     
     header.setStyleSheet("""
         QHeaderView::section {
             border-left: none !important;
-            border-right: none !important;  /* Temporalmente deshabilitado */
+            border-right: none !important;
         }
         QHeaderView::section:last {
             border-right: none !important;
         }
     """)
     
-    # Asegurar que el header solo muestre las 5 columnas definidas
-    # Esto previene que aparezcan columnas adicionales
     header.setVisible(True)
-    if header.count() > 5:
-        # Si el header tiene más secciones, forzar a 5
-        view.setColumnCount(5)
     vheader = view.verticalHeader()
     vheader.setVisible(False)
     vheader.setDefaultSectionSize(56)
@@ -159,9 +172,6 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     
     view.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
     
-    # NO aplicar estilo personalizado ni viewport personalizado durante construcción inicial
-    # Se activarán después del primer show para evitar flash de ventana marrón/blanca
-    
     view.setStyleSheet(LIST_VIEW_STYLESHEET)
     
     FontManager.safe_set_font(
@@ -178,8 +188,6 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
         QFont.Weight.DemiBold
     )
     
-    # NO reemplazar viewport durante construcción inicial
-    # Se activará después del primer show para evitar flash de ventana marrón/blanca
     view.viewport().setStyleSheet(f"""
         QWidget {{
             background-color: {CENTRAL_AREA_BG};
@@ -209,12 +217,7 @@ def expand_stacks_to_files(file_list: list) -> list[str]:
 
 def refresh_table(view, files: list[str], icon_service, state_manager, checked_paths: set, checkbox_changed_callback) -> None:
     """Rebuild table rows from file list."""
-    # Asegurar que solo haya 5 columnas
-    if view.columnCount() != 5:
-        view.setColumnCount(5)
-    # Ocultar cualquier columna extra
-    for i in range(5, view.columnCount()):
-        view.setColumnHidden(i, True)
+    _ensure_column_count(view, 5)
     
     view.setRowCount(len(files))
     for row, file_path in enumerate(files):

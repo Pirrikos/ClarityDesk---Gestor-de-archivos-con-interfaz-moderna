@@ -18,6 +18,9 @@ from app.ui.widgets.list_checkbox import CustomCheckBox
 from app.ui.widgets.list_state_cell import ListStateCell
 
 LIST_ROW_ICON_SIZE = QSize(28, 28)
+# Offset para alinear widget de estado con el título del header
+# Compensa diferencia entre padding de items (20px) y header (10px)
+STATE_CELL_LEFT_OFFSET = -30
 
 
 def create_checkbox_cell(
@@ -108,5 +111,8 @@ def create_date_cell(file_path: str, font: QFont) -> QTableWidgetItem:
 def create_state_cell(state: Optional[str], font: QFont) -> QWidget:
     """Create state cell widget centered vertically in the row."""
     state_widget = ListStateCell(state)
-    return _create_centered_container(state_widget)
+    container = _create_centered_container(state_widget)
+    # Desplazar widget para alinearlo con el título del header
+    container.layout().setContentsMargins(STATE_CELL_LEFT_OFFSET, 0, -STATE_CELL_LEFT_OFFSET, 0)
+    return container
 

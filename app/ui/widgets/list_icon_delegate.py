@@ -8,6 +8,8 @@ from PySide6.QtCore import QRect, QSize, Qt
 from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPalette, QPen
 from PySide6.QtWidgets import QStyle, QStyleOptionViewItem, QStyledItemDelegate, QTableWidget
 
+from app.core.constants import SELECTION_BORDER_COLOR, SELECTION_BG_COLOR
+
 
 class ListViewDelegate(QStyledItemDelegate):
     """
@@ -16,7 +18,7 @@ class ListViewDelegate(QStyledItemDelegate):
     Completely controls item rendering to prevent default Qt selection borders.
     """
     
-    MARGIN_LEFT = 14  # Padding izquierdo del icono (14px + 2px ICON_OFFSET_X = 16px total)
+    MARGIN_LEFT = 14  # Padding izquierdo del icono
     ICON_SIZE_SELECTED = QSize(30, 30)
     ICON_SIZE_NORMAL = QSize(28, 28)
     ICON_OFFSET_X = 2  # Reducido de 5 a 2 para acercar icono al checkbox
@@ -28,8 +30,6 @@ class ListViewDelegate(QStyledItemDelegate):
     HOVER_BG_COLOR = QColor(255, 255, 255, 20)  # Fondo hover tipo Finder (rgba(255,255,255,0.08) ≈ 20/255)
     CONTAINER_BG_COLOR = QColor(190, 190, 190)  # #BEBEBE - fondo contenedor
     CONTAINER_BORDER_COLOR = QColor(160, 160, 160)  # Borde contenedor normal
-    SELECTION_BORDER_COLOR = QColor(100, 150, 255)  # Borde azul suave cuando está seleccionado
-    SELECTION_BG_COLOR = QColor(100, 150, 255, 15)  # Fondo azul suave cuando está seleccionado
     
     def __init__(self, parent=None, column_index: int = 1):
         """
@@ -85,7 +85,8 @@ class ListViewDelegate(QStyledItemDelegate):
         if self._table_widget:
             try:
                 base_color = self._table_widget.palette().color(QPalette.ColorRole.Base)
-            except Exception:
+            except (AttributeError, RuntimeError):
+                # Widget puede no estar completamente inicializado o haber sido eliminado
                 pass
         
         # SOLO la columna 1 (Nombre) pinta el fondo de hover para las columnas de contenido
@@ -166,9 +167,9 @@ class ListViewDelegate(QStyledItemDelegate):
         
         if is_selected:
             # Cuando está seleccionado, cambiar borde a azul y añadir fondo azul semitransparente
-            border_color = self.SELECTION_BORDER_COLOR
+            border_color = SELECTION_BORDER_COLOR
             border_width = 2
-            bg_color = self.SELECTION_BG_COLOR
+            bg_color = SELECTION_BG_COLOR
         
         painter.setBrush(QBrush(bg_color))
         painter.setPen(QPen(border_color, border_width))

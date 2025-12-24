@@ -8,7 +8,7 @@ Emits signal on double-click to open file.
 from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QPoint, QTimer, Signal
-from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from app.core.constants import CENTRAL_AREA_BG
@@ -254,6 +254,18 @@ class FileGridView(QWidget):
     def get_selected_paths(self) -> list[str]:
         """Get paths of currently selected files."""
         return get_selected_paths(self)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse press - clear selection if clicking on empty background."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            clicked_tile, _ = self._get_clicked_tile(event.pos())
+            
+            if clicked_tile is None:
+                self._clear_selection()
+                event.accept()
+                return
+        
+        super().mousePressEvent(event)
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         """Show context menu - background menu or item menu depending on click location."""

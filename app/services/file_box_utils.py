@@ -1,9 +1,14 @@
 from collections import defaultdict
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QColor, QFont, QBrush
 from PySide6.QtWidgets import QListWidgetItem
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QListWidget
+    from app.services.icon_service import IconService
 
 from app.models.file_box_session import FileBoxSession
 
@@ -46,6 +51,31 @@ def create_date_header_item(date: datetime, font_size: int = 13) -> QListWidgetI
     header_item.setForeground(QBrush(QColor("rgba(255, 255, 255, 0.7)")))
     header_item.setSizeHint(QSize(0, 40))
     return header_item
+
+
+def populate_history_list(
+    history_list: "QListWidget",
+    sessions: list[FileBoxSession],
+    icon_service: "IconService"
+) -> None:
+    """Poblar lista de historial con sesiones agrupadas por fecha."""
+    from app.services.file_box_icon_helper import create_history_list_item
+    
+    grouped_sessions = group_sessions_by_date(sessions)
+    sorted_dates = sorted(grouped_sessions.keys(), reverse=True)
+    
+    history_list.clear()
+    for date_key in sorted_dates:
+        sessions_for_date = grouped_sessions[date_key]
+        
+        first_session = sessions_for_date[0]
+        header_item = create_date_header_item(first_session.timestamp)
+        history_list.addItem(header_item)
+        
+        for session in sessions_for_date:
+            for file_path in session.file_paths:
+                item = create_history_list_item(file_path, session, icon_service)
+                history_list.addItem(item)
 
 
 FILE_BOX_SCROLLBAR_STYLES = """

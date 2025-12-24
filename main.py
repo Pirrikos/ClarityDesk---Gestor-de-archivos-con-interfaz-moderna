@@ -37,6 +37,8 @@ def main() -> int:
     
     app = QApplication(sys.argv)
     app.setApplicationName("ClarityDesk Pro")
+    # No cerrar aplicación cuando se oculta MainWindow (DesktopWindow siempre está activo)
+    app.setQuitOnLastWindowClosed(False)
 
     # Create DesktopWindow (auto-start)
     desktop_window = DesktopWindow()
@@ -60,7 +62,8 @@ def main() -> int:
                 from app.managers.workspace_manager import WorkspaceManager
                 workspace_manager = WorkspaceManager()
                 tab_manager = TabManager()
-                main_window = MainWindow(tab_manager, workspace_manager)
+                # Inyectar DesktopWindow como dependencia (Rule 5: Dependency Injection)
+                main_window = MainWindow(tab_manager, workspace_manager, desktop_window)
             if not main_window.isVisible():
                 main_window.show()
             main_window.raise_()

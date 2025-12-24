@@ -63,7 +63,8 @@ def load_workspaces() -> List[Workspace]:
                 tabs=state.get('tabs', []),
                 active_tab=state.get('active_tab'),
                 focus_tree_paths=state.get('focus_tree_paths', []),
-                expanded_nodes=state.get('expanded_nodes', [])
+                expanded_nodes=state.get('expanded_nodes', []),
+                view_mode=state.get('view_mode', 'grid')
             )
             workspaces.append(workspace)
         
@@ -112,7 +113,7 @@ def load_workspace_state(workspace_id: str) -> Optional[dict]:
         workspace_id: ID of the workspace.
     
     Returns:
-        State dict with keys: tabs, active_tab, focus_tree_paths, expanded_nodes, root_folders_order
+        State dict with keys: tabs, active_tab, focus_tree_paths, expanded_nodes, root_folders_order, view_mode
         or None if file doesn't exist or is invalid.
     """
     state_file = get_workspace_state_file(workspace_id)
@@ -128,7 +129,8 @@ def load_workspace_state(workspace_id: str) -> Optional[dict]:
             'active_tab': data.get('active_tab'),
             'focus_tree_paths': data.get('focus_tree_paths', []),
             'expanded_nodes': data.get('expanded_nodes', []),
-            'root_folders_order': data.get('root_folders_order')
+            'root_folders_order': data.get('root_folders_order'),
+            'view_mode': data.get('view_mode', 'grid')
         }
     except (json.JSONDecodeError, IOError, OSError):
         return None
@@ -140,7 +142,7 @@ def save_workspace_state(workspace_id: str, state: dict) -> None:
     
     Args:
         workspace_id: ID of the workspace.
-        state: State dict with keys: tabs, active_tab, focus_tree_paths, expanded_nodes, root_folders_order
+        state: State dict with keys: tabs, active_tab, focus_tree_paths, expanded_nodes, root_folders_order, view_mode
     """
     state_file = get_workspace_state_file(workspace_id)
     
@@ -149,7 +151,8 @@ def save_workspace_state(workspace_id: str, state: dict) -> None:
         'active_tab': state.get('active_tab'),
         'focus_tree_paths': state.get('focus_tree_paths', []),
         'expanded_nodes': state.get('expanded_nodes', []),
-        'root_folders_order': state.get('root_folders_order')
+        'root_folders_order': state.get('root_folders_order'),
+        'view_mode': state.get('view_mode', 'grid')
     }
     
     try:

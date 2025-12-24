@@ -59,10 +59,11 @@ class ListStateCell(QWidget):
         painter.setBrush(bar_color)
         painter.drawRoundedRect(rect, 4, 4)
         
-        # Draw white text
+        # Draw text with appropriate color for contrast (darker for lighter backgrounds)
         font = FontManager.create_font("Segoe UI", FontManager.SIZE_SMALL, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.setPen(QColor(255, 255, 255))
+        # Use darker text color for better contrast with lighter backgrounds
+        painter.setPen(QColor(60, 60, 60))
         
         # Center text horizontally and vertically
         metrics = QFontMetrics(font)

@@ -16,7 +16,7 @@ from app.core.constants import (
 from app.core.logger import get_logger
 from app.ui.widgets.app_header import AppHeader
 from app.ui.widgets.secondary_header import SecondaryHeader
-from app.ui.widgets.file_box_history_panel_sidebar import FileBoxHistoryPanelSidebar
+from app.ui.widgets.file_box_history_panel import FileBoxHistoryPanel
 from app.ui.widgets.file_view_container import FileViewContainer
 from app.ui.widgets.file_view_sync import switch_view
 from app.ui.widgets.file_view_tabs import on_nav_back, on_nav_forward
@@ -54,24 +54,6 @@ def _apply_visual_separation(window_header, app_header, secondary_header, worksp
             background-color: """ + APP_HEADER_BG + """ !important;
             border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
         }
-        QLineEdit {
-            /* Mantener campo de búsqueda claro para contraste */
-            background-color: rgba(255, 255, 255, 0.9) !important;
-            border: 1px solid rgba(0, 0, 0, 0.15) !important;
-            border-radius: 8px;
-            padding: 8px 12px 8px 36px;
-            color: rgba(0, 0, 0, 0.85) !important;
-            /* font-size: establecido explícitamente */
-            font-weight: 400;
-        }
-        QLineEdit:focus {
-            background-color: #FFFFFF !important;
-            border: 1px solid rgba(0, 0, 0, 0.25) !important;
-            color: rgba(0, 0, 0, 0.95) !important;
-        }
-        QLineEdit::placeholder {
-            color: rgba(0, 0, 0, 0.5) !important;
-        }
     """)
     
     secondary_header.setStyleSheet(f"""
@@ -100,7 +82,7 @@ def _apply_visual_separation(window_header, app_header, secondary_header, worksp
     """)
 
 
-def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, SecondaryHeader, WorkspaceSelector, FileBoxHistoryPanelSidebar]:
+def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, SecondaryHeader, WorkspaceSelector, FileBoxHistoryPanel, QSplitter, 'FileBoxPanel']:
     try:
         root_layout = QVBoxLayout(window)
         # Margen invisible de 3px alrededor para permitir detección de bordes por el sistema
@@ -114,12 +96,10 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         
         app_header = AppHeader(window)
         app_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        app_header.hide()  # Ocultar visualmente temporalmente
         root_layout.addWidget(app_header, 0)
         
         secondary_header = SecondaryHeader(window)
         secondary_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        secondary_header.hide()  # Ocultar visualmente temporalmente
         root_layout.addWidget(secondary_header, 0)
         
         workspace_selector = WorkspaceSelector(window)
@@ -184,29 +164,40 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
             content_splitter
         )
         
-        # File box panel (initially hidden)
-        file_box_panel_placeholder = QWidget(content_splitter)  # Placeholder, will be replaced
-        file_box_panel_placeholder.hide()
+        from app.ui.widgets.file_box_panel import FileBoxPanel
+        from app.ui.widgets.file_box_history_panel import FileBoxHistoryPanel
+        from app.services.file_box_history_service import FileBoxHistoryService
+        
+        history_service = FileBoxHistoryService()
+        
+        file_box_panel = FileBoxPanel(
+            current_session=None,
+            history_service=history_service,
+            parent=content_splitter,
+            icon_service=icon_service
+        )
+        file_box_panel.hide()
+        
+        history_panel = FileBoxHistoryPanel(
+            history_service,
+            content_splitter,
+            icon_service=icon_service
+        )
+        history_panel.hide()
         
         content_splitter.addWidget(sidebar)
         content_splitter.addWidget(file_view_container)
-        content_splitter.addWidget(file_box_panel_placeholder)
+        content_splitter.addWidget(file_box_panel)
+        content_splitter.addWidget(history_panel)
         content_splitter.setStretchFactor(0, 0)
         content_splitter.setStretchFactor(1, 1)
         content_splitter.setStretchFactor(2, 0)
-        content_splitter.setSizes([200, 900, 0])  # File box panel starts with 0 width (hidden)
-        
-        # History panel (initially hidden)
-        from app.services.file_box_history_service import FileBoxHistoryService
-        history_service = FileBoxHistoryService()
-        history_panel = FileBoxHistoryPanelSidebar(history_service, main_splitter)
-        history_panel.hide()  # Initially hidden
+        content_splitter.setStretchFactor(3, 0)
+        content_splitter.setSizes([200, 900, 0, 0])  # Both panels start with 0 width (hidden)
         
         main_splitter.addWidget(content_splitter)
-        main_splitter.addWidget(history_panel)
         main_splitter.setStretchFactor(0, 1)
-        main_splitter.setStretchFactor(1, 0)
-        main_splitter.setSizes([1100, 300])
+        main_splitter.setSizes([1100])
         
         central_layout.addWidget(main_splitter, 1)
         
@@ -222,13 +213,22 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         file_view_container.set_header(app_header)
         file_view_container.set_workspace_selector(workspace_selector)
         
+        # Mover botón de workspace al SecondaryHeader (solo posición visual)
+        if workspace_selector._workspace_button:
+            # Remover el botón del layout del WorkspaceSelector
+            workspace_selector.layout().removeWidget(workspace_selector._workspace_button)
+            # Cambiar el parent al SecondaryHeader
+            workspace_selector._workspace_button.setParent(secondary_header)
+            # Agregar al SecondaryHeader
+            secondary_header.set_workspace_button(workspace_selector._workspace_button)
+        
         # Navigation buttons ahora están en WorkspaceSelector
         workspace_selector.navigation_back.connect(lambda: on_nav_back(file_view_container))
         workspace_selector.navigation_forward.connect(lambda: on_nav_forward(file_view_container))
         
         # Conectar botones Grid/List del WorkspaceSelector
-        workspace_selector.view_grid_requested.connect(lambda: switch_view(file_view_container, "grid"))
-        workspace_selector.view_list_requested.connect(lambda: switch_view(file_view_container, "list"))
+        workspace_selector.view_grid_requested.connect(lambda: workspace_manager.set_view_mode("grid"))
+        workspace_selector.view_list_requested.connect(lambda: workspace_manager.set_view_mode("list"))
         
         # Asignar referencias para que switch_view() pueda actualizar el estado
         file_view_container._workspace_grid_button = workspace_selector._grid_button
@@ -236,7 +236,7 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
 
         _apply_visual_separation(window_header, app_header, secondary_header, workspace_selector)
 
-        return file_view_container, sidebar, window_header, app_header, secondary_header, workspace_selector, history_panel, content_splitter, file_box_panel_placeholder
+        return file_view_container, sidebar, window_header, app_header, secondary_header, workspace_selector, history_panel, content_splitter, file_box_panel
         
     except Exception as e:
         logger = get_logger(__name__)

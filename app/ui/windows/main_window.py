@@ -5,25 +5,31 @@ Focus Dock replaces the old sidebar navigation system.
 """
 
 import os
-from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
+from typing import Optional
+from PySide6.QtCore import Qt, QTimer, QEvent, QPoint, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
 from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut, QPainter, QColor, QCursor
-from PySide6.QtWidgets import QWidget, QMessageBox, QApplication, QToolTip
+from PySide6.QtWidgets import QWidget, QMessageBox, QApplication, QToolTip, QDialog, QGraphicsOpacityEffect
 
 from app.core.constants import DEBUG_LAYOUT, FILE_SYSTEM_DEBOUNCE_MS, CENTRAL_AREA_BG, RESIZE_EDGE_DETECTION_MARGIN
 from app.core.logger import get_logger
 from app.managers.tab_manager import TabManager
 from app.managers.workspace_manager import WorkspaceManager
 from app.services.desktop_path_helper import is_desktop_focus
+from app.services.file_box_history_service import FileBoxHistoryService
+from app.services.file_box_service import FileBoxService
 from app.services.file_open_service import open_file_with_system
 from app.services.icon_service import IconService
+from app.managers.state_label_manager import StateLabelManager
 from app.services.path_utils import normalize_path
 from app.services.preview_pdf_service import PreviewPdfService
+from app.ui.widgets.file_box_panel import FileBoxPanel
+from app.ui.widgets.rename_state_dialog import RenameStateDialog
 from app.ui.windows.desktop_window import DesktopWindow
 from app.ui.windows.main_window_file_handler import filter_previewable_files
 from app.ui.windows.main_window_setup import setup_ui
 from app.ui.windows.main_window_state import load_app_state, save_app_state
 from app.ui.windows.quick_preview_window import QuickPreviewWindow
-from app.ui.widgets.file_view_sync import get_selected_files
+from app.ui.widgets.file_view_sync import get_selected_files, switch_view
 
 logger = get_logger(__name__)
 
@@ -31,8 +37,8 @@ logger = get_logger(__name__)
 class MainWindow(QWidget):
     """Main application window with Focus Dock and content area."""
 
-    def __init__(self, tab_manager: TabManager, workspace_manager: WorkspaceManager, parent=None):
-        """Initialize MainWindow with TabManager and WorkspaceManager."""
+    def __init__(self, tab_manager: TabManager, workspace_manager: WorkspaceManager, desktop_window: Optional[DesktopWindow] = None, parent=None):
+        """Initialize MainWindow with TabManager, WorkspaceManager and optional DesktopWindow."""
         try:
             super().__init__(parent)
             
@@ -51,10 +57,15 @@ class MainWindow(QWidget):
             
             self._tab_manager = tab_manager
             self._workspace_manager = workspace_manager
+            self._desktop_window = desktop_window  # Inyección de dependencia
             self._icon_service = IconService()
             self._preview_service = PreviewPdfService(self._icon_service)
+            self._state_label_manager = StateLabelManager()
             self._current_preview_window = None
             self._is_initializing = True
+            self._transition_animation: Optional[QParallelAnimationGroup] = None
+            self._fade_out_anim: Optional[QPropertyAnimation] = None
+            self._fade_in_anim: Optional[QPropertyAnimation] = None
             
             self.setObjectName("MainWindow")
             self.setAutoFillBackground(False)
@@ -97,17 +108,27 @@ class MainWindow(QWidget):
 
     def _setup_ui(self) -> None:
         """Build the UI layout with Focus Dock integrated."""
-        self._file_view_container, self._sidebar, self._window_header, self._app_header, self._secondary_header, self._workspace_selector, self._history_panel, self._content_splitter, self._file_box_panel_placeholder = setup_ui(
+        self._file_view_container, self._sidebar, self._window_header, self._app_header, self._secondary_header, self._workspace_selector, self._history_panel, self._content_splitter, self._current_file_box_panel = setup_ui(
             self, self._tab_manager, self._icon_service, self._workspace_manager
         )
-        self._current_file_box_panel = None
-        self._history_only_panel = None
+        self._file_box_panel_minimized = False
+        
+        if self._current_file_box_panel:
+            self._current_file_box_panel.close_requested.connect(self._close_file_box_panel)
+            self._current_file_box_panel.minimize_requested.connect(self._minimize_file_box_panel)
+            self._current_file_box_panel.file_open_requested.connect(self._on_file_open)
+        
+        if self._history_panel:
+            self._history_panel.close_requested.connect(self._close_history_panel_only)
 
     def _connect_signals(self) -> None:
         """Connect UI signals to TabManager."""
         self._window_header.request_close.connect(self.close)
         self._window_header.request_minimize.connect(self.showMinimized)
         self._window_header.request_toggle_maximize.connect(self._toggle_maximize)
+        
+        # Conectar señal del AppHeader para mostrar dock de escritorio
+        self._app_header.show_desktop_requested.connect(self._on_show_desktop_requested)
         
         self._tab_manager_connections = [
             (self._tab_manager.tabsChanged, self._on_tabs_changed),
@@ -139,13 +160,108 @@ class MainWindow(QWidget):
         
         self._workspace_selector.workspace_selected.connect(self._on_workspace_selected)
         self._workspace_manager.workspace_changed.connect(self._on_workspace_changed)
+        self._workspace_manager.view_mode_changed.connect(self._on_view_mode_changed)
         
         # File box signals
         self._workspace_selector.file_box_requested.connect(self._on_file_box_button_clicked)
         self._workspace_selector.state_button_clicked.connect(self._file_view_container._on_state_button_clicked)
-        self._app_header.history_panel_toggle_requested.connect(self._on_history_panel_toggle)
+        self._workspace_selector.rename_state_requested.connect(self._on_rename_state_requested)
+        self._secondary_header.history_panel_toggle_requested.connect(self._on_history_panel_toggle)
         
         self._workspace_selector.rename_clicked.connect(self._file_view_container._on_rename_clicked)
+        
+        # Set state label manager
+        self._workspace_selector.set_state_label_manager(self._state_label_manager)
+        self._state_label_manager.labels_changed.connect(self._on_state_labels_changed)
+
+    def _on_show_desktop_requested(self) -> None:
+        """Ocultar MainWindow y mostrar DesktopWindow con animación elegante tipo macOS."""
+        # Usar DesktopWindow inyectado o buscar como fallback
+        desktop_window = self._desktop_window
+        if not desktop_window:
+            # Fallback: buscar DesktopWindow si no fue inyectado
+            for widget in QApplication.allWidgets():
+                if isinstance(widget, DesktopWindow):
+                    desktop_window = widget
+                    break
+        
+        if not desktop_window:
+            logger.warning("DesktopWindow no encontrada al intentar mostrar dock de escritorio")
+            return
+        
+        # Cancelar animación anterior si existe
+        if self._transition_animation:
+            self._transition_animation.stop()
+            self._transition_animation.deleteLater()
+            self._transition_animation = None
+        
+        # Verificar si DesktopWindow ya está completamente visible
+        is_already_visible = desktop_window.isVisible() and desktop_window.windowOpacity() >= 0.99
+        
+        if is_already_visible:
+            # Si ya está visible, solo ocultar MainWindow sin animación
+            self.hide()
+            desktop_window.raise_()
+            desktop_window.activateWindow()
+            return
+        
+        # Asegurar que DesktopWindow esté visible y reconocido por Qt ANTES de ocultar MainWindow
+        # Solo llamar a show() si no está visible
+        if not desktop_window.isVisible():
+            desktop_window.setWindowOpacity(0.01)  # Opacidad mínima pero visible para Qt
+            desktop_window.show()
+            desktop_window.raise_()
+            desktop_window.activateWindow()
+            QApplication.processEvents()
+        else:
+            # Si ya está visible pero con opacidad baja, solo ajustar opacidad
+            current_opacity = desktop_window.windowOpacity()
+            if current_opacity < 0.01:
+                desktop_window.setWindowOpacity(0.01)
+        
+        # Crear efectos de opacidad
+        main_opacity_effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(main_opacity_effect)
+        main_opacity_effect.setOpacity(1.0)
+        
+        # Animación de fade out para MainWindow
+        fade_out = QPropertyAnimation(main_opacity_effect, b"opacity", self)
+        fade_out.setDuration(280)
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.0)
+        fade_out.setEasingCurve(QEasingCurve.Type.OutCubic)
+        
+        # Animación de fade in para DesktopWindow usando windowOpacity (más confiable)
+        current_desktop_opacity = desktop_window.windowOpacity()
+        fade_in = QPropertyAnimation(desktop_window, b"windowOpacity", desktop_window)
+        fade_in.setDuration(300)
+        fade_in.setStartValue(current_desktop_opacity)  # Empezar desde opacidad actual
+        fade_in.setEndValue(1.0)
+        fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
+        
+        # Guardar referencias para evitar garbage collection
+        self._fade_out_anim = fade_out
+        self._fade_in_anim = fade_in
+        
+        # Callbacks al finalizar
+        def on_fade_out_finished():
+            self.hide()
+            self.setGraphicsEffect(None)
+            self._fade_out_anim = None
+        
+        def on_fade_in_finished():
+            desktop_window.activateWindow()
+            self._fade_in_anim = None
+            if self._transition_animation:
+                self._transition_animation.deleteLater()
+                self._transition_animation = None
+        
+        fade_out.finished.connect(on_fade_out_finished)
+        fade_in.finished.connect(on_fade_in_finished)
+        
+        # Iniciar fade out primero, luego fade in con pequeño delay (efecto escalonado elegante)
+        fade_out.start()
+        QTimer.singleShot(40, fade_in.start)
 
     def _load_app_state(self) -> None:
         """Load complete application state and restore UI."""
@@ -175,14 +291,15 @@ class MainWindow(QWidget):
                 state.get('expanded_nodes', []),
                 state.get('root_folders_order')
             )
+            
+            view_mode = state.get('view_mode', 'grid')
+            switch_view(self._file_view_container, view_mode)
         else:
             self._tab_manager.load_workspace_state({
                 'tabs': [],
                 'active_tab': None
             })
             self._sidebar.load_workspace_state([], [])
-        
-        self._app_header.update_workspace(active_workspace.name)
     
     def _on_workspace_selected(self, workspace_id: str) -> None:
         """Handle workspace selection - delegar a WorkspaceManager."""
@@ -208,6 +325,10 @@ class MainWindow(QWidget):
         """Explicitly clear file view when workspace has no active tab."""
         self._file_view_container.clear_current_focus()
     
+    def _on_view_mode_changed(self, view_mode: str) -> None:
+        """Handle view mode change from WorkspaceManager - aplicar cambio visual."""
+        switch_view(self._file_view_container, view_mode)
+    
     def _on_workspace_changed(self, workspace_id: str) -> None:
         """Handle workspace change - actualizar UI con nuevo estado."""
         if not self._workspace_manager:
@@ -217,7 +338,8 @@ class MainWindow(QWidget):
         if not workspace:
             return
         
-        self._app_header.update_workspace(workspace.name)
+        view_mode = self._workspace_manager.get_view_mode()
+        switch_view(self._file_view_container, view_mode)
 
     def _on_tabs_changed(self, tabs: list) -> None:
         """Handle tabs list change from TabManager."""
@@ -233,7 +355,7 @@ class MainWindow(QWidget):
         """Update AppHeader when active tab changes."""
         if self._is_initializing:
             return
-        self._app_header.update_workspace(path)
+        # Placeholder: AppHeader ya no muestra información de workspace/tab
     
     def _toggle_maximize(self) -> None:
         """Toggle window maximize/restore state."""
@@ -508,7 +630,13 @@ class MainWindow(QWidget):
             self._current_preview_window = None
             return
 
-        selected = get_selected_files(self._file_view_container)
+        selected = []
+        if self._current_file_box_panel and self._current_file_box_panel.isVisible():
+            selected = self._current_file_box_panel.get_selected_files()
+        
+        if not selected:
+            selected = get_selected_files(self._file_view_container)
+        
         if not selected:
             return
 
@@ -680,13 +808,13 @@ class MainWindow(QWidget):
             self._sidebar._tree_view.setUpdatesEnabled(True)
     
     def _on_file_box_button_clicked(self) -> None:
-        """Handle file box button click - prepare files and open file box."""
-        from app.services.file_box_service import FileBoxService
-        from app.services.file_box_history_service import FileBoxHistoryService
-        from app.ui.widgets.file_view_sync import get_selected_files
-        from app.ui.widgets.file_box_panel import FileBoxPanel
+        """Handle file box button click - add files to active session or create new one."""
         
-        # Get selected files
+        # Si hay panel minimizado, reabrirlo y salir
+        if self._file_box_panel_minimized and self._current_file_box_panel:
+            self._restore_file_box_panel()
+            return
+        
         selected_files = get_selected_files(self._file_view_container)
         
         if not selected_files:
@@ -698,11 +826,34 @@ class MainWindow(QWidget):
             return
         
         try:
-            # Initialize services
             file_box_service = FileBoxService()
             history_service = FileBoxHistoryService()
             
-            # Prepare files
+            if self._current_file_box_panel and not self._file_box_panel_minimized:
+                current_session = self._current_file_box_panel.get_current_session()
+                if current_session:
+                    temp_folder = current_session.temp_folder_path
+                    added_count = file_box_service.add_files_to_existing_folder(selected_files, temp_folder)
+                    
+                    if added_count == 0:
+                        QMessageBox.warning(
+                            self,
+                            "Error",
+                            "No se pudieron añadir los archivos a la sesión actual."
+                        )
+                        return
+                    
+                    self._current_file_box_panel.add_files_to_session(selected_files)
+                    
+                    updated_session = self._current_file_box_panel.get_current_session()
+                    history_service.add_session(updated_session)
+                    
+                    if self._history_panel.isVisible():
+                        self._history_panel.refresh()
+                    
+                    self._update_file_box_button_state()
+                    return
+            
             temp_folder = file_box_service.prepare_files(selected_files)
             if not temp_folder:
                 QMessageBox.warning(
@@ -712,46 +863,17 @@ class MainWindow(QWidget):
                 )
                 return
             
-            # Create session
             session = file_box_service.create_file_box_session(selected_files, temp_folder)
-            
-            # Persist to history
             history_service.add_session(session)
             
-            # Show/hide file box panel (toggle behavior)
-            if self._current_file_box_panel:
-                self._close_file_box_panel()
-            else:
-                # Create and show new panel
-                self._current_file_box_panel = FileBoxPanel(
-                    session,
-                    history_service,
-                    self._content_splitter,
-                    icon_service=self._icon_service
-                )
-                
-                # Hide placeholder first to avoid flash
-                self._file_box_panel_placeholder.hide()
-                
-                # Temporarily disable updates to prevent flashing
-                self._content_splitter.setUpdatesEnabled(False)
-                
-                try:
-                    # Replace placeholder with panel using replaceWidget
-                    placeholder_index = self._content_splitter.indexOf(self._file_box_panel_placeholder)
-                    if placeholder_index >= 0:
-                        self._content_splitter.replaceWidget(placeholder_index, self._current_file_box_panel)
-                    
-                    # Connect close signal
-                    self._current_file_box_panel.close_requested.connect(self._close_file_box_panel)
-                    
-                    # Adjust splitter sizes: sidebar | files | file box panel
-                    self._content_splitter.setSizes([200, 700, 400])
-                finally:
-                    # Re-enable updates
-                    self._content_splitter.setUpdatesEnabled(True)
+            self._ensure_only_one_panel_visible("file_box")
             
-            # Refresh history panel if visible
+            self._current_file_box_panel.set_session(session)
+            self._current_file_box_panel.setVisible(True)
+            self._update_right_panel_layout("FILE_BOX")
+            self._file_box_panel_minimized = False
+            self._update_file_box_button_state()
+            
             if self._history_panel.isVisible():
                 self._history_panel.refresh()
             
@@ -763,88 +885,147 @@ class MainWindow(QWidget):
                 f"Error al preparar la caja de archivos:\n{str(e)}"
             )
     
-    def _close_file_box_panel(self) -> None:
-        """Close the file box panel and restore placeholder."""
+    def _update_right_panel_layout(self, mode: str) -> None:
+        """
+        Actualiza el layout del panel derecho según el modo.
+        
+        Args:
+            mode: "NONE" | "FILE_BOX" | "HISTORY"
+        """
+        if mode == "NONE":
+            self._content_splitter.setSizes([200, 1100, 0, 0])
+        elif mode == "FILE_BOX":
+            self._content_splitter.setSizes([200, 700, 400, 0])
+        elif mode == "HISTORY":
+            self._content_splitter.setSizes([200, 700, 0, 400])
+    
+    def _minimize_file_box_panel(self) -> None:
+        """Minimize the file box panel without closing the session."""
         if not self._current_file_box_panel:
             return
         
-        # Replace panel with placeholder
-        panel_index = self._content_splitter.indexOf(self._current_file_box_panel)
-        if panel_index >= 0:
-            self._content_splitter.replaceWidget(panel_index, self._file_box_panel_placeholder)
-            self._current_file_box_panel.setParent(None)
-            self._current_file_box_panel.deleteLater()
+        self._current_file_box_panel.setVisible(False)
+        self._file_box_panel_minimized = True
+        self._update_right_panel_layout("NONE")
+        self._update_file_box_button_state()
+    
+    def _restore_file_box_panel(self) -> None:
+        """Restore the minimized file box panel."""
+        if not self._current_file_box_panel or not self._file_box_panel_minimized:
+            return
         
-        self._current_file_box_panel = None
-        self._file_box_panel_placeholder.hide()
-        # Adjust splitter to hide panel area
-        self._content_splitter.setSizes([200, 1100, 0])
+        self._ensure_only_one_panel_visible("file_box")
+        
+        self._current_file_box_panel.setVisible(True)
+        self._file_box_panel_minimized = False
+        self._update_right_panel_layout("FILE_BOX")
+        self._update_file_box_button_state()
+    
+    def _close_file_box_panel(self) -> None:
+        """Close the file box panel and save session to history."""
+        if not self._current_file_box_panel:
+            return
+        
+        history_service = FileBoxHistoryService()
+        current_session = self._current_file_box_panel.get_current_session()
+        if current_session:
+            history_service.add_session(current_session)
+        
+        self._current_file_box_panel.set_session(None)
+        self._current_file_box_panel.setVisible(False)
+        self._file_box_panel_minimized = False
+        self._update_right_panel_layout("NONE")
+        self._update_file_box_button_state()
+    
+    def _update_file_box_button_state(self) -> None:
+        """Update file box button visual state to indicate active session."""
+        has_active_session = (self._current_file_box_panel is not None and 
+                             self._current_file_box_panel.get_current_session() is not None)
+        is_minimized = self._file_box_panel_minimized
+        
+        if has_active_session:
+            self._workspace_selector.set_file_box_button_active(True, is_minimized)
+        else:
+            self._workspace_selector.set_file_box_button_active(False, False)
+    
+    def _ensure_only_one_panel_visible(self, show_panel: str) -> None:
+        """Asegura que solo un panel esté visible: 'file_box' o 'history'."""
+        if show_panel == "file_box":
+            if self._history_panel and self._history_panel.isVisible():
+                self._history_panel.setVisible(False)
+        elif show_panel == "history":
+            if self._current_file_box_panel and self._current_file_box_panel.isVisible():
+                self._current_file_box_panel.setVisible(False)
+                self._file_box_panel_minimized = True
     
     def _on_history_panel_toggle(self) -> None:
         """Handle history panel toggle request - show history in file box panel area."""
-        # If file box panel is open, close it first
-        if self._current_file_box_panel:
-            self._close_file_box_panel()
-        
-        # Toggle history-only panel in file box panel area
-        if hasattr(self, '_history_only_panel') and self._history_only_panel:
-            # Close history panel
-            panel_index = self._content_splitter.indexOf(self._history_only_panel)
-            if panel_index >= 0:
-                self._content_splitter.replaceWidget(panel_index, self._file_box_panel_placeholder)
-                self._history_only_panel.setParent(None)
-                self._history_only_panel.deleteLater()
-            
-            self._history_only_panel = None
-            self._file_box_panel_placeholder.hide()
-            # Adjust splitter to hide panel area
-            self._content_splitter.setSizes([200, 1100, 0])
-        else:
-            # Create and show history-only panel
-            from app.services.file_box_history_service import FileBoxHistoryService
-            from app.ui.widgets.file_box_history_panel import FileBoxHistoryPanel
-            
-            # Hide placeholder first to avoid flash
-            self._file_box_panel_placeholder.hide()
-            
-            # Temporarily disable updates to prevent flashing
-            self._content_splitter.setUpdatesEnabled(False)
-            
-            try:
-                history_service = FileBoxHistoryService()
-                self._history_only_panel = FileBoxHistoryPanel(
-                    history_service,
-                    self._content_splitter,
-                    icon_service=self._icon_service
-                )
-                
-                # Connect close signal
-                self._history_only_panel.close_requested.connect(self._close_history_only_panel)
-                
-                # Replace placeholder with panel
-                placeholder_index = self._content_splitter.indexOf(self._file_box_panel_placeholder)
-                if placeholder_index >= 0:
-                    self._content_splitter.replaceWidget(placeholder_index, self._history_only_panel)
-                
-                # Adjust splitter sizes: sidebar | files | history panel
-                self._content_splitter.setSizes([200, 700, 400])
-            finally:
-                # Re-enable updates
-                self._content_splitter.setUpdatesEnabled(True)
-    
-    def _close_history_only_panel(self) -> None:
-        """Close the history-only panel and restore placeholder."""
-        if not hasattr(self, '_history_only_panel') or not self._history_only_panel:
+        if not self._history_panel:
             return
         
-        # Replace panel with placeholder
-        panel_index = self._content_splitter.indexOf(self._history_only_panel)
-        if panel_index >= 0:
-            self._content_splitter.replaceWidget(panel_index, self._file_box_panel_placeholder)
-            self._history_only_panel.setParent(None)
-            self._history_only_panel.deleteLater()
+        is_history_visible = self._history_panel.isVisible()
         
-        self._history_only_panel = None
-        self._file_box_panel_placeholder.hide()
-        # Adjust splitter to hide panel area
-        self._content_splitter.setSizes([200, 1100, 0])
+        if is_history_visible:
+            self._history_panel.setVisible(False)
+            if self._current_file_box_panel and self._current_file_box_panel.isVisible():
+                self._current_file_box_panel.setVisible(False)
+                self._file_box_panel_minimized = True
+            self._update_right_panel_layout("NONE")
+        else:
+            self._ensure_only_one_panel_visible("history")
+            self._history_panel.setVisible(True)
+            self._history_panel.refresh()
+            self._update_right_panel_layout("HISTORY")
+    
+    def _close_history_panel_only(self) -> None:
+        """Cerrar HistoryPanel (ocultar sin limpiar datos)."""
+        if not self._history_panel:
+            return
+        
+        self._history_panel.setVisible(False)
+        self._update_right_panel_layout("NONE")
+    
+    def _on_rename_state_requested(self) -> None:
+        """Handle rename state label request - show dialog."""
+        if not self._state_label_manager:
+            return
+        
+        current_labels = self._state_label_manager.get_all_labels()
+        dialog = RenameStateDialog(self._state_label_manager, current_labels, self)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            # Labels already updated by manager, just refresh UI
+            self._on_state_labels_changed()
+    
+    def _on_state_labels_changed(self) -> None:
+        """Handle state labels change - refresh UI components."""
+        # Update STATE_LABELS dynamically
+        if self._state_label_manager:
+            custom_labels = self._state_label_manager.get_all_labels()
+            from app.ui.widgets import state_badge_widget
+            # Update the module-level STATE_LABELS dict
+            for state, label in custom_labels.items():
+                state_badge_widget.STATE_LABELS[state] = label
+        
+        # Refresh file views to show updated labels
+        if hasattr(self, '_file_view_container'):
+            # Force update of all file tiles and list cells
+            container = self._file_view_container
+            if hasattr(container, '_grid_view') and container._grid_view:
+                # Refresh grid view badges
+                for i in range(container._grid_view.layout().count()):
+                    item = container._grid_view.layout().itemAt(i)
+                    if item and item.widget():
+                        widget = item.widget()
+                        if hasattr(widget, '_state_badge') and widget._state_badge:
+                            state = widget._state_badge.get_state()
+                            widget._state_badge.set_state(state)  # Force repaint
+                        widget.update()
+            
+            if hasattr(container, '_list_view') and container._list_view:
+                # Refresh list view state cells
+                container._list_view.viewport().update()
+            
+            # Refresh workspace selector menu
+            if hasattr(self, '_workspace_selector') and self._workspace_selector:
+                self._workspace_selector._refresh_state_menu()

@@ -73,6 +73,57 @@ class FileBoxService:
             logger.error(f"Failed to prepare files for file box: {e}", exc_info=True)
             return None
     
+    def add_files_to_existing_folder(self, file_paths: List[str], temp_folder_path: str) -> int:
+        """Add files to an existing temporary folder. Returns count of successfully added files."""
+        if not file_paths:
+            logger.warning("No files provided for adding to existing folder")
+            return 0
+        
+        if not os.path.exists(temp_folder_path) or not os.path.isdir(temp_folder_path):
+            logger.error(f"Temporary folder does not exist or is not a directory: {temp_folder_path}")
+            return 0
+        
+        copied_count = 0
+        for file_path in file_paths:
+            normalized_path = normalize_path(file_path)
+            
+            if not os.path.exists(normalized_path):
+                logger.warning(f"File does not exist: {normalized_path}")
+                continue
+            
+            if not os.access(normalized_path, os.R_OK):
+                logger.error(f"No read permission: {normalized_path}")
+                continue
+            
+            try:
+                file_name = os.path.basename(normalized_path)
+                dest_path = os.path.join(temp_folder_path, file_name)
+                
+                counter = 1
+                base_name, ext = os.path.splitext(file_name)
+                while os.path.exists(dest_path):
+                    new_name = f"{base_name}_{counter}{ext}"
+                    dest_path = os.path.join(temp_folder_path, new_name)
+                    counter += 1
+                
+                if os.path.isdir(normalized_path):
+                    shutil.copytree(normalized_path, dest_path, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(normalized_path, dest_path)
+                copied_count += 1
+            except PermissionError as e:
+                logger.error(f"Permission denied copying file {normalized_path}: {e}")
+                continue
+            except OSError as e:
+                logger.error(f"OS error copying file {normalized_path}: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Failed to copy file {normalized_path}: {e}")
+                continue
+        
+        logger.debug(f"Added {copied_count} files to existing folder {temp_folder_path}")
+        return copied_count
+    
     def create_file_box_session(self, file_paths: List[str], temp_folder_path: str) -> FileBoxSession:
         return FileBoxSession(
             timestamp=datetime.now(),

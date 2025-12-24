@@ -29,8 +29,9 @@ def get_base_stylesheet() -> str:
             border-radius: 6px;
             color: {BUTTON_TEXT_LIGHT};
             font-size: 12px;
-            padding: 4px 10px;
+            padding: 6px 14px;
             text-align: left;
+            margin: 2px;
         }}
         QPushButton#WorkspaceButton:hover {{
             background-color: {BUTTON_BG_LIGHT_HOVER};

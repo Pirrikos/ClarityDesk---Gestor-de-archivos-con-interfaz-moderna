@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
     QInputDialog,
     QMenu,
-    QFileDialog
+    QFileDialog,
+    QMessageBox
 )
 
 from app.core.constants import (
@@ -57,6 +58,7 @@ class WorkspaceSelector(QWidget):
     file_box_requested = Signal()  # Emitted when file box button is clicked
     state_button_clicked = Signal(str)  # Emitted when state menu item is clicked (state constant or None)
     rename_clicked = Signal()  # Emitted when rename button is clicked
+    rename_state_requested = Signal()  # Emitted when rename state label is requested
     
     def __init__(self, parent: Optional[QWidget] = None):
         """
@@ -69,8 +71,8 @@ class WorkspaceSelector(QWidget):
         self.setObjectName("WorkspaceSelector")
         self.setAutoFillBackground(False)
         self._workspace_manager = None
+        self._state_label_manager = None
         self._workspace_button = None
-        self._add_button = None
         self._focus_button = None
         self._back_button = None
         self._forward_button = None
@@ -79,6 +81,7 @@ class WorkspaceSelector(QWidget):
         self._file_box_button = None
         self._state_button = None
         self._rename_button = None
+        self._state_menu = None
         self._setup_ui()
         self._apply_styling()
     
@@ -97,6 +100,18 @@ class WorkspaceSelector(QWidget):
             workspace_manager.workspace_deleted.connect(self._refresh_workspaces)
             workspace_manager.workspace_changed.connect(self._on_workspace_changed)
     
+    def set_state_label_manager(self, state_label_manager) -> None:
+        """
+        Set StateLabelManager instance.
+        
+        Args:
+            state_label_manager: StateLabelManager instance.
+        """
+        self._state_label_manager = state_label_manager
+        if state_label_manager:
+            state_label_manager.labels_changed.connect(self._refresh_state_menu)
+            self._refresh_state_menu()
+    
     def _setup_ui(self) -> None:
         """Build UI layout as horizontal compact bar."""
         layout = QHBoxLayout(self)
@@ -114,20 +129,13 @@ class WorkspaceSelector(QWidget):
         self._workspace_button = QPushButton()
         self._workspace_button.setObjectName("WorkspaceButton")
         self._workspace_button.setFixedHeight(WORKSPACE_BUTTON_HEIGHT)
-        self._workspace_button.setMaximumWidth(180)
+        self._workspace_button.setMinimumWidth(200)
+        self._workspace_button.setMaximumWidth(280)
         self._workspace_button.clicked.connect(self._on_workspace_button_clicked)
         layout.addWidget(self._workspace_button, 0)
         
-        # Espacio entre workspace y los 4 botones
+        # Espacio entre workspace y los botones
         layout.addSpacing(8)
-        
-        # Los 4 botones que tendrán fondo redondeado (pintado en paintEvent)
-        # Add button
-        self._add_button = QPushButton("+")
-        self._add_button.setObjectName("HeaderButton")
-        self._add_button.setFixedSize(28, 28)
-        self._add_button.clicked.connect(self._on_add_clicked)
-        layout.addWidget(self._add_button, 0)
         
         # Focus button
         self._focus_button = QPushButton()
@@ -152,6 +160,9 @@ class WorkspaceSelector(QWidget):
         
         self._focus_button.clicked.connect(self._on_focus_button_clicked)
         layout.addWidget(self._focus_button, 0)
+        
+        # Separador entre focus y navegación
+        layout.addWidget(self._create_separator(), 0)
         
         # Navigation buttons (back/forward)
         self._back_button, self._forward_button = create_navigation_buttons(
@@ -234,6 +245,16 @@ class WorkspaceSelector(QWidget):
         
         paint_rounded_background(painter, widget_rect, bg_color)
         
+        # Pintar offset visual para el botón de workspace
+        if self._workspace_button:
+            button_rect = self._workspace_button.geometry()
+            if button_rect.isValid():
+                # Offset visual: sombra sutil alrededor del botón
+                offset_rect = button_rect.adjusted(-2, -2, 2, 2)
+                painter.setPen(QColor(0, 0, 0, 20))
+                painter.setBrush(QColor(0, 0, 0, 5))
+                painter.drawRoundedRect(offset_rect, 8, 8)
+        
         painter.end()
         super().paintEvent(event)
     
@@ -288,6 +309,14 @@ class WorkspaceSelector(QWidget):
         create_action = menu.addAction("+ Nuevo workspace")
         create_action.triggered.connect(self._on_add_clicked)
         
+        # Añadir opciones de renombrar y eliminar workspace activo
+        if active_id:
+            menu.addSeparator()
+            rename_action = menu.addAction("Renombrar workspace…")
+            rename_action.triggered.connect(self._on_rename_workspace_clicked)
+            delete_action = menu.addAction("Eliminar workspace…")
+            delete_action.triggered.connect(self._on_delete_workspace_clicked)
+        
         button_rect = self._workspace_button.geometry()
         y_local = button_rect.bottom()
         menu_pos = self._workspace_button.mapToGlobal(QPoint(button_rect.left(), y_local))
@@ -314,9 +343,103 @@ class WorkspaceSelector(QWidget):
             self._refresh_workspaces()
             self.workspace_selected.emit(workspace.id)
     
+    def _on_rename_workspace_clicked(self) -> None:
+        """Handle rename workspace action - show dialog and rename."""
+        if not self._workspace_manager:
+            return
+        
+        active_workspace = self._workspace_manager.get_active_workspace()
+        if not active_workspace:
+            return
+        
+        current_name = active_workspace.name
+        workspace_id = active_workspace.id
+        
+        # Diálogo de entrada con nombre actual pre-rellenado
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Renombrar Workspace",
+            "Nuevo nombre del workspace:",
+            text=current_name
+        )
+        
+        if not ok or not new_name or not new_name.strip():
+            return
+        
+        # Validar que el nombre no esté vacío después de strip
+        new_name = new_name.strip()
+        if not new_name:
+            QMessageBox.warning(
+                self,
+                "Nombre inválido",
+                "El nombre del workspace no puede estar vacío."
+            )
+            return
+        
+        # Si el nombre no cambió, no hacer nada
+        if new_name == current_name:
+            return
+        
+        # Renombrar workspace
+        renamed = self._workspace_manager.rename_workspace(workspace_id, new_name)
+        
+        if renamed:
+            # Refrescar UI para mostrar el nuevo nombre
+            self._refresh_workspaces()
+        else:
+            QMessageBox.warning(
+                self,
+                "Error",
+                "No se pudo renombrar el workspace."
+            )
+    
+    def _on_delete_workspace_clicked(self) -> None:
+        """Handle delete workspace action - show confirmation and delete."""
+        if not self._workspace_manager:
+            return
+        
+        active_workspace = self._workspace_manager.get_active_workspace()
+        if not active_workspace:
+            return
+        
+        workspace_name = active_workspace.name
+        workspace_id = active_workspace.id
+        
+        # Diálogo de confirmación
+        reply = QMessageBox.question(
+            self,
+            "Eliminar Workspace",
+            f"¿Estás seguro de que quieres eliminar el workspace \"{workspace_name}\"?\n\n"
+            "Esta acción no se puede deshacer.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # Eliminar workspace (el manager manejará el cambio automático si es necesario)
+        deleted = self._workspace_manager.delete_workspace(workspace_id)
+        
+        if deleted:
+            # El manager ya cambió automáticamente si había otros workspaces
+            # Solo necesitamos actualizar la UI y emitir señal si hay un nuevo workspace activo
+            current_active_id = self._workspace_manager.get_active_workspace_id()
+            if current_active_id:
+                # Emitir señal para que MainWindow actualice la UI
+                self.workspace_selected.emit(current_active_id)
+            else:
+                # Si no hay activo, refrescar para mostrar el nuevo estado
+                self._refresh_workspaces()
+    
     def _on_workspace_changed(self, workspace_id: str) -> None:
         """Handle workspace change from manager."""
-        self._refresh_workspaces()
+        # Protección defensiva: verificar que el botón existe antes de actualizar
+        if self._workspace_button:
+            self._refresh_workspaces()
+        else:
+            # Si el botón aún no existe, programar actualización
+            QTimer.singleShot(0, self._refresh_workspaces)
     
     def set_nav_enabled(self, can_back: bool, can_forward: bool) -> None:
         """Update navigation buttons enabled state."""
@@ -355,21 +478,59 @@ class WorkspaceSelector(QWidget):
         except ImportError:
             return
         
-        menu = QMenu(button)
-        menu.setStyleSheet(self._get_menu_stylesheet("state"))
+        self._state_menu = QMenu(button)
+        self._state_menu.setStyleSheet(self._get_menu_stylesheet("state"))
         
-        self._create_state_action(menu, "Pendiente", STATE_PENDING)
-        self._create_state_action(menu, "Entregado", STATE_DELIVERED)
-        self._create_state_action(menu, "Corregido", STATE_CORRECTED)
-        self._create_state_action(menu, "Revisar", STATE_REVIEW)
-        menu.addSeparator()
-        self._create_state_action(menu, "Quitar estado", None)
+        self._refresh_state_menu()
         
-        button.setMenu(menu)
+        button.setMenu(self._state_menu)
         
         if button.receivers("clicked()") > 0:
             button.clicked.disconnect()
-        button.clicked.connect(lambda: self._show_state_menu_at_position(button, menu))
+        button.clicked.connect(lambda: self._show_state_menu_at_position(button, self._state_menu))
+    
+    def _refresh_state_menu(self) -> None:
+        """Refresh state menu with current labels."""
+        if not self._state_menu:
+            return
+        
+        self._state_menu.clear()
+        
+        try:
+            from app.ui.widgets.state_badge_widget import (
+                STATE_CORRECTED,
+                STATE_DELIVERED,
+                STATE_PENDING,
+                STATE_REVIEW,
+            )
+        except ImportError:
+            return
+        
+        # Get current labels (custom or default)
+        if self._state_label_manager:
+            labels = self._state_label_manager.get_all_labels()
+        else:
+            from app.ui.widgets.state_badge_widget import STATE_LABELS
+            labels = {
+                STATE_PENDING: STATE_LABELS.get(STATE_PENDING, "PENDIENTE"),
+                STATE_DELIVERED: STATE_LABELS.get(STATE_DELIVERED, "ENTREGADO"),
+                STATE_CORRECTED: STATE_LABELS.get(STATE_CORRECTED, "CORREGIDO"),
+                STATE_REVIEW: STATE_LABELS.get(STATE_REVIEW, "REVISAR"),
+            }
+        
+        # Add state actions with current labels
+        self._create_state_action(self._state_menu, labels.get(STATE_PENDING, "Pendiente"), STATE_PENDING)
+        self._create_state_action(self._state_menu, labels.get(STATE_DELIVERED, "Entregado"), STATE_DELIVERED)
+        self._create_state_action(self._state_menu, labels.get(STATE_CORRECTED, "Corregido"), STATE_CORRECTED)
+        self._create_state_action(self._state_menu, labels.get(STATE_REVIEW, "Revisar"), STATE_REVIEW)
+        
+        self._state_menu.addSeparator()
+        self._create_state_action(self._state_menu, "Quitar estado", None)
+        
+        # Add rename option
+        self._state_menu.addSeparator()
+        rename_action = self._state_menu.addAction("Renombrar etiqueta…")
+        rename_action.triggered.connect(self.rename_state_requested.emit)
     
     def _show_state_menu_at_position(self, button: QPushButton, menu: QMenu) -> None:
         """Show state menu at correct position below button."""
@@ -394,3 +555,41 @@ class WorkspaceSelector(QWidget):
         """Update rename button state based on selection count."""
         if self._rename_button:
             self._rename_button.setEnabled(count >= 1)
+    
+    def set_file_box_button_active(self, active: bool, minimized: bool = False) -> None:
+        """Update file box button visual state to indicate active session."""
+        if not self._file_box_button:
+            return
+        
+        if active:
+            # Botón activo: estilo destacado
+            if minimized:
+                self._file_box_button.setToolTip("Caja de archivos (minimizada - click para restaurar)")
+                self._file_box_button.setStyleSheet("""
+                    QPushButton#HeaderButton {
+                        background-color: #007AFF;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                    }
+                    QPushButton#HeaderButton:hover {
+                        background-color: #0056CC;
+                    }
+                """)
+            else:
+                self._file_box_button.setToolTip("Caja de archivos (activa)")
+                self._file_box_button.setStyleSheet("""
+                    QPushButton#HeaderButton {
+                        background-color: #007AFF;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                    }
+                    QPushButton#HeaderButton:hover {
+                        background-color: #0056CC;
+                    }
+                """)
+        else:
+            # Botón inactivo: estilo normal
+            self._file_box_button.setToolTip("Caja de archivos")
+            self._file_box_button.setStyleSheet("")  # Usar estilo por defecto
