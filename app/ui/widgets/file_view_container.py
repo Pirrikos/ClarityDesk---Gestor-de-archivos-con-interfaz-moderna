@@ -7,7 +7,7 @@ Subscribes to TabManager to update files when active tab changes.
 
 import os
 from time import perf_counter
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -55,6 +55,10 @@ from app.ui.widgets.focus_header_panel import FocusHeaderPanel
 from app.ui.widgets.view_toolbar import ViewToolbar
 from app.ui.windows.bulk_rename_dialog import BulkRenameDialog
 
+if TYPE_CHECKING:
+    from app.ui.widgets.app_header import AppHeader
+    from app.ui.widgets.workspace_selector import WorkspaceSelector
+
 
 class FileViewContainer(QWidget):
     """Container widget managing grid and list file views."""
@@ -84,6 +88,7 @@ class FileViewContainer(QWidget):
         
         self._state_manager = FileStateManager()
         self._handlers = FileViewHandlers(tab_manager, lambda: update_files(self))
+        self._workspace_selector = None
         
         self.setAcceptDrops(True)
         setup_ui(self)
@@ -110,9 +115,8 @@ class FileViewContainer(QWidget):
         if selected_count != self._last_selection_count:
             self._last_selection_count = selected_count
             self._focus_panel.update_selection_count(selected_count)
-            # Actualizar también el secondary header si existe
-            if hasattr(self, '_secondary_header') and self._secondary_header:
-                self._secondary_header.update_selection_count(selected_count)
+            if self._workspace_selector:
+                self._workspace_selector.update_selection_count(selected_count)
 
     def set_desktop_mode(self, is_desktop: bool) -> None:
         """
@@ -147,11 +151,26 @@ class FileViewContainer(QWidget):
         """Handle focus cleared - clean up views when active focus is removed."""
         self.clear_current_focus()
     
-    def clear_current_focus(self) -> None:
-        """Clear current focus - reset grid and list views to empty state."""
-        # Clear both grid and list views
-        self._grid_view.update_files([])
-        self._list_view.update_files([])
+    def clear_current_focus(self, skip_render: bool = False) -> None:
+        """
+        Clear current focus - reset grid and list views to empty state.
+        
+        Args:
+            skip_render: Si True, solo limpia los datos sin renderizar (útil cuando
+                        inmediatamente se van a cargar nuevos datos).
+        """
+        # Limpiar datos pero no renderizar si skip_render=True
+        if skip_render:
+            # Solo limpiar datos internos sin disparar render
+            self._grid_view._files = []
+            self._grid_view._stacks = []
+            self._grid_view._expanded_stacks = {}
+            self._grid_view._previous_files = None
+            self._list_view._files = []
+        else:
+            # Limpiar y renderizar (caso normal cuando no hay tab activo)
+            self._grid_view.update_files([])
+            self._list_view.update_files([])
         
         # Reset navigation buttons
         self._update_nav_buttons_state()
@@ -288,7 +307,7 @@ class FileViewContainer(QWidget):
         """Update navigation buttons enabled state."""
         update_nav_buttons_state(self)
     
-    def set_header(self, header) -> None:
+    def set_header(self, header: Optional['AppHeader']) -> None:
         """Inyectar referencia al AppHeader para control de navegación y estilos.
         
         Permite que la lógica existente actualice el estado de flechas y estilos
@@ -296,9 +315,9 @@ class FileViewContainer(QWidget):
         """
         self._header = header
     
-    def set_secondary_header(self, header) -> None:
-        """Inyectar referencia al SecondaryHeader para actualizar estado del botón."""
-        self._secondary_header = header
+    def set_workspace_selector(self, workspace_selector: Optional['WorkspaceSelector']) -> None:
+        """Inyectar referencia al WorkspaceSelector para actualización de botones."""
+        self._workspace_selector = workspace_selector
     
     def closeEvent(self, event) -> None:
         """Cleanup timers before closing."""

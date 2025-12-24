@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <!-- Fondo -->
+  <rect x="0" y="0" width="20" height="20" rx="4" fill="rgb(245,245,245)"/>
+  
+  <!-- Lista simple: 3 líneas horizontales grandes y visibles en blanco -->
+  <g fill="rgb(255,255,255)">
+    <rect x="1.5" y="3.5" width="17" height="3" rx="1"/>
+    <rect x="1.5" y="8.5" width="17" height="3" rx="1"/>
+    <rect x="1.5" y="13.5" width="17" height="3" rx="1"/>
+  </g>
+</svg>

@@ -7,21 +7,24 @@ Displays file icon and name, handles drag out and double-click.
 from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import QPoint, QSize, Qt
-from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QMouseEvent, QPixmap
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QEnterEvent, QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QLabel,
     QWidget,
 )
 
+from app.core.logger import get_logger
 from app.services.icon_service import IconService
 from app.ui.widgets.file_tile_anim import animate_enter, animate_exit
 from app.ui.widgets.file_tile_controller import set_selected
+
+logger = get_logger(__name__)
 from app.ui.widgets.file_tile_events import (
     mouse_press_event, mouse_move_event, mouse_release_event,
     mouse_double_click_event, drag_enter_event, drag_move_event, drop_event
 )
-from app.ui.widgets.file_tile_paint import paint_dock_style
+from app.ui.widgets.file_tile_paint import paint_dock_style, _paint_hover_overlay
 from app.ui.widgets.file_tile_setup import setup_ui
 from app.ui.widgets.file_tile_states import set_file_state
 from app.ui.widgets.state_badge_widget import StateBadgeWidget
@@ -54,11 +57,16 @@ class FileTile(QWidget):
         self._state_badge: Optional[StateBadgeWidget] = None
         self._file_state: Optional[str] = initial_state
         self._dock_style = dock_style
+        self._is_hovered: bool = False  # Estado de hover para efecto tipo Finder
         setup_ui(self)
 
     def paintEvent(self, event) -> None:
+        # Pintar fondo del contenedor primero
         paint_dock_style(self, event)
+        # Luego pintar widgets hijos encima
         super().paintEvent(event)
+        # Finalmente pintar hover encima de TODO (incluyendo widgets hijos)
+        _paint_hover_overlay(self, event)
 
     def set_selected(self, selected: bool) -> None:
         set_selected(self, selected)
@@ -80,6 +88,22 @@ class FileTile(QWidget):
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         mouse_double_click_event(self, event)
+    
+    def enterEvent(self, event: QEnterEvent) -> None:
+        """Handle mouse enter - activate hover effect."""
+        logger.info(f"[HOVER DEBUG] enterEvent called for tile: {self._file_path}")
+        self._is_hovered = True
+        logger.info(f"[HOVER DEBUG] _is_hovered set to True, calling update()")
+        self.update()
+        super().enterEvent(event)
+    
+    def leaveEvent(self, event) -> None:
+        """Handle mouse leave - deactivate hover effect."""
+        logger.info(f"[HOVER DEBUG] leaveEvent called for tile: {self._file_path}")
+        self._is_hovered = False
+        logger.info(f"[HOVER DEBUG] _is_hovered set to False, calling update()")
+        self.update()
+        super().leaveEvent(event)
 
     def get_file_path(self) -> str:
         return self._file_path

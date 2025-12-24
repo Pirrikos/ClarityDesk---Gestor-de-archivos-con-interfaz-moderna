@@ -10,6 +10,9 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from app.ui.utils.font_manager import FontManager
 
+SEPARATOR_COLOR_RGBA = (255, 255, 255, 20)
+SEPARATOR_BOTTOM_OFFSET = 4
+
 
 class CategorySectionHeader(QWidget):
     """Header widget displaying category name with separator line."""
@@ -21,9 +24,8 @@ class CategorySectionHeader(QWidget):
         self._setup_ui()
     
     def _setup_ui(self) -> None:
-        """Build the UI layout."""
         label = QLabel(self._category_label, self)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         
         FontManager.safe_set_font(
             label,
@@ -43,13 +45,11 @@ class CategorySectionHeader(QWidget):
         main_layout.setContentsMargins(0, 8, 0, 8)
         main_layout.setSpacing(0)
         
-        # Layout horizontal para el label centrado
         label_layout = QHBoxLayout()
-        label_layout.setContentsMargins(0, 0, 0, 0)
+        label_layout.setContentsMargins(0, 0, 12, 0)
         label_layout.setSpacing(0)
-        label_layout.addStretch()
-        label_layout.addWidget(label)
-        label_layout.addStretch()
+        label_layout.addStretch(1)
+        label_layout.addWidget(label, 0)
         
         main_layout.addLayout(label_layout)
         # El separador se dibuja en paintEvent
@@ -61,13 +61,11 @@ class CategorySectionHeader(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Línea horizontal fina: gris claro con 8% de opacidad
-        separator_color = QColor(255, 255, 255, 20)  # rgba(255, 255, 255, 0.08) ≈ 8%
+        separator_color = QColor(*SEPARATOR_COLOR_RGBA)
         painter.setPen(separator_color)
         
-        # Dibujar línea en la parte inferior del widget
         rect = self.rect()
-        y = rect.bottom() - 4  # 4px desde el borde inferior
+        y = rect.bottom() - SEPARATOR_BOTTOM_OFFSET
         painter.drawLine(0, y, rect.width(), y)
         
         painter.end()

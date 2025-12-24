@@ -8,7 +8,7 @@ Emits signal on double-click to open file.
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QContextMenuEvent, QMouseEvent
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent, QEnterEvent
 from PySide6.QtWidgets import QCheckBox, QTableWidget, QTableWidgetItem
 
 try:
@@ -52,6 +52,7 @@ class FileListView(QTableWidget):
         self._checked_paths: set[str] = set()
         self._state_manager = state_manager or (FileStateManager() if FileStateManager else None)
         self._header_checkbox: Optional[QCheckBox] = None
+        self._hovered_row: int = -1  # Fila bajo el mouse para efecto hover tipo Finder
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -95,6 +96,56 @@ class FileListView(QTableWidget):
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Handle mouse press - toggle checkbox with Ctrl+click."""
         mouse_press_event(self, event)
+    
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse move - update hovered row for Finder-like hover effect."""
+        super().mouseMoveEvent(event)
+        item = self.itemAt(event.pos())
+        new_hovered_row = item.row() if item else -1
+        
+        # Si el mouse está fuera de cualquier item, limpiar hover
+        if new_hovered_row < 0:
+            if self._hovered_row >= 0:
+                old_row = self._hovered_row
+                self._hovered_row = -1
+                self._update_row_visual(old_row)
+            return
+        
+        # Actualizar solo si cambió la fila en hover
+        if new_hovered_row != self._hovered_row:
+            old_row = self._hovered_row
+            self._hovered_row = new_hovered_row
+            
+            # Actualizar visualización de ambas filas
+            if old_row >= 0:
+                self._update_row_visual(old_row)
+            if new_hovered_row >= 0:
+                self._update_row_visual(new_hovered_row)
+    
+    def leaveEvent(self, event) -> None:
+        """Handle mouse leave - clear hover effect."""
+        if self._hovered_row >= 0:
+            old_row = self._hovered_row
+            self._hovered_row = -1
+            self._update_row_visual(old_row)
+        super().leaveEvent(event)
+    
+    def _update_row_visual(self, row: int) -> None:
+        """Actualizar visualización de una fila completa."""
+        if row < 0 or row >= self.rowCount():
+            return
+        # Actualizar toda la fila usando visualRect
+        from PySide6.QtCore import QModelIndex
+        index = self.model().index(row, 0)
+        if index.isValid():
+            rect = self.visualRect(index)
+            # Expandir rectángulo para cubrir todas las columnas
+            if self.columnCount() > 0:
+                last_index = self.model().index(row, self.columnCount() - 1)
+                if last_index.isValid():
+                    last_rect = self.visualRect(last_index)
+                    rect.setRight(last_rect.right())
+            self.update(rect)
 
     def _on_item_double_clicked(self, item: QTableWidgetItem) -> None:
         """Handle double-click on table row."""

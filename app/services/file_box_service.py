@@ -43,8 +43,17 @@ class FileBoxService:
                         dest_path = os.path.join(temp_dir, new_name)
                         counter += 1
                     
-                    shutil.copy2(normalized_path, dest_path)
+                    if os.path.isdir(normalized_path):
+                        shutil.copytree(normalized_path, dest_path, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(normalized_path, dest_path)
                     copied_count += 1
+                except PermissionError as e:
+                    logger.error(f"Permission denied copying file {normalized_path}: {e}")
+                    continue
+                except OSError as e:
+                    logger.error(f"OS error copying file {normalized_path}: {e}")
+                    continue
                 except Exception as e:
                     logger.error(f"Failed to copy file {normalized_path}: {e}")
                     continue

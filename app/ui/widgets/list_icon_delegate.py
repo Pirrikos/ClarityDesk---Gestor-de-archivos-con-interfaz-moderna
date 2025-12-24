@@ -16,19 +16,20 @@ class ListViewDelegate(QStyledItemDelegate):
     Completely controls item rendering to prevent default Qt selection borders.
     """
     
-    MARGIN_LEFT = 12
+    MARGIN_LEFT = 5
     ICON_SIZE_SELECTED = QSize(30, 30)
     ICON_SIZE_NORMAL = QSize(28, 28)
-    ICON_OFFSET_X = 10  # Offset horizontal del icono desde el margen izquierdo
+    ICON_OFFSET_X = 5  # Offset horizontal del icono desde el margen izquierdo
     TEXT_OFFSET_X = 32  # Espacio entre icono y texto en columna de nombre
     CONTAINER_MARGIN = 2  # Margen del contenedor alrededor del icono
     CONTAINER_RADIUS = 8  # Radio de esquinas redondeadas del contenedor
     TEXT_COLOR = QColor(232, 232, 232)  # Color del texto en columnas
     BASE_BG_COLOR = QColor(17, 19, 24)  # Color base de fondo de celda
+    HOVER_BG_COLOR = QColor(255, 255, 255, 20)  # Fondo hover tipo Finder (rgba(255,255,255,0.08) ≈ 20/255)
     CONTAINER_BG_COLOR = QColor(190, 190, 190)  # #BEBEBE - fondo contenedor
     CONTAINER_BORDER_COLOR = QColor(160, 160, 160)  # Borde contenedor normal
-    SELECTION_BORDER_COLOR = QColor(0, 122, 255)  # Borde cuando está seleccionado
-    SELECTION_BG_COLOR = QColor(0, 122, 255, 10)  # Fondo cuando está seleccionado
+    SELECTION_BORDER_COLOR = QColor(100, 150, 255)  # Borde azul suave cuando está seleccionado
+    SELECTION_BG_COLOR = QColor(100, 150, 255, 15)  # Fondo azul suave cuando está seleccionado
     
     def __init__(self, parent=None, column_index: int = 1):
         """
@@ -43,6 +44,17 @@ class ListViewDelegate(QStyledItemDelegate):
         self._is_widget_column = (column_index in [0, 4])  # Checkbox y State son widgets
         self._is_name_column = (column_index == 1)
         self._table_widget = parent if isinstance(parent, QTableWidget) else None
+    
+    def _get_hovered_row(self) -> int:
+        """Obtener la fila bajo el mouse si existe."""
+        if not self._table_widget:
+            return -1
+        try:
+            hovered_row = getattr(self._table_widget, '_hovered_row', -1)
+            return hovered_row if hovered_row >= 0 else -1
+        except (AttributeError, RuntimeError):
+            # Widget aún no está completamente inicializado o fue eliminado
+            return -1
     
     def paint(self, painter: QPainter, option, index) -> None:
         """
@@ -62,6 +74,10 @@ class ListViewDelegate(QStyledItemDelegate):
         # Detectar estado de selección ANTES de desactivarlo
         is_selected = bool(opt.state & QStyle.StateFlag.State_Selected)
         
+        # Detectar si la fila está en hover
+        current_row = index.row()
+        is_hovered = (current_row == self._get_hovered_row())
+        
         # Fondo uniforme por celda: evita "costuras" verticales del estilo nativo
         # en estado normal en Windows. No usamos transparencia aquí.
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
@@ -71,7 +87,39 @@ class ListViewDelegate(QStyledItemDelegate):
                 base_color = self._table_widget.palette().color(QPalette.ColorRole.Base)
             except Exception:
                 pass
-        painter.fillRect(opt.rect, base_color)
+        
+        # SOLO la columna 1 (Nombre) pinta el fondo de hover para las columnas de contenido
+        # La columna 0 (checkbox) se excluye explícitamente del hover
+        if self._is_widget_column:
+            # Columna del checkbox: NO pintar hover, solo fondo base
+            painter.fillRect(opt.rect, base_color)
+        elif self._is_name_column and is_hovered and not is_selected:
+            # Columna 1 con hover: pintar hover desde columna 1 hasta última visible
+            full_row_rect = self._calculate_full_row_rect(current_row)
+            if full_row_rect.isValid():
+                # Combinar el clip actual con el rectángulo completo de las columnas de contenido
+                painter.save()
+                current_clip = painter.clipBoundingRect()
+                if current_clip.isValid():
+                    # Unir el clip actual con el rectángulo completo
+                    combined_clip = current_clip.united(full_row_rect)
+                    painter.setClipRect(combined_clip, Qt.ClipOperation.ReplaceClip)
+                else:
+                    # Si no hay clip actual, usar solo el rectángulo completo
+                    painter.setClipRect(full_row_rect, Qt.ClipOperation.ReplaceClip)
+                painter.fillRect(full_row_rect, self.HOVER_BG_COLOR)
+                painter.restore()
+            else:
+                # Fallback: pintar solo la celda si no se puede calcular el rectángulo completo
+                painter.fillRect(opt.rect, self.HOVER_BG_COLOR)
+        elif not self._is_name_column:
+            # Otras columnas de contenido: NO pintar fondo si hay hover (dejar que la columna 1 lo haga)
+            if not is_hovered or is_selected:
+                painter.fillRect(opt.rect, base_color)
+            # Si hay hover, no pintar nada (transparente) para que se vea el hover de la columna 1
+        else:
+            # Columna 1 sin hover: fondo base
+            painter.fillRect(opt.rect, base_color)
 
         # Columnas 0 y 4 tienen widgets (checkbox y state): tras pintar fondo, no dibujar contenido
         if self._is_widget_column:
@@ -172,3 +220,62 @@ class ListViewDelegate(QStyledItemDelegate):
                 alignment = Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
             
             painter.drawText(option.rect, alignment, str(text))
+    
+    def _calculate_full_row_rect(self, row: int) -> QRect:
+        """
+        Calcular rectángulo completo de las columnas de contenido (desde columna 1 hasta última visible).
+        
+        Excluye explícitamente la columna 0 (checkbox) del hover.
+        Usa visualRect(QModelIndex) del modelo, que es la API correcta y estable para delegates.
+        """
+        if not self._table_widget:
+            return QRect()
+        
+        model = self._table_widget.model()
+        if not model:
+            return QRect()
+        
+        # Empezar desde la columna 1 (excluir columna 0 del checkbox)
+        first_content_col = 1
+        
+        # Obtener índice de la primera columna de contenido (columna 1)
+        first_index = model.index(row, first_content_col)
+        if not first_index.isValid():
+            return QRect()
+        
+        # Obtener rectángulo visual de la primera columna de contenido
+        first_col_rect = self._table_widget.visualRect(first_index)
+        if not first_col_rect.isValid():
+            return QRect()
+        
+        # Encontrar la última columna visible (excluyendo columna 0 si está visible)
+        last_visible_col = -1
+        for col in range(self._table_widget.columnCount() - 1, first_content_col - 1, -1):
+            if not self._table_widget.isColumnHidden(col):
+                last_visible_col = col
+                break
+        
+        if last_visible_col < first_content_col:
+            # Si no hay columnas de contenido visibles, usar solo la primera
+            return first_col_rect
+        
+        # Obtener índice de la última columna visible
+        last_index = model.index(row, last_visible_col)
+        if not last_index.isValid():
+            return first_col_rect
+        
+        # Obtener rectángulo visual de la última columna visible
+        last_col_rect = self._table_widget.visualRect(last_index)
+        if not last_col_rect.isValid():
+            return first_col_rect
+        
+        # Combinar ambos rectángulos para obtener el rectángulo completo de las columnas de contenido
+        # Usar +1 en el ancho para evitar off-by-one (right() es inclusivo)
+        full_rect = QRect(
+            first_col_rect.left(),
+            first_col_rect.top(),
+            last_col_rect.right() - first_col_rect.left() + 1,
+            first_col_rect.height()
+        )
+        
+        return full_rect

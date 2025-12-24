@@ -1,18 +1,18 @@
 """
 FileTileIcon - Icon handling for FileTile.
 
-Handles icon loading and sizing.
+Handles icon loading and sizing with asynchronous loading.
 """
 
 from typing import TYPE_CHECKING, Optional
 
-from PySide6.QtCore import QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter, QPaintEvent, QPixmap
+from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtGui import QColor, QImage, QPainter, QPaintEvent, QPixmap
 from PySide6.QtWidgets import QLabel, QGraphicsDropShadowEffect, QVBoxLayout, QWidget
 
-from app.services.icon_render_service import IconRenderService
 from app.services.icon_service import IconService
 from app.ui.widgets.file_tile_utils import is_grid_view
+from app.ui.widgets.grid_icon_loader import GridIconLoader
 from app.ui.widgets.state_badge_widget import STATE_COLORS
 
 if TYPE_CHECKING:
@@ -93,50 +93,68 @@ def _create_placeholder_pixmap(size: QSize) -> QPixmap:
     return pixmap
 
 
-def _load_icon_async(tile: 'FileTile', icon_service: IconService, icon_label) -> None:
-    """Cargar icono de forma diferida para no bloquear la construcción del tile."""
-    # Verificar que el tile aún existe
+def _get_icon_loader(icon_service: IconService) -> GridIconLoader:
+    """
+    Get or create shared GridIconLoader instance.
+    
+    Uses icon_service as key to ensure one loader per service instance.
+    """
+    if not hasattr(icon_service, '_grid_icon_loader'):
+        icon_service._grid_icon_loader = GridIconLoader(max_threads=5)
+    return icon_service._grid_icon_loader
+
+
+def _on_icon_loaded(
+    tile: 'FileTile',
+    icon_label,
+    tile_id: str,
+    image: QImage,
+    request_id: int
+) -> None:
+    """
+    Handle icon loaded callback.
+    
+    Converts QImage to QPixmap in UI thread and updates tile.
+    """
+    # Verify request_id matches (tile might have been recreated)
+    if not hasattr(tile, '_icon_request_id') or tile._icon_request_id != request_id:
+        return
+    
+    # Verify tile still exists and path hasn't changed
     if not hasattr(tile, '_file_path') or not tile._file_path:
         return
     
-    file_path = tile._file_path
-    
-    # Cargar icono de forma diferida usando QTimer
-    # Esto permite que la UI se construya primero y luego se carguen los iconos progresivamente
-    def load_icon():
-        # Verificar que el tile aún existe y la ruta no cambió
-        if not hasattr(tile, '_file_path') or tile._file_path != file_path:
-            return
+    try:
+        # Convert QImage to QPixmap in UI thread (required)
+        pixmap = QPixmap.fromImage(image)
         
-        try:
-            render_service = IconRenderService(icon_service)
-            pixmap = render_service.get_file_preview(file_path, QSize(48, 48))
+        if pixmap and not pixmap.isNull():
+            tile._icon_pixmap = pixmap
             
-            # Verificar nuevamente antes de actualizar
-            if not hasattr(tile, '_file_path') or tile._file_path != file_path:
-                return
+            # Update icon label
+            if hasattr(icon_label, 'set_pixmap'):
+                icon_label.set_pixmap(pixmap)
+            elif hasattr(icon_label, 'setPixmap'):
+                icon_label.setPixmap(pixmap)
             
-            if pixmap and not pixmap.isNull():
-                tile._icon_pixmap = pixmap
-                if hasattr(icon_label, 'set_pixmap'):
-                    icon_label.set_pixmap(pixmap)
-                elif hasattr(icon_label, 'setPixmap'):
-                    icon_label.setPixmap(pixmap)
-        except (RuntimeError, AttributeError):
-            # Tile fue destruido, ignorar
-            pass
-    
-    # Cargar con pequeño delay para no bloquear construcción inicial
-    QTimer.singleShot(10, load_icon)
+            
+    except (RuntimeError, AttributeError):
+        # Tile was destroyed, ignore
+        pass
 
 
 def add_icon_zone(tile: 'FileTile', layout: QVBoxLayout, icon_service: IconService) -> None:
-    """Add icon zone with shadow - carga asíncrona de iconos para mejor rendimiento."""
+    """
+    Add icon zone with shadow - carga asíncrona real usando QThreadPool.
+    
+    Muestra placeholder inmediatamente y carga icono en background thread.
+    """
     icon_width = 48
     icon_height = 48
+    icon_size = QSize(icon_width, icon_height)
     
     # Crear placeholder mientras se carga el icono
-    placeholder_pixmap = _create_placeholder_pixmap(QSize(icon_width, icon_height))
+    placeholder_pixmap = _create_placeholder_pixmap(icon_size)
     tile._icon_pixmap = placeholder_pixmap
     
     use_grid_widget = not tile._dock_style and is_grid_view(tile)
@@ -149,8 +167,7 @@ def add_icon_zone(tile: 'FileTile', layout: QVBoxLayout, icon_service: IconServi
         icon_widget.setGraphicsEffect(icon_shadow)
         tile._icon_label = icon_widget
         tile._icon_shadow = icon_shadow
-        # Cargar icono real de forma asíncrona
-        QTimer.singleShot(0, lambda: _load_icon_async(tile, icon_service, icon_widget))
+        icon_label = icon_widget
     else:
         icon_label = QLabel()
         icon_label.setFixedSize(icon_width, icon_height)
@@ -163,10 +180,24 @@ def add_icon_zone(tile: 'FileTile', layout: QVBoxLayout, icon_service: IconServi
         icon_label.setGraphicsEffect(icon_shadow)
         tile._icon_label = icon_label
         tile._icon_shadow = icon_shadow
-        # Cargar icono real de forma asíncrona
-        QTimer.singleShot(0, lambda: _load_icon_async(tile, icon_service, icon_label))
     
     layout.addWidget(tile._icon_label, 0, Qt.AlignmentFlag.AlignHCenter)
+    
+    # Request icon loading asynchronously using QThreadPool
+    icon_loader = _get_icon_loader(icon_service)
+    
+    # Generate unique tile_id for this tile instance
+    tile_id = f"tile_{id(tile)}_{tile._file_path}"
+    
+    # Request icon and store request_id
+    request_id = icon_loader.request_icon(tile_id, tile._file_path, icon_size)
+    tile._icon_request_id = request_id
+    tile._icon_tile_id = tile_id
+    
+    # Connect signal to handle result
+    icon_loader.icon_loaded.connect(
+        lambda tid, img, rid: _on_icon_loaded(tile, icon_label, tid, img, rid)
+    )
 
 
 

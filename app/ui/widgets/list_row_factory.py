@@ -10,7 +10,7 @@ from typing import Callable, Optional
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QFont, QIcon
-from PySide6.QtWidgets import QCheckBox, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QTableWidgetItem, QVBoxLayout, QWidget
 
 from app.services.icon_service import IconService
 from app.services.icon_render_service import IconRenderService
@@ -28,13 +28,14 @@ def create_checkbox_cell(
     checkbox = CustomCheckBox()
     checkbox.setText("")
     checkbox.setChecked(is_checked)
+    checkbox.setFixedSize(59, 56)  # 15px + 44px de margen izquierdo
     checkbox.stateChanged.connect(
         lambda state, path=file_path: on_state_changed(path, state)
     )
-    return _create_checkbox_container(checkbox)
+    return checkbox
 
 
-def _create_centered_container(widget: QWidget, min_size: Optional[tuple[int, int]] = None, max_size: Optional[tuple[int, int]] = None) -> QWidget:
+def _create_centered_container(widget: QWidget) -> QWidget:
     """Create a centered container widget for list view cells."""
     container = QWidget()
     container.setStyleSheet("QWidget { background-color: transparent; border: none; }")
@@ -43,24 +44,7 @@ def _create_centered_container(widget: QWidget, min_size: Optional[tuple[int, in
     layout.setSpacing(0)
     layout.addWidget(widget)
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-    if min_size:
-        container.setMinimumSize(min_size[0], min_size[1])
-    if max_size:
-        container.setMaximumSize(max_size[0], max_size[1])
     return container
-
-
-def _create_checkbox_container(checkbox: QCheckBox) -> QWidget:
-    checkbox.setStyleSheet("""
-        QCheckBox {
-            padding: 0px;
-            margin: 0px;
-        }
-        QCheckBox::indicator {
-            margin: 0px;
-        }
-    """)
-    return _create_centered_container(checkbox, min_size=(60, 56), max_size=(60, 56))
 
 
 def create_name_cell(

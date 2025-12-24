@@ -6,9 +6,13 @@ Focus Dock is now integrated directly in FileViewContainer.
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QSplitter, QVBoxLayout, QWidget, QSizeGrip, QSizePolicy
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QSplitter, QVBoxLayout, QWidget, QSizePolicy
 
-from app.core.constants import DEBUG_LAYOUT
+from app.core.constants import (
+    SEPARATOR_LINE_COLOR, SIDEBAR_BG,
+    BUTTON_BG_DARK, BUTTON_BORDER_DARK, BUTTON_BG_DARK_HOVER, BUTTON_BORDER_DARK_HOVER,
+    APP_HEADER_BG, APP_HEADER_BORDER
+)
 from app.core.logger import get_logger
 from app.ui.widgets.app_header import AppHeader
 from app.ui.widgets.secondary_header import SecondaryHeader
@@ -23,32 +27,119 @@ from app.ui.widgets.workspace_selector import WorkspaceSelector
 
 HEADER_BG = "#F5F5F7"
 HEADER_BORDER = "rgba(0, 0, 0, 0.1)"
-APP_HEADER_BG = "#1A1D22"
-APP_HEADER_BORDER = "#2A2E36"
-SIDEBAR_BG = "#E8E8ED"
-SIDEBAR_BORDER = "rgba(0, 0, 0, 0.12)"
+
+
+def _apply_visual_separation(window_header, app_header, secondary_header, workspace_selector) -> None:
+    """Apply visual styling to header components."""
+    window_header.setStyleSheet("""
+        QWidget {
+            background-color: """ + HEADER_BG + """ !important;
+            border-bottom: 1px solid """ + HEADER_BORDER + """ !important;
+        }
+        QPushButton {
+            border: none !important;
+            border-radius: 6px;
+            padding: 4px 6px;
+            /* font-size: establecido explícitamente */
+            color: rgba(0, 0, 0, 0.7) !important;
+        }
+        QPushButton:hover {
+            background-color: rgba(0, 0, 0, 0.08) !important;
+        }
+    """)
+    
+    app_header.setStyleSheet("""
+        QWidget#AppHeader {
+            /* Tinte azul sutil para coherencia con workspace */
+            background-color: """ + APP_HEADER_BG + """ !important;
+            border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
+        }
+        QLineEdit {
+            /* Mantener campo de búsqueda claro para contraste */
+            background-color: rgba(255, 255, 255, 0.9) !important;
+            border: 1px solid rgba(0, 0, 0, 0.15) !important;
+            border-radius: 8px;
+            padding: 8px 12px 8px 36px;
+            color: rgba(0, 0, 0, 0.85) !important;
+            /* font-size: establecido explícitamente */
+            font-weight: 400;
+        }
+        QLineEdit:focus {
+            background-color: #FFFFFF !important;
+            border: 1px solid rgba(0, 0, 0, 0.25) !important;
+            color: rgba(0, 0, 0, 0.95) !important;
+        }
+        QLineEdit::placeholder {
+            color: rgba(0, 0, 0, 0.5) !important;
+        }
+    """)
+    
+    secondary_header.setStyleSheet(f"""
+        QWidget#SecondaryHeader {{
+            /* Mismo estilo que AppHeader para continuidad visual */
+            background-color: {APP_HEADER_BG} !important;
+            border-bottom: 1px solid {APP_HEADER_BORDER} !important;
+        }}
+    """)
+    
+    workspace_selector.setStyleSheet(f"""
+        QWidget#WorkspaceSelector {{
+            border-bottom: 1px solid {APP_HEADER_BORDER} !important;
+        }}
+        QPushButton#WorkspaceButton {{
+            background-color: {BUTTON_BG_DARK} !important;
+            border: 1px solid {BUTTON_BORDER_DARK} !important;
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.88) !important;
+            padding: 6px 12px;
+        }}
+        QPushButton#WorkspaceButton:hover {{
+            background-color: {BUTTON_BG_DARK_HOVER} !important;
+            border-color: {BUTTON_BORDER_DARK_HOVER} !important;
+        }}
+    """)
 
 
 def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, SecondaryHeader, WorkspaceSelector, FileBoxHistoryPanelSidebar]:
     try:
         root_layout = QVBoxLayout(window)
-        root_layout.setContentsMargins(0, 0, 0, 0)
+        # Margen invisible de 3px alrededor para permitir detección de bordes por el sistema
+        # Este margen es necesario para que el resize nativo funcione correctamente en ventanas frameless
+        root_layout.setContentsMargins(3, 3, 3, 3)
         root_layout.setSpacing(0)
         
         window_header = WindowHeader(window)
+        window_header.hide()  # Ocultar visualmente temporalmente
         root_layout.addWidget(window_header, 0)
         
         app_header = AppHeader(window)
         app_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        app_header.hide()  # Ocultar visualmente temporalmente
         root_layout.addWidget(app_header, 0)
         
         secondary_header = SecondaryHeader(window)
         secondary_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        secondary_header.hide()  # Ocultar visualmente temporalmente
         root_layout.addWidget(secondary_header, 0)
         
         workspace_selector = WorkspaceSelector(window)
+        workspace_selector.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         workspace_selector.set_workspace_manager(workspace_manager)
         root_layout.addWidget(workspace_selector, 0)
+        
+        # Línea horizontal separadora (invisible)
+        separator_line = QFrame(window)
+        separator_line.setFrameShape(QFrame.Shape.HLine)
+        separator_line.setFrameShadow(QFrame.Shadow.Plain)
+        separator_line.setFixedHeight(1)
+        separator_line.setStyleSheet(f"""
+            QFrame {{
+                background-color: transparent;
+                border: none;
+                margin: 0px;
+            }}
+        """)
+        root_layout.addWidget(separator_line, 0)
         
         central_widget = RaycastPanel(window)
         central_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -66,11 +157,11 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
                 background-color: transparent;
             }
             QSplitter::handle {
-                background-color: rgba(255, 255, 255, 0.1);
+                background-color: transparent;
                 border: none;
             }
             QSplitter::handle:hover {
-                background-color: rgba(255, 255, 255, 0.15);
+                background-color: transparent;
                 border: none;
             }
             QSplitter::handle:horizontal {
@@ -119,17 +210,6 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         
         central_layout.addWidget(main_splitter, 1)
         
-        size_grip_container = QWidget(central_widget)
-        size_grip_container.setObjectName("SizeGripContainer")
-        size_grip_layout = QHBoxLayout(size_grip_container)
-        size_grip_layout.setContentsMargins(0, 0, 8, 8)
-        size_grip_layout.setSpacing(0)
-        size_grip = QSizeGrip(size_grip_container)
-        size_grip.setFixedSize(16, 16)
-        size_grip_layout.addStretch(1)
-        size_grip_layout.addWidget(size_grip, 0)
-        central_layout.addWidget(size_grip_container, 0)
-        
         root_layout.addWidget(central_widget, 1)
 
         window.setStyleSheet("""
@@ -140,108 +220,21 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         """)
         
         file_view_container.set_header(app_header)
-        file_view_container._grid_button = app_header.get_grid_button()
-        file_view_container._list_button = app_header.get_list_button()
-        file_view_container._grid_button.clicked.connect(lambda: switch_view(file_view_container, "grid"))
-        file_view_container._list_button.clicked.connect(lambda: switch_view(file_view_container, "list"))
-        app_header.state_button_clicked.connect(file_view_container._on_state_button_clicked)
-        app_header.navigation_back.connect(lambda: on_nav_back(file_view_container))
-        app_header.navigation_forward.connect(lambda: on_nav_forward(file_view_container))
+        file_view_container.set_workspace_selector(workspace_selector)
         
-        # Conectar secondary header con file view container
-        file_view_container.set_secondary_header(secondary_header)
+        # Navigation buttons ahora están en WorkspaceSelector
+        workspace_selector.navigation_back.connect(lambda: on_nav_back(file_view_container))
+        workspace_selector.navigation_forward.connect(lambda: on_nav_forward(file_view_container))
+        
+        # Conectar botones Grid/List del WorkspaceSelector
+        workspace_selector.view_grid_requested.connect(lambda: switch_view(file_view_container, "grid"))
+        workspace_selector.view_list_requested.connect(lambda: switch_view(file_view_container, "list"))
+        
+        # Asignar referencias para que switch_view() pueda actualizar el estado
+        file_view_container._workspace_grid_button = workspace_selector._grid_button
+        file_view_container._workspace_list_button = workspace_selector._list_button
 
-        def apply_visual_separation():
-            window_header.setStyleSheet("""
-                QWidget {
-                    background-color: """ + HEADER_BG + """ !important;
-                    border-bottom: 1px solid """ + HEADER_BORDER + """ !important;
-                }
-                QPushButton {
-                    border: none !important;
-                    border-radius: 6px;
-                    padding: 4px 6px;
-                    /* font-size: establecido explícitamente */
-                    color: rgba(0, 0, 0, 0.7) !important;
-                }
-                QPushButton:hover {
-                    background-color: rgba(0, 0, 0, 0.08) !important;
-                }
-            """)
-            
-            app_header.setStyleSheet("""
-                QWidget#AppHeader {
-                    /* Tinte azul sutil para coherencia con workspace */
-                    background-color: """ + APP_HEADER_BG + """ !important;
-                    border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
-                }
-                QLineEdit {
-                    /* Mantener campo de búsqueda claro para contraste */
-                    background-color: rgba(255, 255, 255, 0.9) !important;
-                    border: 1px solid rgba(0, 0, 0, 0.15) !important;
-                    border-radius: 8px;
-                    padding: 8px 12px 8px 36px;
-                    color: rgba(0, 0, 0, 0.85) !important;
-                    /* font-size: establecido explícitamente */
-                    font-weight: 400;
-                }
-                QLineEdit:focus {
-                    background-color: #FFFFFF !important;
-                    border: 1px solid rgba(0, 0, 0, 0.25) !important;
-                    color: rgba(0, 0, 0, 0.95) !important;
-                }
-                QLineEdit::placeholder {
-                    color: rgba(0, 0, 0, 0.5) !important;
-                }
-            """)
-            
-            secondary_header.setStyleSheet("""
-                QWidget#SecondaryHeader {
-                    /* Mismo estilo que AppHeader para continuidad visual */
-                    background-color: """ + APP_HEADER_BG + """ !important;
-                    border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
-                }
-            """)
-            
-            workspace_selector.setStyleSheet("""
-                QWidget#WorkspaceSelector {
-                    /* Igual que el AppHeader para continuidad visual */
-                    background-color: """ + APP_HEADER_BG + """ !important;
-                    border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
-                }
-                QPushButton#WorkspaceButton {
-                    /* Botón un punto más claro para destacar sobre el header */
-                    background-color: #20242A !important;
-                    border: 1px solid #343A44 !important;
-                    border-radius: 6px;
-                    color: rgba(255, 255, 255, 0.88) !important;
-                    /* font-size: establecido explícitamente */
-                    padding: 6px 12px;
-                }
-                QPushButton#WorkspaceButton:hover {
-                    background-color: #252A31 !important;
-                    border-color: #3A404B !important;
-                }
-                QPushButton#WorkspaceAddButton {
-                    background-color: #20242A !important;
-                    border: 1px solid #343A44 !important;
-                    border-radius: 6px;
-                    color: rgba(255, 255, 255, 0.88) !important;
-                    /* font-size: establecido explícitamente */
-                }
-                QPushButton#WorkspaceAddButton:hover {
-                    background-color: #252A31 !important;
-                    border-color: #3A404B !important;
-                }
-            """)
-        
-        apply_visual_separation()
-        
-        if DEBUG_LAYOUT:
-            _apply_layout_debug_styles(
-                window, central_widget, window_header, app_header, secondary_header,
-                main_splitter, workspace_selector, sidebar, file_view_container, size_grip_container
-            )
+        _apply_visual_separation(window_header, app_header, secondary_header, workspace_selector)
 
         return file_view_container, sidebar, window_header, app_header, secondary_header, workspace_selector, history_panel, content_splitter, file_box_panel_placeholder
         
@@ -249,11 +242,3 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager) -> tuple[File
         logger = get_logger(__name__)
         logger.error(f"Excepción crítica en setup_ui: {e}", exc_info=True)
         raise
-
-
-def _apply_layout_debug_styles(
-    window, central_widget, window_header, app_header, secondary_header,
-    main_splitter, workspace_selector, sidebar, file_view_container, size_grip_container
-) -> None:
-    """Apply debug styles when DEBUG_LAYOUT is enabled."""
-    pass

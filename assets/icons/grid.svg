@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <!-- Fondo -->
+  <rect x="0" y="0" width="20" height="20" rx="4" fill="rgb(245,245,245)"/>
+  
+  <!-- Grid simple: 4 cuadrados grandes y visibles en blanco -->
+  <g fill="rgb(255,255,255)" stroke="rgb(255,255,255)" stroke-width="0.5">
+    <rect x="1.5" y="1.5" width="7.5" height="7.5" rx="0.5"/>
+    <rect x="11" y="1.5" width="7.5" height="7.5" rx="0.5"/>
+    <rect x="1.5" y="11" width="7.5" height="7.5" rx="0.5"/>
+    <rect x="11" y="11" width="7.5" height="7.5" rx="0.5"/>
+  </g>
+</svg>

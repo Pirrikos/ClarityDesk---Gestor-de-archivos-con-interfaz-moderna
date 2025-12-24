@@ -9,15 +9,18 @@ from typing import TYPE_CHECKING, Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QStackedWidget, QVBoxLayout
 
+from app.core.constants import CENTRAL_AREA_BG, FILE_VIEW_LEFT_MARGIN
+
 from app.ui.widgets.file_grid_view import FileGridView
 from app.ui.widgets.file_list_view import FileListView
 from app.ui.widgets.focus_header_panel import FocusHeaderPanel
 
 if TYPE_CHECKING:
     from app.ui.windows.desktop_window import DesktopWindow
+    from app.ui.widgets.file_view_container import FileViewContainer
 
 
-def setup_ui(container) -> None:
+def setup_ui(container: "FileViewContainer") -> None:
     """Build the UI layout with view switcher."""
     is_desktop_window = container._is_desktop
     if is_desktop_window:
@@ -25,15 +28,14 @@ def setup_ui(container) -> None:
         container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
     else:
         container.setObjectName("FileViewContainer")
-        container.setStyleSheet("""
-            QWidget#FileViewContainer {
-                background-color: #1A1D22;
-            }
+        container.setStyleSheet(f"""
+            QWidget#FileViewContainer {{
+                background-color: {CENTRAL_AREA_BG};
+            }}
         """)
     
     layout = QVBoxLayout(container)
-    # Margen izquierdo para separar del splitter (8px = doble de 4px del ancho del splitter)
-    left_margin = 8 if not is_desktop_window else 0
+    left_margin = FILE_VIEW_LEFT_MARGIN if not is_desktop_window else 0
     layout.setContentsMargins(left_margin, 0, 0, 0)
     layout.setSpacing(0)
     
@@ -43,27 +45,28 @@ def setup_ui(container) -> None:
     _connect_view_signals(container)
 
 
-def _setup_toolbar(container, layout: QVBoxLayout, is_desktop_window: bool) -> None:
-    """Header embebido ahora gestiona los controles; mantener alineación mínima."""
+def _setup_toolbar(container: "FileViewContainer", layout: QVBoxLayout, is_desktop_window: bool) -> None:
+    """Configurar toolbar con espaciado mínimo."""
     if not is_desktop_window:
         layout.addSpacing(4)
     container._toolbar = None
 
 
-def _setup_focus_panel(container, layout: QVBoxLayout, is_desktop_window: bool) -> None:
+def _setup_focus_panel(container: "FileViewContainer", layout: QVBoxLayout, is_desktop_window: bool) -> None:
     """Setup focus header panel."""
     container._focus_panel = FocusHeaderPanel(container)
     container._focus_panel.rename_clicked.connect(container._on_rename_clicked)
     container._focus_panel.hide()
 
 
-def _setup_views(container, layout: QVBoxLayout) -> None:
+def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
     """Setup grid y list views sin panel dock."""
-    desktop_window: Optional[object] = None
+    desktop_window: Optional["DesktopWindow"] = None
     if container._is_desktop:
+        from app.ui.windows.desktop_window import DesktopWindow
         parent = container.parent()
         while parent:
-            if parent.__class__.__name__ == 'DesktopWindow':
+            if isinstance(parent, DesktopWindow):
                 desktop_window = parent
                 break
             parent = parent.parent()
@@ -81,15 +84,15 @@ def _setup_views(container, layout: QVBoxLayout) -> None:
             }
         """)
     else:
-        container._stacked.setStyleSheet("""
-            QStackedWidget { 
-                background-color: #1A1D22;
+        container._stacked.setStyleSheet(f"""
+            QStackedWidget {{ 
+                background-color: {CENTRAL_AREA_BG};
                 border: none;
                 border-left: none;
                 border-right: none;
                 border-top: none;
                 border-bottom: none;
-            }
+            }}
         """)
     container._grid_view = FileGridView(
         container._icon_service,
@@ -119,7 +122,7 @@ def _setup_views(container, layout: QVBoxLayout) -> None:
     layout.addLayout(views_layout)
 
 
-def _connect_view_signals(container) -> None:
+def _connect_view_signals(container: "FileViewContainer") -> None:
     """Connect signals from grid and list views."""
     container._grid_view.open_file.connect(container._on_open_file)
     container._list_view.open_file.connect(container._on_open_file)

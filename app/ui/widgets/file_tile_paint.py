@@ -26,6 +26,13 @@ def paint_dock_style(tile: 'FileTile', event: QPaintEvent) -> None:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     
     is_selected = tile._is_selected
+    is_hovered = getattr(tile, '_is_hovered', False)
+    
+    # Debug logging
+    if is_hovered:
+        from app.core.logger import get_logger
+        logger = get_logger(__name__)
+        logger.info(f"[HOVER DEBUG] paint_dock_style: is_hovered=True, is_selected={is_selected}, file={getattr(tile, '_file_path', 'unknown')}")
     
     # Fondo gris claro para todos los tiles
     bg_color = QColor(190, 190, 190)  # #BEBEBE
@@ -33,16 +40,42 @@ def paint_dock_style(tile: 'FileTile', event: QPaintEvent) -> None:
     border_width = 1
     
     if is_selected:
-        # Cuando está seleccionado, mantener el estilo azul pero sobre el fondo gris
-        border_color = QColor(0, 122, 255)
+        # Cuando está seleccionado, azul suave y sutil
+        border_color = QColor(100, 150, 255)  # Azul más suave y claro
         border_width = 2
-        bg_color = QColor(0, 122, 255, 10)
+        bg_color = QColor(100, 150, 255, 15)  # Azul suave semitransparente
     
+    # Pintar fondo del contenedor
     painter.setBrush(QBrush(bg_color))
     painter.setPen(QPen(border_color, border_width))
     painter.drawRoundedRect(base_rect, 14, 14)
     
     painter.end()
+
+
+def _paint_hover_overlay(tile: 'FileTile', event: QPaintEvent) -> None:
+    """Pintar overlay de hover encima de todo (llamado después de super().paintEvent)."""
+    is_selected = tile._is_selected
+    is_hovered = getattr(tile, '_is_hovered', False)
+    
+    if not is_hovered or is_selected:
+        return
+    
+    container_widget = getattr(tile, '_container_widget', None)
+    if not container_widget:
+        return
+    
+    container_rect = container_widget.geometry()
+    base_rect = QRectF(container_rect.adjusted(2, 2, -2, -2))
+    
+    # Pintar hover encima de TODO (incluyendo widgets hijos)
+    hover_painter = QPainter(tile)
+    hover_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    hover_color = QColor(0, 0, 0, 34)  # Negro semitransparente - visible sobre fondo gris claro
+    hover_painter.setBrush(QBrush(hover_color))
+    hover_painter.setPen(Qt.PenStyle.NoPen)
+    hover_painter.drawRoundedRect(base_rect, 14, 14)
+    hover_painter.end()
 
 
 

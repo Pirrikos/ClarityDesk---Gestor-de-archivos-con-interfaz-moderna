@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from PySide6.QtCore import QMimeData, QPoint, Qt
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent, QMouseEvent
-from PySide6.QtWidgets import QCheckBox, QTableWidgetItem, QWidget
+from PySide6.QtWidgets import QCheckBox, QTableWidgetItem
 
 from app.services.desktop_path_helper import is_desktop_focus
 from app.services.desktop_operations import is_file_in_dock, move_out_of_desktop
@@ -31,7 +31,6 @@ if TYPE_CHECKING:
 
 def start_drag(
     view: 'FileListView',
-    supported_actions: Qt.DropActions,
     icon_service: 'IconService',
     file_deleted_signal: Callable[[str], None]
 ) -> None:
@@ -171,13 +170,8 @@ def toggle_checkbox_at_position(view: 'FileListView', pos: QPoint) -> bool:
 def get_checkbox_from_row(view: 'FileListView', row: int) -> Optional[QCheckBox]:
     """Get checkbox widget from row's column 0."""
     widget = view.cellWidget(row, 0)
-    if not isinstance(widget, QWidget):
-        return None
-    layout = widget.layout()
-    if layout and layout.count() > 0:
-        checkbox = layout.itemAt(0).widget()
-        if isinstance(checkbox, QCheckBox):
-            return checkbox
+    if isinstance(widget, QCheckBox):
+        return widget
     return None
 
 
@@ -228,9 +222,7 @@ def _handle_drop_on_folder(
         file_dir = os.path.dirname(os.path.abspath(file_path))
         is_folder = os.path.isdir(file_path)
         
-        if is_file_in_dock(file_path):
-            result = move_file(file_path, target_folder_path, watcher=watcher)
-        elif is_desktop_focus(file_dir):
+        if is_desktop_focus(file_dir) and not is_file_in_dock(file_path):
             result = move_out_of_desktop(file_path, target_folder_path, watcher=watcher)
         else:
             result = move_file(file_path, target_folder_path, watcher=watcher)

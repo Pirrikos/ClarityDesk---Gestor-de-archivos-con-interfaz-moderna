@@ -5,11 +5,11 @@ Focus Dock replaces the old sidebar navigation system.
 """
 
 import os
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QEvent, QPoint
 from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut, QPainter, QColor, QCursor
 from PySide6.QtWidgets import QWidget, QMessageBox, QApplication, QToolTip
 
-from app.core.constants import DEBUG_LAYOUT, FILE_SYSTEM_DEBOUNCE_MS
+from app.core.constants import DEBUG_LAYOUT, FILE_SYSTEM_DEBOUNCE_MS, CENTRAL_AREA_BG, RESIZE_EDGE_DETECTION_MARGIN
 from app.core.logger import get_logger
 from app.managers.tab_manager import TabManager
 from app.managers.workspace_manager import WorkspaceManager
@@ -46,7 +46,8 @@ class MainWindow(QWidget):
             
             self.setWindowTitle("ClarityDesk Pro")
             self.setMinimumSize(1050, 675)
-            self.setContentsMargins(0, 0, 0, 0)
+            self.setMouseTracking(True)
+            self._is_resizing = False
             
             self._tab_manager = tab_manager
             self._workspace_manager = workspace_manager
@@ -55,8 +56,9 @@ class MainWindow(QWidget):
             self._current_preview_window = None
             self._is_initializing = True
             
+            self.setObjectName("MainWindow")
             self.setAutoFillBackground(False)
-            self.setStyleSheet("background-color: #1A1D22;")
+            self.setStyleSheet(f"QWidget#MainWindow {{ background-color: {CENTRAL_AREA_BG}; }}")
             
             self._tab_manager.set_workspace_manager(workspace_manager)
             self._setup_ui()
@@ -65,12 +67,19 @@ class MainWindow(QWidget):
             self._load_workspace_state()
             self._is_initializing = False
             
+            QApplication.instance().installEventFilter(self)
+            
         except Exception as e:
             logger.error(f"Excepción crítica en MainWindow.__init__: {e}", exc_info=True)
             raise
 
     def paintEvent(self, event):
-        """Pintar el fondo de la ventana raíz para cubrir el margen fantasma de Windows."""
+        """
+        Pintar el fondo de la ventana raíz.
+        
+        Cubre toda el área incluyendo el margen invisible de 3px alrededor
+        para mantener apariencia uniforme mientras permite detección de bordes.
+        """
         if DEBUG_LAYOUT:
             super().paintEvent(event)
             return
@@ -80,10 +89,8 @@ class MainWindow(QWidget):
         p.setClipping(False)
         
         rect = self.rect()
-        extended_rect = rect.adjusted(-8, -8, 8, 8)
-        
-        bg_color = QColor("#1A1D22")
-        p.fillRect(extended_rect, bg_color)
+        bg_color = QColor(CENTRAL_AREA_BG)
+        p.fillRect(rect, bg_color)
         p.end()
         
         super().paintEvent(event)
@@ -116,7 +123,7 @@ class MainWindow(QWidget):
         self._file_view_container.open_file.connect(self._on_file_open)
         self._file_view_container.folder_moved.connect(self._on_folder_moved)
         
-        self._sidebar.new_focus_requested.connect(self._on_sidebar_new_focus)
+        self._workspace_selector.new_focus_requested.connect(self._on_sidebar_new_focus)
         self._sidebar.folder_selected.connect(self._on_sidebar_folder_selected)
         self._sidebar.focus_remove_requested.connect(self._on_sidebar_remove_focus)
         
@@ -134,11 +141,11 @@ class MainWindow(QWidget):
         self._workspace_manager.workspace_changed.connect(self._on_workspace_changed)
         
         # File box signals
-        self._app_header.file_box_button_clicked.connect(self._on_file_box_button_clicked)
+        self._workspace_selector.file_box_requested.connect(self._on_file_box_button_clicked)
+        self._workspace_selector.state_button_clicked.connect(self._file_view_container._on_state_button_clicked)
         self._app_header.history_panel_toggle_requested.connect(self._on_history_panel_toggle)
         
-        # Secondary header signals
-        self._secondary_header.rename_clicked.connect(self._file_view_container._on_rename_clicked)
+        self._workspace_selector.rename_clicked.connect(self._file_view_container._on_rename_clicked)
 
     def _load_app_state(self) -> None:
         """Load complete application state and restore UI."""
@@ -355,35 +362,99 @@ class MainWindow(QWidget):
         self._sidebar_sync_timer.start(FILE_SYSTEM_DEBOUNCE_MS)
     
     def mousePressEvent(self, event) -> None:
-        """Permitir redimensionar desde cualquier borde/corner en ventana sin marco."""
-        try:
-            if event.button() == Qt.MouseButton.LeftButton:
-                edges = self._detect_resize_edges(event.globalPos())
-                if edges and self.windowHandle():
-                    self.windowHandle().startSystemResize(edges)
-                    event.accept()
-                    return
-        except Exception:
-            pass
+        """Iniciar resize nativo desde cualquier borde o esquina."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            edges = self._detect_resize_edges(event.globalPos())
+            if edges and self.windowHandle():
+                self._is_resizing = True
+                self.windowHandle().startSystemResize(edges)
+                event.accept()
+                return
         super().mousePressEvent(event)
     
-    def _detect_resize_edges(self, global_pos) -> Qt.Edges:
-        """Detectar bordes cercanos para iniciar resize nativo (Windows)."""
-        try:
-            geo = self.frameGeometry()
-            margin = 6
-            edges = Qt.Edges()
-            if abs(global_pos.x() - geo.left()) <= margin:
-                edges |= Qt.Edge.LeftEdge
-            if abs(global_pos.x() - geo.right()) <= margin:
-                edges |= Qt.Edge.RightEdge
-            if abs(global_pos.y() - geo.top()) <= margin:
-                edges |= Qt.Edge.TopEdge
-            if abs(global_pos.y() - geo.bottom()) <= margin:
-                edges |= Qt.Edge.BottomEdge
-            return edges
-        except Exception:
+    def mouseReleaseEvent(self, event) -> None:
+        """Restaurar cursor cuando se suelta el botón del ratón."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_resizing = False
+            self.unsetCursor()
+        super().mouseReleaseEvent(event)
+    
+    def mouseMoveEvent(self, event) -> None:
+        """Cambiar cursor según posición para indicar zonas de resize."""
+        if self._is_resizing:
+            super().mouseMoveEvent(event)
+            return
+        
+        global_pos = self.mapToGlobal(event.pos())
+        self._update_cursor_for_position(global_pos)
+        super().mouseMoveEvent(event)
+    
+    def leaveEvent(self, event) -> None:
+        """Restaurar cursor cuando el ratón sale de la ventana."""
+        if not self._is_resizing:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        super().leaveEvent(event)
+    
+    def eventFilter(self, obj, event) -> bool:
+        """Filtrar eventos de mouse para restaurar cursor cuando está fuera del área de resize."""
+        if event.type() == QEvent.Type.MouseMove and not self._is_resizing:
+            if isinstance(obj, QWidget) and obj.window() == self:
+                try:
+                    global_pos = event.globalPos() if hasattr(event, 'globalPos') else obj.mapToGlobal(event.pos())
+                    self._update_cursor_for_position(global_pos)
+                except Exception:
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+        
+        return super().eventFilter(obj, event)
+    
+    def _update_cursor_for_position(self, global_pos) -> None:
+        """Actualizar cursor según posición global."""
+        if self._is_resizing:
+            return
+        edges = self._detect_resize_edges(global_pos)
+        cursor = self._get_resize_cursor(edges)
+        self.setCursor(cursor if cursor else Qt.CursorShape.ArrowCursor)
+    
+    def _detect_resize_edges(self, global_pos: QPoint) -> Qt.Edges:
+        """Detectar bordes de ventana para resize nativo."""
+        if not self.windowHandle():
             return Qt.Edges()
+        
+        geo = self.frameGeometry()
+        margin = RESIZE_EDGE_DETECTION_MARGIN
+        
+        edges = Qt.Edges()
+        if abs(global_pos.x() - geo.left()) <= margin:
+            edges |= Qt.Edge.LeftEdge
+        if abs(global_pos.x() - geo.right()) <= margin:
+            edges |= Qt.Edge.RightEdge
+        if abs(global_pos.y() - geo.top()) <= margin:
+            edges |= Qt.Edge.TopEdge
+        if abs(global_pos.y() - geo.bottom()) <= margin:
+            edges |= Qt.Edge.BottomEdge
+        
+        return edges
+    
+    def _get_resize_cursor(self, edges: Qt.Edges):
+        """Obtener cursor según bordes detectados."""
+        if not edges:
+            return None
+        
+        if (edges & Qt.Edge.TopEdge) and (edges & Qt.Edge.LeftEdge):
+            return QCursor(Qt.CursorShape.SizeFDiagCursor)
+        if (edges & Qt.Edge.TopEdge) and (edges & Qt.Edge.RightEdge):
+            return QCursor(Qt.CursorShape.SizeBDiagCursor)
+        if (edges & Qt.Edge.BottomEdge) and (edges & Qt.Edge.LeftEdge):
+            return QCursor(Qt.CursorShape.SizeBDiagCursor)
+        if (edges & Qt.Edge.BottomEdge) and (edges & Qt.Edge.RightEdge):
+            return QCursor(Qt.CursorShape.SizeFDiagCursor)
+        
+        if edges & Qt.Edge.LeftEdge or edges & Qt.Edge.RightEdge:
+            return QCursor(Qt.CursorShape.SizeHorCursor)
+        if edges & Qt.Edge.TopEdge or edges & Qt.Edge.BottomEdge:
+            return QCursor(Qt.CursorShape.SizeVerCursor)
+        
+        return None
     
     def _resync_sidebar_from_tabs(self) -> None:
         """
@@ -619,7 +690,6 @@ class MainWindow(QWidget):
         selected_files = get_selected_files(self._file_view_container)
         
         if not selected_files:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(
                 self,
                 "Sin archivos seleccionados",
@@ -687,7 +757,6 @@ class MainWindow(QWidget):
             
         except Exception as e:
             logger.error(f"Failed to prepare file box: {e}", exc_info=True)
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(
                 self,
                 "Error",

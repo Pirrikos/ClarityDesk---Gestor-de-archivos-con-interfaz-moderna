@@ -15,18 +15,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.core.constants import DEBUG_LAYOUT
-from app.ui.widgets.toolbar_navigation_buttons import create_navigation_buttons
 from app.services.settings_service import SettingsService
 
-try:
-    from app.ui.widgets.state_badge_widget import (
-        STATE_CORRECTED, STATE_DELIVERED, STATE_PENDING, STATE_REVIEW
-    )
-except ImportError:
-    STATE_CORRECTED = None
-    STATE_DELIVERED = None
-    STATE_PENDING = None
-    STATE_REVIEW = None
 
 
 class AppHeader(QWidget):
@@ -57,49 +47,7 @@ class AppHeader(QWidget):
         }
     """
 
-    _NAV_BUTTON_STYLESHEET = """
-        QPushButton {
-            background-color: transparent;
-            border: none;
-            border-radius: 8px;
-            color: rgba(255, 255, 255, 0.80);
-            /* font-size: establecido explícitamente */
-            font-weight: 500;
-        }
-        QPushButton:hover {
-            background-color: rgba(255, 255, 255, 0.08);
-            color: rgba(255, 255, 255, 0.94);
-        }
-        QPushButton:pressed {
-            background-color: rgba(255, 255, 255, 0.12);
-        }
-        QPushButton:disabled {
-            color: rgba(255, 255, 255, 0.35);
-        }
-    """
-
     _VIEW_CONTAINER_STYLESHEET = """
-        QWidget#ViewContainer {
-            background-color: rgba(255, 255, 255, 0.06);
-            border-radius: 8px;
-        }
-        QPushButton#ViewGridButton, QPushButton#ViewListButton {
-            background-color: transparent;
-            border: none;
-            border-radius: 6px;
-            color: rgba(255, 255, 255, 0.80);
-            /* font-size: establecido explícitamente */
-            font-weight: 500;
-        }
-        QPushButton#ViewGridButton:hover, QPushButton#ViewListButton:hover {
-            background-color: rgba(255, 255, 255, 0.08);
-            color: rgba(255, 255, 255, 0.94);
-        }
-        QPushButton#ViewGridButton:checked, QPushButton#ViewListButton:checked {
-            background-color: rgba(255, 255, 255, 0.12);
-            color: rgba(255, 255, 255, 0.94);
-            font-weight: 600;
-        }
     """
 
     _SEARCH_ICON_STYLESHEET = """
@@ -112,7 +60,7 @@ class AppHeader(QWidget):
     """
 
     _MENU_BUTTON_STYLESHEET = """
-        QPushButton#StateButton, QPushButton#SettingsButton, QPushButton#FileBoxButton {
+        QPushButton#SettingsButton {
             background-color: rgba(255, 255, 255, 0.8);
             border: 1px solid rgba(0, 0, 0, 0.15);
             border-radius: 8px;
@@ -121,15 +69,15 @@ class AppHeader(QWidget):
             font-weight: 400;
             padding: 8px 12px;
         }
-        QPushButton#StateButton:hover, QPushButton#SettingsButton:hover, QPushButton#FileBoxButton:hover {
+        QPushButton#SettingsButton:hover {
             background-color: rgba(255, 255, 255, 0.95);
             border-color: rgba(0, 0, 0, 0.2);
             color: rgba(0, 0, 0, 0.95);
         }
-        QPushButton#StateButton:pressed, QPushButton#SettingsButton:pressed, QPushButton#FileBoxButton:pressed {
+        QPushButton#SettingsButton:pressed {
             background-color: rgba(255, 255, 255, 1.0);
         }
-        QPushButton#StateButton::menu-indicator, QPushButton#SettingsButton::menu-indicator {
+        QPushButton#SettingsButton::menu-indicator {
             image: none;
             width: 0px;
         }
@@ -164,12 +112,8 @@ class AppHeader(QWidget):
         }
     """
 
-    navigation_back = Signal()
-    navigation_forward = Signal()
-    state_button_clicked = Signal(str)
     search_changed = Signal(str)
     search_submitted = Signal(str)
-    file_box_button_clicked = Signal()
     history_panel_toggle_requested = Signal()  # Emitted when history panel toggle is requested
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -177,14 +121,8 @@ class AppHeader(QWidget):
         self.setObjectName("AppHeader")
         self.setStyleSheet(self._HEADER_STYLESHEET)
         
-        self._back_button: Optional[QPushButton] = None
-        self._forward_button: Optional[QPushButton] = None
-        self._grid_button: Optional[QPushButton] = None
-        self._list_button: Optional[QPushButton] = None
         self._search: Optional[QLineEdit] = None
-        self._state_button: Optional[QPushButton] = None
         self._settings_button: Optional[QPushButton] = None
-        self._file_box_button: Optional[QPushButton] = None
         self._workspace_label: Optional[QLabel] = None
         self._search_icon: Optional[QLabel] = None
         
@@ -193,8 +131,6 @@ class AppHeader(QWidget):
     def _setup_ui(self) -> None:
         self._setup_base_configuration()
         layout = self._create_main_layout()
-        self._setup_navigation_buttons(layout)
-        self._setup_view_controls(layout)
         self._setup_search_field(layout)
         self._setup_menu_buttons(layout)
 
@@ -211,46 +147,6 @@ class AppHeader(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         return layout
 
-    def _setup_navigation_buttons(self, layout: QHBoxLayout) -> None:
-        self._back_button, self._forward_button = create_navigation_buttons(
-            self, size=(36, 36), use_default_style=False
-        )
-        self._back_button.clicked.connect(self.navigation_back.emit)
-        self._forward_button.clicked.connect(self.navigation_forward.emit)
-        self._back_button.setStyleSheet(self._NAV_BUTTON_STYLESHEET)
-        self._forward_button.setStyleSheet(self._NAV_BUTTON_STYLESHEET)
-        
-        layout.addWidget(self._back_button, 0)
-        layout.addWidget(self._forward_button, 0)
-        layout.addSpacing(4)
-        self._add_separator(layout)
-
-    def _setup_view_controls(self, layout: QHBoxLayout) -> None:
-        view_container = QWidget(self)
-        view_container.setObjectName("ViewContainer")
-        view_container.setFixedSize(134, 36)
-        
-        view_layout = QHBoxLayout(view_container)
-        view_layout.setContentsMargins(3, 0, 3, 0)
-        view_layout.setSpacing(0)
-        view_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        
-        self._grid_button = QPushButton("Grid", view_container)
-        self._grid_button.setCheckable(True)
-        self._grid_button.setChecked(True)
-        self._grid_button.setFixedSize(64, 36)
-        self._grid_button.setObjectName("ViewGridButton")
-        
-        self._list_button = QPushButton("List", view_container)
-        self._list_button.setCheckable(True)
-        self._list_button.setFixedSize(64, 36)
-        self._list_button.setObjectName("ViewListButton")
-        
-        view_container.setStyleSheet(self._VIEW_CONTAINER_STYLESHEET)
-        view_layout.addWidget(self._grid_button, 0)
-        view_layout.addWidget(self._list_button, 0)
-        layout.addWidget(view_container, 0)
-        self._add_separator(layout)
 
     def _setup_search_field(self, layout: QHBoxLayout) -> None:
         search_container = QWidget(self)
@@ -280,23 +176,7 @@ class AppHeader(QWidget):
         layout.addWidget(search_container, 1)
         self._add_separator(layout)
 
-        self._file_box_button = QPushButton("Caja de archivos", self)
-        self._file_box_button.setObjectName("FileBoxButton")
-        self._file_box_button.setFixedSize(100, 36)
-        self._file_box_button.setStyleSheet(self._MENU_BUTTON_STYLESHEET)
-        self._file_box_button.clicked.connect(self.file_box_button_clicked.emit)
-        layout.addWidget(self._file_box_button, 0)
-        self._add_separator(layout)
-
     def _setup_menu_buttons(self, layout: QHBoxLayout) -> None:
-        self._state_button = QPushButton("Estados ▼", self)
-        self._state_button.setFixedSize(100, 36)
-        self._state_button.setObjectName("StateButton")
-        self._state_button.setStyleSheet(self._MENU_BUTTON_STYLESHEET)
-        self._attach_state_menu(self._state_button)
-        layout.addWidget(self._state_button, 0)
-        
-        self._add_separator(layout)
 
         self._settings_button = QPushButton("Ajustes ▼", self)
         self._settings_button.setFixedSize(100, 36)
@@ -317,29 +197,6 @@ class AppHeader(QWidget):
         separator.setStyleSheet(self._SEPARATOR_STYLESHEET)
         layout.addWidget(separator, 0)
 
-    def _attach_state_menu(self, button: QPushButton) -> None:
-        menu = QMenu(button)
-        menu.setStyleSheet(self._MENU_STYLESHEET)
-        
-        if STATE_PENDING and STATE_DELIVERED and STATE_CORRECTED and STATE_REVIEW:
-            menu.addAction("Pendiente").triggered.connect(
-                lambda: self.state_button_clicked.emit(STATE_PENDING)
-            )
-            menu.addAction("Entregado").triggered.connect(
-                lambda: self.state_button_clicked.emit(STATE_DELIVERED)
-            )
-            menu.addAction("Corregido").triggered.connect(
-                lambda: self.state_button_clicked.emit(STATE_CORRECTED)
-            )
-            menu.addAction("Revisar").triggered.connect(
-                lambda: self.state_button_clicked.emit(STATE_REVIEW)
-            )
-            menu.addSeparator()
-            menu.addAction("Quitar estado").triggered.connect(
-                lambda: self.state_button_clicked.emit(None)
-            )
-        
-        button.setMenu(menu)
 
     def _create_settings_menu(self) -> None:
         menu = QMenu(self._settings_button)
@@ -395,22 +252,6 @@ class AppHeader(QWidget):
             workspace_name = workspace_name_or_path
         self._workspace_label.setText(workspace_name)
 
-    def get_grid_button(self) -> QPushButton:
-        return self._grid_button
-
-    def get_list_button(self) -> QPushButton:
-        return self._list_button
-
-    def set_nav_enabled(self, can_back: bool, can_forward: bool) -> None:
-        if self._back_button:
-            self._back_button.setEnabled(can_back)
-        if self._forward_button:
-            self._forward_button.setEnabled(can_forward)
-
-    def update_button_styles(self, grid_checked: bool) -> None:
-        if self._grid_button and self._list_button:
-            self._grid_button.setChecked(grid_checked)
-            self._list_button.setChecked(not grid_checked)
 
     def paintEvent(self, event):
         if DEBUG_LAYOUT:

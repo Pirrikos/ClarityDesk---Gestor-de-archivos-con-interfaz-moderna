@@ -24,7 +24,8 @@ def on_active_tab_changed(container, index: int, path: str) -> None:
         container.clear_current_focus()
     else:
         # Reset views before loading new folder to avoid residual selections/expansions
-        container.clear_current_focus()
+        # skip_render=True evita renderizar vacío antes de cargar nuevos datos
+        container.clear_current_focus(skip_render=True)
         # ÚNICA ruta de refresco al cambiar de tab
         # Actualizar breadcrumb con la ruta activa
         if hasattr(container, "_focus_panel") and hasattr(container._focus_panel, "update_path"):
@@ -48,10 +49,12 @@ def update_nav_buttons_state(container) -> None:
     """Update navigation buttons enabled state based on TabManager history."""
     can_back = container._tab_manager.can_go_back()
     can_forward = container._tab_manager.can_go_forward()
-    # Compatibilidad: si no hay toolbar interna, delegar en el header
+    # Buscar target: toolbar interna > workspace_selector > header
     target = None
     if hasattr(container, "_toolbar") and container._toolbar:
         target = container._toolbar
+    elif hasattr(container, "_workspace_selector") and container._workspace_selector and hasattr(container._workspace_selector, "set_nav_enabled"):
+        target = container._workspace_selector
     elif hasattr(container, "_header") and container._header and hasattr(container._header, "set_nav_enabled"):
         target = container._header
     if target:

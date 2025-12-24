@@ -14,12 +14,11 @@ from app.services.path_utils import normalize_path
 logger = get_logger(__name__)
 from PySide6.QtCore import QModelIndex, QPoint, QRect, QSize, Qt, Signal, QTimer
 from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QDragMoveEvent, QDropEvent, QMouseEvent, QStandardItem, QPainter, QColor, QPen, QBrush, QFont
+from PySide6.QtGui import QDragMoveEvent, QDropEvent, QMouseEvent, QStandardItem, QPainter, QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QMenu,
-    QPushButton,
     QSplitter,
     QStyle,
     QStyleOptionViewItem,
@@ -36,7 +35,6 @@ from app.ui.widgets.folder_tree_drag_handler import (
     handle_drop,
 )
 from app.ui.widgets.folder_tree_handlers import (
-    handle_add_button_click,
     resolve_folder_path,
 )
 from app.ui.widgets.folder_tree_model import (
@@ -55,9 +53,11 @@ from app.ui.widgets.folder_tree_reorder_handler import (
     handle_reorder_drop,
     is_internal_reorder_drag,
 )
-from app.ui.widgets.folder_tree_styles import get_complete_stylesheet, get_menu_stylesheet, PANEL_BG
+from app.ui.widgets.folder_tree_styles import get_complete_stylesheet, get_menu_stylesheet, SEPARATOR_VERTICAL_COLOR_RGBA
+from app.core.constants import SIDEBAR_BG, ROUNDED_BG_TOP_OFFSET, ROUNDED_BG_RADIUS
 from app.ui.widgets.folder_tree_delegate import FolderTreeSectionDelegate
-from app.ui.widgets.folder_tree_icon_utils import load_folder_icon_with_fallback, FOLDER_ICON_SIZE
+from app.ui.utils.rounded_background_painter import paint_rounded_background
+from app.ui.widgets.folder_tree_icon_utils import FOLDER_ICON_SIZE
 from app.ui.widgets.folder_tree_menu_utils import calculate_menu_rect_viewport, create_option_from_index
 from app.ui.widgets.folder_tree_widget_utils import find_tab_manager
 
@@ -84,7 +84,6 @@ class FolderTreeSidebar(QWidget):
     """Navigation history tree showing opened Focus folders."""
     
     folder_selected = Signal(str)
-    new_focus_requested = Signal(str)
     focus_remove_requested = Signal(str)
     files_moved = Signal(str, str)
     
@@ -95,8 +94,7 @@ class FolderTreeSidebar(QWidget):
         self.setMaximumWidth(SIDEBAR_MAX_WIDTH)
         self._path_to_item: dict[str, QStandardItem] = {}
         self.setAcceptDrops(True)
-        # Mismo patrón que DockBackgroundWidget para transparencia
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # Background se pinta manualmente en paintEvent()
         self.setAutoFillBackground(False)
         self._setup_model()
         self._setup_ui()
@@ -129,42 +127,10 @@ class FolderTreeSidebar(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         
-        button_container = QWidget(self)
-        button_container.setObjectName("ButtonContainer")
-        button_container_layout = QHBoxLayout(button_container)
-        button_container_layout.setContentsMargins(10, 0, 0, 0)
-        button_container_layout.setSpacing(0)
-        
-        self._add_button = QPushButton(button_container)
-        self._add_button.setObjectName("AddButton")
-        self._add_button.setFixedHeight(36)
-        self._add_button.setVisible(True)
-        
-        icon_loaded = False
-        try:
-            folder_icon = load_folder_icon_with_fallback(FOLDER_ICON_SIZE)
-            if not folder_icon.isNull():
-                self._add_button.setIcon(folder_icon)
-                self._add_button.setIconSize(FOLDER_ICON_SIZE)
-                icon_loaded = True
-        except Exception as e:
-            logger.warning(f"No se pudo cargar icono de carpeta para botón: {e}")
-        
-        if icon_loaded:
-            self._add_button.setText("Nueva carpeta")
-        else:
-            self._add_button.setText("+")
-        
-        self._add_button.clicked.connect(self._on_add_clicked)
-        
-        button_container_layout.addWidget(self._add_button, 1)
-        
-        layout.addWidget(button_container, 0)
-        
         tree_container = QWidget(self)
         tree_container.setObjectName("TreeContainer")
         tree_container_layout = QVBoxLayout(tree_container)
-        tree_container_layout.setContentsMargins(10, 0, 0, 0)
+        tree_container_layout.setContentsMargins(10, ROUNDED_BG_TOP_OFFSET, 0, 0)
         tree_container_layout.setSpacing(0)
         
         # Tree view - usar subclase profesional que oculta líneas de conexión
@@ -180,11 +146,8 @@ class FolderTreeSidebar(QWidget):
         self._tree_view.setWordWrap(False)
         self._tree_view.setItemDelegate(FolderTreeSectionDelegate(self._tree_view))
         self._tree_view.setMouseTracking(True)
-        # Scrollbar siempre reserva espacio para evitar desplazamiento
-        self._tree_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        # Ocultar scrollbar visualmente cuando no hay contenido para hacer scroll
-        scrollbar = self._tree_view.verticalScrollBar()
-        scrollbar.rangeChanged.connect(lambda min_val, max_val: scrollbar.setVisible(max_val > 0))
+        # Scrollbar se muestra automáticamente solo cuando es necesario
+        self._tree_view.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
         self._tree_view.setAcceptDrops(True)
         self._tree_view.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
@@ -272,11 +235,6 @@ class FolderTreeSidebar(QWidget):
     def _on_single_click_timeout(self) -> None:
         # Placeholder: método reservado para futuras funcionalidades
         pass
-    
-    def _on_add_clicked(self) -> None:
-        folder_path = handle_add_button_click(self)
-        if folder_path:
-            self.new_focus_requested.emit(folder_path)
     
     def add_focus_path(self, path: str, skip_sort: bool = False) -> None:
         normalized_path = normalize_path(path)
@@ -523,19 +481,11 @@ class FolderTreeSidebar(QWidget):
     def _apply_styling(self) -> None:
         self.setStyleSheet(get_complete_stylesheet())
         
-        if hasattr(self, '_add_button') and self._add_button:
-            FontManager.safe_set_font(
-                self._add_button,
-                'Segoe UI',
-                FontManager.SIZE_MEDIUM,
-                QFont.Weight.Normal
-            )
-        
         if hasattr(self, '_tree_view') and self._tree_view:
             FontManager.safe_set_font(
                 self._tree_view,
                 'Segoe UI',
-                FontManager.SIZE_MEDIUM,
+                FontManager.SIZE_NORMAL,  # 11px (reducido de SIZE_MEDIUM que era 13px)
                 QFont.Weight.Normal
             )
     
@@ -543,16 +493,10 @@ class FolderTreeSidebar(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        bg_color = QColor(PANEL_BG)
-        painter.setBrush(QBrush(bg_color))
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawRect(self.rect())
+        widget_rect = self.rect().adjusted(0, 0, -1, -1)
+        bg_color = QColor(SIDEBAR_BG)
         
-        rect = self.rect()
-        separator_x = rect.right() - 1
-        separator_color = QColor(255, 255, 255, 23)
-        painter.setPen(QPen(separator_color, 1))
-        painter.drawLine(separator_x, rect.top(), separator_x, rect.bottom())
+        paint_rounded_background(painter, widget_rect, bg_color)
         
         painter.end()
     
@@ -788,10 +732,6 @@ class FolderTreeSidebar(QWidget):
     
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        if hasattr(self, '_add_button'):
-            self._add_button.setVisible(True)
-            self._add_button.raise_()  # Traer al frente
-            self._add_button.update()
     
     def _get_separator_line_x(self, index: QModelIndex, visual_rect: QRect) -> int | None:
         if not index.isValid() or not visual_rect.isValid():

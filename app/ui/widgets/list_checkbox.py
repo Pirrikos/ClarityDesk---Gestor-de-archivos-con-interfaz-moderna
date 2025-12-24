@@ -18,7 +18,7 @@ class CustomCheckBox(QCheckBox):
         self.setStyleSheet("""
             QCheckBox {
                 padding: 0px;
-                margin: 0px;
+                margin: 0px 0px 0px 44px;
             }
         """)
     
@@ -28,16 +28,18 @@ class CustomCheckBox(QCheckBox):
         if self.isChecked():
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setPen(QPen(QColor(255, 255, 255), 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            # Trazo más fino para checkbox más pequeño (indicador 11x11)
+            painter.setPen(QPen(QColor(255, 255, 255), 1.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
             
             opt = QStyleOptionButton()
             self.initStyleOption(opt)
             style = self.style()
             indicator_rect = style.subElementRect(QStyle.SubElement.SE_CheckBoxIndicator, opt, self)
             
-            center_x = indicator_rect.center().x()
-            center_y = indicator_rect.center().y()
-            painter.drawLine(center_x - 5, center_y, center_x - 1, center_y + 4)
-            painter.drawLine(center_x - 1, center_y + 4, center_x + 5, center_y - 4)
+            cx = indicator_rect.center().x()
+            cy = indicator_rect.center().y()
+            # Checkmark más pequeño proporcional al indicador de 11x11 (mitad del original 22x22)
+            painter.drawLine(cx - 2, cy, cx - 1, cy + 2)
+            painter.drawLine(cx - 1, cy + 2, cx + 2, cy - 2)
             painter.end()
 

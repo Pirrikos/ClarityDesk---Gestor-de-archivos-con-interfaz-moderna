@@ -20,6 +20,7 @@ from app.ui.widgets.list_row_factory import (
     create_state_cell,
 )
 from app.ui.widgets.list_styles import LIST_VIEW_STYLESHEET
+from app.core.constants import CENTRAL_AREA_BG
 
 
 def create_header_checkbox(view) -> QCheckBox:
@@ -46,7 +47,7 @@ def setup_header_checkbox(view, header: QHeaderView) -> None:
     checkbox = create_header_checkbox(view)
     view._header_checkbox = checkbox
     
-    # Crear contenedor para centrar el checkbox
+    # Crear contenedor para posicionar el checkbox
     container = QWidget(header)
     container.setStyleSheet("QWidget { background-color: transparent; border: none; }")
     layout = QVBoxLayout(container)
@@ -62,6 +63,10 @@ def setup_header_checkbox(view, header: QHeaderView) -> None:
             section_x = header.sectionPosition(0)
             section_width = header.sectionSize(0)
             header_height = header.height()
+            # Calcular posición exacta: checkbox centrado en celda de 15px
+            # Los checkboxes de las filas están centrados en la celda, así que el header debe estar igual
+            checkbox_width = 15  # Ancho del widget (el indicador visual es 11px)
+            # Centrar el checkbox en la columna reducida
             container.setGeometry(section_x, 0, section_width, header_height)
     
     # Conectar señal de cambio de tamaño del header
@@ -77,7 +82,7 @@ def setup_header_checkbox(view, header: QHeaderView) -> None:
 def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     """Build the UI layout."""
     view.setColumnCount(5)
-    view.setHorizontalHeaderLabels(["", "Nombre", "Extensión", "Modificado", "Estado"])
+    view.setHorizontalHeaderLabels(["", "Nombre", "Tipo", "Fecha", "Estado"])
     view.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
     view.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
     view.setAlternatingRowColors(False)
@@ -85,13 +90,12 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     
     header = view.horizontalHeader()
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-    header.resizeSection(0, 60)
+    header.resizeSection(0, 59)  # 15px + 44px de margen izquierdo
     
     # Agregar checkbox en el header de la primera columna
     setup_header_checkbox(view, header)
-    # Columna "Nombre" redimensionable por el usuario para ver nombres largos
-    header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-    header.resizeSection(1, 300)  # Ancho inicial razonable
+    # Columna "Nombre" se expande para ocupar el espacio disponible
+    header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
     header.setMinimumSectionSize(100)  # Ancho mínimo para evitar que se haga muy pequeña
     header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
     header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
@@ -99,9 +103,7 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     
     header.setDefaultSectionSize(100)
     header.setHighlightSections(False)
-    # Hacer que la última columna se estire para ocupar el espacio restante
-    # Esto evita el espacio blanco cuando se redimensiona hacia la izquierda
-    header.setStretchLastSection(True)
+    # No estirar la última columna - la columna "Nombre" asume la expansión
     header.setSectionsMovable(False)
     
     # Asegurar que solo haya exactamente 5 columnas y ocultar cualquier columna extra
@@ -170,15 +172,15 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     
     # NO reemplazar viewport durante construcción inicial
     # Se activará después del primer show para evitar flash de ventana marrón/blanca
-    view.viewport().setStyleSheet("""
-        QWidget {
-            background-color: #1A1D22;
+    view.viewport().setStyleSheet(f"""
+        QWidget {{
+            background-color: {CENTRAL_AREA_BG};
             border: none;
             border-left: none;
             border-right: none;
             border-top: none;
             border-bottom: none;
-        }
+        }}
     """)
     view.itemDoubleClicked.connect(double_click_callback)
     view.setDragEnabled(True)

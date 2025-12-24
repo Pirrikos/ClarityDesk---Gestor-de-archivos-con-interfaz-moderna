@@ -16,9 +16,10 @@ from app.services.path_utils import normalize_path
 if TYPE_CHECKING:
     from app.ui.widgets.file_grid_view import FileGridView
     from app.ui.widgets.file_list_view import FileListView
+    from app.ui.widgets.file_view_container import FileViewContainer
 
 
-def update_files(container) -> None:
+def update_files(container: 'FileViewContainer') -> None:
     """Update both views with files from active tab."""
     # Cache result to avoid repeated checks
     if not hasattr(container, '_cached_is_desktop'):
@@ -27,6 +28,7 @@ def update_files(container) -> None:
     active_folder = container._tab_manager.get_active_folder()
     
     items = container._tab_manager.get_files(use_stacks=use_stacks)
+    
     container._grid_view.update_files(items)
     container._list_view.update_files(items)
     
@@ -41,7 +43,17 @@ def update_files(container) -> None:
         container._state_manager.cleanup_missing_files(set(file_paths))
 
 
-def switch_view(container, view_type: str) -> None:
+def _update_workspace_view_buttons(container: 'FileViewContainer', is_grid: bool) -> None:
+    """Update workspace selector view buttons state."""
+    if container._workspace_grid_button:
+        container._workspace_grid_button.setChecked(is_grid)
+    if container._workspace_list_button:
+        container._workspace_list_button.setChecked(not is_grid)
+    if container._workspace_selector:
+        container._workspace_selector.update_button_styles(is_grid)
+
+
+def switch_view(container: 'FileViewContainer', view_type: str) -> None:
     """
     Switch between grid and list views.
     
@@ -60,27 +72,17 @@ def switch_view(container, view_type: str) -> None:
     # Switch view
     if view_type == "grid":
         container._stacked.setCurrentWidget(container._grid_view)
-        if hasattr(container, '_grid_button') and container._grid_button:
-            container._grid_button.setChecked(True)
-        if hasattr(container, '_list_button') and container._list_button:
-            container._list_button.setChecked(False)
         container._current_view = "grid"
-        # Actualizar estilos en toolbar o header, según exista
+        # Actualizar estilos en toolbar, según exista
         if hasattr(container, '_toolbar') and container._toolbar:
             container._toolbar.update_button_styles(True)
-        elif hasattr(container, '_header') and hasattr(container._header, 'update_button_styles'):
-            container._header.update_button_styles(True)
+        _update_workspace_view_buttons(container, True)
     else:
         container._stacked.setCurrentWidget(container._list_view)
-        if hasattr(container, '_list_button') and container._list_button:
-            container._list_button.setChecked(True)
-        if hasattr(container, '_grid_button') and container._grid_button:
-            container._grid_button.setChecked(False)
         container._current_view = "list"
         if hasattr(container, '_toolbar') and container._toolbar:
             container._toolbar.update_button_styles(False)
-        elif hasattr(container, '_header') and hasattr(container._header, 'update_button_styles'):
-            container._header.update_button_styles(False)
+        _update_workspace_view_buttons(container, False)
 
     # Update files first
     update_files(container)

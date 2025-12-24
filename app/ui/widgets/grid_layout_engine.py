@@ -4,14 +4,19 @@ GridLayoutEngine - Layout building for FileGridView.
 Handles dock-style and normal grid layout construction.
 
 This module orchestrates layout building by delegating to:
+- grid_state_model.py: State calculation and diff
+- grid_tile_manager.py: Tile lifecycle management
 - grid_tile_positions.py: Position calculation
 - grid_tile_animations.py: Tile animations
 - grid_layout_config.py: Layout configuration
 """
 
+from typing import Dict, List, Tuple, Union, TYPE_CHECKING
+
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QGridLayout
 
+from app.models.file_stack import FileStack
 from app.ui.widgets.desktop_stack_tile import DesktopStackTile
 from app.ui.widgets.dock_separator import DockSeparator
 from app.ui.widgets.grid_layout_config import (
@@ -19,6 +24,7 @@ from app.ui.widgets.grid_layout_config import (
     setup_normal_grid_config,
     calculate_expansion_height
 )
+from app.ui.widgets.grid_state_model import GridStateModel, GridDiff
 from app.ui.widgets.grid_tile_animations import (
     animate_old_tiles_exit,
     animate_tiles_entrance
@@ -26,11 +32,13 @@ from app.ui.widgets.grid_tile_animations import (
 from app.ui.widgets.grid_tile_positions import (
     calculate_columns_for_normal_grid,
     get_col_offset_for_desktop_window,
-    calculate_expanded_file_position,
-    add_tile_to_normal_grid
+    calculate_expanded_file_position
 )
 from app.ui.widgets.grid_tile_builder import create_file_tile, create_stack_tile
 from app.ui.widgets.settings_stack_tile import SettingsStackTile
+
+if TYPE_CHECKING:
+    from app.ui.widgets.file_grid_view import FileGridView
 
 
 def _connect_desktop_tile_signals(desktop_tile: DesktopStackTile, view) -> None:
@@ -65,15 +73,20 @@ def build_dock_layout(
         content_widget.setUpdatesEnabled(updates_enabled)
 
 
-def build_normal_grid(view, items_to_render: list, grid_layout: QGridLayout) -> None:
-    """Build normal grid layout for non-Dock windows."""
+def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: QGridLayout) -> None:
+    """
+    Build normal grid layout for non-Dock windows using state-based incremental updates.
+    
+    Uses GridStateModel to calculate diffs and TileManager for lifecycle management.
+    """
+    current_width = view.width()
+    
     _emit_expansion_height(view)
     setup_normal_grid_config(grid_layout)
     
     col_offset = get_col_offset_for_desktop_window(view._is_desktop_window)
     
     # Cache de cálculo de columnas: solo recalcular si cambio significativo (>10px)
-    current_width = view.width()
     if (view._cached_columns is None or 
         view._cached_width is None or 
         abs(current_width - view._cached_width) > 10):
@@ -82,14 +95,274 @@ def build_normal_grid(view, items_to_render: list, grid_layout: QGridLayout) -> 
     
     columns = view._cached_columns
     
+    # Convert items to ordered tile_ids
+    is_categorized = items_to_render and isinstance(items_to_render[0], tuple) if items_to_render and len(items_to_render) > 0 else False
+    
+    if is_categorized:
+        # For categorized files, calculate positions accounting for headers
+        ordered_ids, header_rows = _items_to_tile_ids_with_headers(items_to_render, columns)
+        # Calculate positions with headers accounted for
+        new_state_with_headers = _calculate_positions_with_headers(ordered_ids, header_rows, items_to_render, columns)
+    else:
+        ordered_ids = _items_to_tile_ids(items_to_render, view)
+        header_rows = []
+        # Calculate positions without headers
+        state_model = GridStateModel()
+        new_state_with_headers = {}
+        for index, tile_id in enumerate(ordered_ids):
+            row = index // columns
+            col = index % columns
+            new_state_with_headers[tile_id] = (row, col)
+    
+    # Get old state (may have headers, we'll compare positions directly)
+    old_state = getattr(view, '_grid_state', {}) or {}
+    
+    # Calculate diffs by comparing states
+    old_ids = set(old_state.keys())
+    new_ids = set(new_state_with_headers.keys())
+    
+    added = list(new_ids - old_ids)
+    removed = list(old_ids - new_ids)
+    
+    moved = {}
+    unchanged = []
+    
+    for tile_id in old_ids & new_ids:
+        old_pos = old_state[tile_id]
+        new_pos = new_state_with_headers[tile_id]
+        if old_pos == new_pos:
+            unchanged.append(tile_id)
+        else:
+            moved[tile_id] = (old_pos, new_pos)
+    
+    # Create diff object
+    diff = GridDiff(
+        added=added,
+        removed=removed,
+        moved=moved,
+        unchanged=unchanged,
+        new_state=new_state_with_headers
+    )
+    
+    # Get tile manager
+    tile_manager = view._tile_manager
+    
     # Deshabilitar updates durante construcción masiva para evitar repaints redundantes
     content_widget = view._content_widget
     updates_enabled = content_widget.updatesEnabled()
     try:
         content_widget.setUpdatesEnabled(False)
-        add_tile_to_normal_grid(view, items_to_render, grid_layout, columns, col_offset)
+        
+        # Apply changes incrementally
+        # 1. Detach removed + moved
+        for tile_id in diff.removed + list(diff.moved.keys()):
+            tile = tile_manager.get_tile(tile_id)
+            if tile:
+                tile_manager.detach(tile)
+        
+        # 2. Destroy removed
+        for tile_id in diff.removed:
+            tile_manager.destroy(tile_id)
+        
+        # 3. Attach unchanged (same position)
+        for tile_id in diff.unchanged:
+            tile = tile_manager.get_or_create(tile_id)
+            row, col = diff.new_state[tile_id]
+            # Add col_offset for positioning
+            tile_manager.attach(tile, row, col + col_offset)
+        
+        # 4. Attach moved (new position)
+        for tile_id, (old_pos, new_pos) in diff.moved.items():
+            tile = tile_manager.get_or_create(tile_id)
+            row, col = new_pos
+            tile_manager.attach(tile, row, col + col_offset)
+        
+        # 5. Create + attach added
+        for tile_id in diff.added:
+            tile = tile_manager.get_or_create(tile_id)
+            row, col = diff.new_state[tile_id]
+            tile_manager.attach(tile, row, col + col_offset)
+        
+        # Add category headers if needed
+        if is_categorized and header_rows:
+            _add_category_headers_at_rows(view, items_to_render, grid_layout, header_rows, columns, col_offset)
+        
     finally:
         content_widget.setUpdatesEnabled(updates_enabled)
+    
+    # Update state
+    view._grid_state = diff.new_state
+
+
+def _items_to_tile_ids(
+    items_to_render: Union[List[str], List[FileStack], List[Tuple[str, List[str]]]],
+    view: 'FileGridView'
+) -> List[str]:
+    """
+    Convert items to ordered list of tile_ids.
+    
+    Args:
+        items_to_render: List of files, stacks, or categorized tuples
+        view: FileGridView instance
+        
+    Returns:
+        Ordered list of tile_ids (file_path or f"stack:{stack_type}")
+    """
+    tile_ids = []
+    
+    if not items_to_render:
+        return tile_ids
+    
+    # Check if categorized (list of tuples)
+    if isinstance(items_to_render[0], tuple):
+        # Categorized files: (category_label, files)
+        for category_label, files in items_to_render:
+            # Add file paths (headers are handled separately)
+            tile_ids.extend(files)
+    elif isinstance(items_to_render[0], FileStack):
+        # Stacks
+        for stack in items_to_render:
+            tile_ids.append(f"stack:{stack.stack_type}")
+    else:
+        # Plain file list
+        tile_ids.extend(items_to_render)
+    
+    return tile_ids
+
+
+def _items_to_tile_ids_with_headers(
+    items_to_render: List[Tuple[str, List[str]]],
+    columns: int
+) -> Tuple[List[str], List[int]]:
+    """
+    Convert categorized items to tile_ids, tracking header positions.
+    
+    Returns:
+        Tuple of (ordered_tile_ids, header_rows)
+    """
+    tile_ids = []
+    header_rows = []
+    current_row = 0
+    
+    for category_label, files in items_to_render:
+        if not files:  # Skip empty categories
+            continue
+        
+        # Header goes at current_row
+        header_rows.append(current_row)
+        current_row += 1
+        
+        # Files go after header
+        tile_ids.extend(files)
+        
+        # Calculate rows needed for this category (without header)
+        files_rows = (len(files) + columns - 1) // columns
+        current_row += files_rows
+    
+    return tile_ids, header_rows
+
+
+def _calculate_positions_with_headers(
+    ordered_ids: List[str],
+    header_rows: List[int],
+    items_to_render: List[Tuple[str, List[str]]],
+    columns: int
+) -> Dict[str, Tuple[int, int]]:
+    """
+    Calculate tile positions accounting for category headers.
+    
+    Headers are inserted at header_rows, so tiles need their row adjusted.
+    """
+    state = {}
+    category_index = 0
+    
+    for category_label, files in items_to_render:
+        if not files:
+            continue
+        
+        # Header is at header_rows[category_index]
+        header_row = header_rows[category_index]
+        # Tiles start at row after header
+        tile_start_row = header_row + 1
+        
+        # Calculate positions for files in this category
+        for file_idx, file_path in enumerate(files):
+            # Position within category (0-based)
+            row_in_category = file_idx // columns
+            col_in_category = file_idx % columns
+            
+            # Final position: tile_start_row + row_in_category
+            final_row = tile_start_row + row_in_category
+            final_col = col_in_category
+            
+            state[file_path] = (final_row, final_col)
+        
+        category_index += 1
+    
+    return state
+
+
+def _add_category_headers_at_rows(
+    view: 'FileGridView',
+    items_to_render: List[Tuple[str, List[str]]],
+    grid_layout: QGridLayout,
+    header_rows: List[int],
+    columns: int,
+    col_offset: int
+) -> None:
+    """
+    Add category section headers at specified rows.
+    
+    First removes any existing headers to avoid duplicates.
+    
+    Args:
+        view: FileGridView instance
+        items_to_render: List of (category_label, files) tuples
+        grid_layout: Grid layout
+        header_rows: List of row numbers where headers should be placed
+        columns: Number of columns
+        col_offset: Column offset
+    """
+    from app.ui.widgets.category_section_header import CategorySectionHeader
+    
+    # Remove existing headers first to avoid duplicates
+    _remove_existing_headers(grid_layout)
+    
+    category_idx = 0
+    for category_label, files in items_to_render:
+        if not files:  # Skip empty categories
+            continue
+        
+        if category_idx < len(header_rows):
+            header_row = header_rows[category_idx]
+            header = CategorySectionHeader(category_label, view._content_widget)
+            grid_layout.addWidget(header, header_row, col_offset, 1, columns)
+            category_idx += 1
+
+
+def _remove_existing_headers(grid_layout: QGridLayout) -> None:
+    """
+    Remove all existing CategorySectionHeader widgets from grid layout.
+    
+    Args:
+        grid_layout: Grid layout to clean
+    """
+    from app.ui.widgets.category_section_header import CategorySectionHeader
+    
+    # Collect headers to remove (process in reverse to avoid index issues)
+    headers_to_remove = []
+    for i in range(grid_layout.count()):
+        item = grid_layout.itemAt(i)
+        if item and item.widget():
+            widget = item.widget()
+            if isinstance(widget, CategorySectionHeader):
+                headers_to_remove.append(widget)
+    
+    # Remove headers
+    for header in headers_to_remove:
+        grid_layout.removeWidget(header)
+        header.setParent(None)
+        header.deleteLater()
 
 
 def _build_stack_tiles(view, items_to_render: list, grid_layout: QGridLayout) -> dict:
