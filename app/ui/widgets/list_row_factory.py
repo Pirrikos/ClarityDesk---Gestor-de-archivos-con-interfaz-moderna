@@ -28,11 +28,12 @@ def create_checkbox_cell(
     checkbox = CustomCheckBox()
     checkbox.setText("")
     checkbox.setChecked(is_checked)
-    checkbox.setFixedSize(59, 56)  # 15px + 44px de margen izquierdo
+    checkbox.setFixedSize(15, 56)  # Ancho mínimo: 11px indicador + 4px margen
     checkbox.stateChanged.connect(
         lambda state, path=file_path: on_state_changed(path, state)
     )
-    return checkbox
+    # Envolver en contenedor centrado para alinearlo con el header
+    return _create_centered_container(checkbox)
 
 
 def _create_centered_container(widget: QWidget) -> QWidget:

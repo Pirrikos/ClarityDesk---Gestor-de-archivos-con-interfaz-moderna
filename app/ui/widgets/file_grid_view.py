@@ -139,7 +139,7 @@ class FileGridView(QWidget):
         
         scroll.setWidget(self._content_widget)
         layout.addWidget(scroll)
-    
+
     def set_desktop_mode(self, is_desktop: bool) -> None:
         """
         Actualizar explícitamente el estado de Desktop Focus.

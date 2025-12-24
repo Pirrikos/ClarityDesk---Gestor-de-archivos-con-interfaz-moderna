@@ -4,7 +4,7 @@ Rendering helpers for FileListView.
 Handles UI setup and table row creation.
 """
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QCheckBox, QHeaderView, QTableWidget, QVBoxLayout, QWidget
 
@@ -32,11 +32,16 @@ def create_header_checkbox(view) -> QCheckBox:
     
     def on_header_checkbox_changed(state: int) -> None:
         """Handle header checkbox state change."""
+        # Ignorar estado PartiallyChecked - solo se establece programáticamente
+        # cuando algunos archivos están seleccionados pero no todos
+        if Qt.CheckState(state) == Qt.CheckState.PartiallyChecked:
+            return
+        
+        # Solo responder a cambios explícitos a Checked o Unchecked desde clic del usuario
         if Qt.CheckState(state) == Qt.CheckState.Checked:
             view.select_all_files()
         elif Qt.CheckState(state) == Qt.CheckState.Unchecked:
             view.deselect_all_files()
-        # Si está en estado indeterminado, no hacer nada (es solo visual)
     
     checkbox.stateChanged.connect(on_header_checkbox_changed)
     return checkbox
@@ -55,6 +60,8 @@ def setup_header_checkbox(view, header: QHeaderView) -> None:
     layout.setSpacing(0)
     layout.addWidget(checkbox)
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    # Asegurar que el checkbox tenga un tamaño adecuado para ser clicable
+    checkbox.setFixedSize(15, 15)
     
     # Posicionar el widget en la primera sección del header
     def update_checkbox_position():
@@ -63,11 +70,12 @@ def setup_header_checkbox(view, header: QHeaderView) -> None:
             section_x = header.sectionPosition(0)
             section_width = header.sectionSize(0)
             header_height = header.height()
-            # Calcular posición exacta: checkbox centrado en celda de 15px
-            # Los checkboxes de las filas están centrados en la celda, así que el header debe estar igual
-            checkbox_width = 15  # Ancho del widget (el indicador visual es 11px)
-            # Centrar el checkbox en la columna reducida
-            container.setGeometry(section_x, 0, section_width, header_height)
+            
+            # El contenedor es hijo del header, así que section_x ya es la posición correcta
+            # Desplazado 8px a la derecha para alineación visual
+            # Asegurar que el contenedor tenga suficiente ancho para capturar clics
+            # El layout centra automáticamente el checkbox dentro del contenedor
+            container.setGeometry(section_x + 8, 0, max(section_width, 20), header_height)
     
     # Conectar señal de cambio de tamaño del header
     header.sectionResized.connect(lambda logical_index, old_size, new_size: update_checkbox_position() if logical_index == 0 else None)
@@ -90,7 +98,7 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     
     header = view.horizontalHeader()
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-    header.resizeSection(0, 59)  # 15px + 44px de margen izquierdo
+    header.resizeSection(0, 16)  # Ancho mínimo: 15px widget + 1px margen de seguridad
     
     # Agregar checkbox en el header de la primera columna
     setup_header_checkbox(view, header)
@@ -117,7 +125,7 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     header.setStyleSheet("""
         QHeaderView::section {
             border-left: none !important;
-            border-right: 1px solid rgba(255, 255, 255, 0.15) !important;
+            border-right: none !important;  /* Temporalmente deshabilitado */
         }
         QHeaderView::section:last {
             border-right: none !important;
@@ -159,7 +167,7 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     FontManager.safe_set_font(
         view,
         'Segoe UI',
-        FontManager.SIZE_LARGE,
+        12,  # Reducido de SIZE_LARGE (14px) a 12px
         QFont.Weight.Normal
     )
     

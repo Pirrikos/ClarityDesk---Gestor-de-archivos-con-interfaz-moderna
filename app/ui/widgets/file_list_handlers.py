@@ -172,6 +172,12 @@ def get_checkbox_from_row(view: 'FileListView', row: int) -> Optional[QCheckBox]
     widget = view.cellWidget(row, 0)
     if isinstance(widget, QCheckBox):
         return widget
+    # Si es un contenedor, buscar el checkbox dentro
+    if widget:
+        # Buscar el checkbox dentro del contenedor usando findChild
+        checkbox = widget.findChild(QCheckBox)
+        if checkbox:
+            return checkbox
     return None
 
 

@@ -18,7 +18,7 @@ class CustomCheckBox(QCheckBox):
         self.setStyleSheet("""
             QCheckBox {
                 padding: 0px;
-                margin: 0px 0px 0px 44px;
+                margin: 0px;
             }
         """)
     

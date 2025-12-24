@@ -16,10 +16,10 @@ class ListViewDelegate(QStyledItemDelegate):
     Completely controls item rendering to prevent default Qt selection borders.
     """
     
-    MARGIN_LEFT = 5
+    MARGIN_LEFT = 14  # Padding izquierdo del icono (14px + 2px ICON_OFFSET_X = 16px total)
     ICON_SIZE_SELECTED = QSize(30, 30)
     ICON_SIZE_NORMAL = QSize(28, 28)
-    ICON_OFFSET_X = 5  # Offset horizontal del icono desde el margen izquierdo
+    ICON_OFFSET_X = 2  # Reducido de 5 a 2 para acercar icono al checkbox
     TEXT_OFFSET_X = 32  # Espacio entre icono y texto en columna de nombre
     CONTAINER_MARGIN = 2  # Margen del contenedor alrededor del icono
     CONTAINER_RADIUS = 8  # Radio de esquinas redondeadas del contenedor

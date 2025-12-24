@@ -7,7 +7,7 @@ Contains CSS styles for FileListView table and checkboxes.
 from app.core.constants import (
     CENTRAL_AREA_BG, TEXT_LIST,
     CHECKBOX_BORDER, CHECKBOX_BORDER_HOVER, CHECKBOX_BG_CHECKED, CHECKBOX_BG_CHECKED_HOVER,
-    HEADER_TEXT_COLOR, HEADER_BORDER_RIGHT, HEADER_BORDER_BOTTOM,
+    HEADER_BG, HEADER_TEXT_COLOR, HEADER_BORDER_RIGHT, HEADER_BORDER_BOTTOM,
     HEADER_TEXT_HOVER, HEADER_BORDER_CORNER
 )
 
@@ -115,16 +115,29 @@ LIST_VIEW_STYLESHEET = f"""
     QHeaderView {{
         border: none;
         outline: none;
+        background-color: {CENTRAL_AREA_BG};
+        margin-top: 4px;
     }}
     QHeaderView::section {{
-        background-color: {CENTRAL_AREA_BG};
+        background-color: {HEADER_BG};
         color: {HEADER_TEXT_COLOR};
         border: none !important;
-        border-right: 1px solid {HEADER_BORDER_RIGHT} !important;
-        border-bottom: 1px solid {HEADER_BORDER_BOTTOM} !important;
+        border-right: none !important;  /* Temporalmente deshabilitado */
+        border-bottom: none !important;  /* Temporalmente deshabilitado */
         padding: 6px 10px;
         font-family: 'Segoe UI', sans-serif;
         font-weight: 500;
+        border-radius: 8px;
+        margin: 2px 4px;
+    }}
+    QHeaderView::section:first {{
+        border-left: none !important;
+        border-top-left-radius: 8px;
+        border-bottom-left-radius: 8px;
+    }}
+    QHeaderView::section:last {{
+        border-top-right-radius: 8px;
+        border-bottom-right-radius: 8px;
     }}
     QHeaderView::section:hover {{
         color: {HEADER_TEXT_HOVER};
