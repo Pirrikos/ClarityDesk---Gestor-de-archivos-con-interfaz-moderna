@@ -4,7 +4,7 @@ Rendering helpers for FileListView.
 Handles UI setup and table row creation.
 """
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QCheckBox, QHeaderView, QTableWidget, QVBoxLayout, QWidget
 
@@ -72,9 +72,9 @@ def _update_header_checkbox_visibility(container: QWidget, view: QTableWidget) -
         scroll_value = scrollbar.value()
         # Mostrar solo cuando value == 0, ocultar cuando value > 0
         if scroll_value == 0:
-            container.show()
+            container.setVisible(True)
         else:
-            container.hide()
+            container.setVisible(False)
 
 
 def setup_header_checkbox(view, header: QHeaderView) -> None:
@@ -215,25 +215,34 @@ def expand_stacks_to_files(file_list: list) -> list[str]:
     return expanded_files
 
 
-def refresh_table(view, files: list[str], icon_service, state_manager, checked_paths: set, checkbox_changed_callback) -> None:
+def refresh_table(view, files: list[str], icon_service, state_manager, checked_paths: set, checkbox_changed_callback, get_label_callback=None) -> None:
     """Rebuild table rows from file list."""
     _ensure_column_count(view, 5)
     
+    # Soft reveal: ocultar viewport inicialmente durante construcción
+    viewport_was_visible = view.viewport().isVisible()
+    if viewport_was_visible and len(files) > 0:
+        view.viewport().setVisible(False)
+    
     view.setRowCount(len(files))
     for row, file_path in enumerate(files):
-        create_row(view, row, file_path, icon_service, state_manager, checked_paths, checkbox_changed_callback)
+        create_row(view, row, file_path, icon_service, state_manager, checked_paths, checkbox_changed_callback, get_label_callback)
+    
+    # Revelar viewport en siguiente ciclo con micro-fade
+    if len(files) > 0:
+        QTimer.singleShot(0, lambda: _reveal_viewport_with_fade(view))
     
     # Actualizar estado del checkbox del header después de refrescar
     if hasattr(view, '_update_header_checkbox_state'):
         view._update_header_checkbox_state()
 
 
-def create_row(view, row: int, file_path: str, icon_service, state_manager, checked_paths: set, checkbox_changed_callback) -> None:
+def create_row(view, row: int, file_path: str, icon_service, state_manager, checked_paths: set, checkbox_changed_callback, get_label_callback=None) -> None:
     """Create a single table row with all columns."""
     font = view.font()
     
     view.setCellWidget(row, 0, create_checkbox_cell(
-        file_path, file_path in checked_paths, checkbox_changed_callback))
+        file_path, file_path in checked_paths, checkbox_changed_callback, view))
     name_item = create_name_cell(file_path, icon_service, font)
     name_item.setData(Qt.ItemDataRole.UserRole, file_path)
     view.setItem(row, 1, name_item)
@@ -241,8 +250,31 @@ def create_row(view, row: int, file_path: str, icon_service, state_manager, chec
     view.setItem(row, 3, create_date_cell(file_path, font))
     
     state = state_manager.get_file_state(file_path) if state_manager else None
-    state_widget = create_state_cell(state, font)
+    state_widget = create_state_cell(state, font, view, get_label_callback)
     view.setCellWidget(row, 4, state_widget)
     
     view.setRowHeight(row, 56)
+
+
+def _reveal_viewport_with_fade(view: QTableWidget) -> None:
+    """Revelar viewport con micro-fade ≤120ms."""
+    try:
+        viewport = view.viewport()
+        viewport.setVisible(True)
+        viewport.setWindowOpacity(0.0)
+        
+        fade_anim = QPropertyAnimation(viewport, b"windowOpacity", viewport)
+        fade_anim.setDuration(100)  # ≤120ms para rapidez percibida
+        fade_anim.setStartValue(0.0)
+        fade_anim.setEndValue(1.0)
+        fade_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+        fade_anim.start()
+    except RuntimeError:
+        # Widget fue destruido, simplemente mostrar
+        try:
+            viewport = view.viewport()
+            viewport.setVisible(True)
+            viewport.setWindowOpacity(1.0)
+        except RuntimeError:
+            pass
 

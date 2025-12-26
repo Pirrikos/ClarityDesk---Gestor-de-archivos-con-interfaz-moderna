@@ -21,6 +21,15 @@ if TYPE_CHECKING:
 
 def update_files(container: 'FileViewContainer') -> None:
     """Update both views with files from active tab."""
+    # Activate top-level detector during workspace switch
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import QTimer
+    detector = getattr(QApplication.instance(), '_top_level_detector', None)
+    if detector:
+        detector.set_workspace_switch_active(True)
+        # Deactivate after a delay to catch all events
+        QTimer.singleShot(500, lambda: detector.set_workspace_switch_active(False) if detector else None)
+    
     # Cache result to avoid repeated checks
     if not hasattr(container, '_cached_is_desktop'):
         container._cached_is_desktop = _check_if_desktop_window(container)

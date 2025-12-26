@@ -1,20 +1,45 @@
 {
   "workspaces": [
     {
-      "id": "29d2faa6-3b94-42d9-8b77-637630c50154",
-      "name": "AMIGOS",
-      "created_at": "2025-12-24T20:24:12.180665"
-    },
-    {
       "id": "226d2dd0-1c19-420f-a583-5a2e6b9e1a9b",
-      "name": "probando",
-      "created_at": "2025-12-24T20:24:12.180674"
+      "name": "CACHUCHES",
+      "created_at": "2025-12-26T19:18:57.269224"
     },
     {
-      "id": "69ccc392-87c8-4d41-84c7-53f99e0edb50",
-      "name": "loco",
-      "created_at": "2025-12-24T20:24:12.180676"
+      "id": "12658626-5c6c-4559-9b32-a48bf75ba5d1",
+      "name": "3 ESO",
+      "created_at": "2025-12-26T19:18:57.269229"
+    },
+    {
+      "id": "fac191e6-548e-4fd6-b763-97b3a3026901",
+      "name": "1 ESO",
+      "created_at": "2025-12-26T19:18:57.269230"
+    },
+    {
+      "id": "2beb705f-ce5b-43e9-a134-59efeca3fb52",
+      "name": "2 ESO",
+      "created_at": "2025-12-26T19:18:57.269231"
+    },
+    {
+      "id": "363b7ddf-469f-4675-9a70-b955518116cb",
+      "name": "4 ESO",
+      "created_at": "2025-12-26T19:18:57.269232"
+    },
+    {
+      "id": "d7ed1861-b128-4d22-b6b5-e6637671c3ee",
+      "name": "5 PRIMARIA",
+      "created_at": "2025-12-26T19:18:57.269233"
+    },
+    {
+      "id": "d3a12e80-74d3-436b-94b8-c788be1ad3d2",
+      "name": "6 PRIMARIA",
+      "created_at": "2025-12-26T19:18:57.269234"
+    },
+    {
+      "id": "571f8f2a-8c8f-4d0f-b244-74a18127834a",
+      "name": "PRUEBA",
+      "created_at": "2025-12-26T19:18:57.269235"
     }
   ],
-  "active_workspace_id": "29d2faa6-3b94-42d9-8b77-637630c50154"
+  "active_workspace_id": "12658626-5c6c-4559-9b32-a48bf75ba5d1"
 }

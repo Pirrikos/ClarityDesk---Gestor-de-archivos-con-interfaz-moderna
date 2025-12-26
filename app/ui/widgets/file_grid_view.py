@@ -65,7 +65,8 @@ class FileGridView(QWidget):
         tab_manager: Optional[TabManager] = None,
         state_manager=None,
         is_desktop: bool = False,
-        desktop_window: Optional['DesktopWindow'] = None
+        desktop_window: Optional['DesktopWindow'] = None,
+        get_label_callback: Optional = None
     ):
         """
         Initialize FileGridView with empty file list.
@@ -78,6 +79,7 @@ class FileGridView(QWidget):
             state_manager: FileStateManager instance.
             is_desktop: True if this view represents Desktop Focus.
             desktop_window: Optional DesktopWindow instance (for Desktop Focus context).
+            get_label_callback: Optional callback to get state labels.
         """
         super().__init__(parent)
         # _files puede ser lista de paths o lista de tuplas (category_label, files) para categorización
@@ -90,6 +92,7 @@ class FileGridView(QWidget):
         self._expanded_stacks: dict[str, list] = {}
         self._expanded_file_tiles: dict[str, list[FileTile]] = {}
         self._state_manager = state_manager or (FileStateManager() if FileStateManager else None)
+        self._get_label_callback = get_label_callback
         # Flag explícito del modo - no se infiere desde la jerarquía
         self._is_desktop_window = is_desktop
         self._desktop_window = desktop_window

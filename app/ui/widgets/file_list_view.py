@@ -42,15 +42,26 @@ class FileListView(QTableWidget):
         icon_service: Optional[IconService] = None,
         parent=None,
         tab_manager: Optional[TabManager] = None,
-        state_manager=None
+        state_manager=None,
+        get_label_callback: Optional = None
     ):
-        """Initialize FileListView with empty file list."""
+        """
+        Initialize FileListView with empty file list.
+        
+        Args:
+            icon_service: Optional IconService instance.
+            parent: Parent widget.
+            tab_manager: Optional TabManager instance.
+            state_manager: Optional FileStateManager instance.
+            get_label_callback: Optional callback to get state labels.
+        """
         super().__init__(parent)
         self._files: list[str] = []
         self._icon_service = icon_service or IconService()
         self._tab_manager = tab_manager
         self._checked_paths: set[str] = set()
         self._state_manager = state_manager or (FileStateManager() if FileStateManager else None)
+        self._get_label_callback = get_label_callback
         self._header_checkbox: Optional[QCheckBox] = None
         self._hovered_row: int = -1  # Fila bajo el mouse para efecto hover tipo Finder
         self._setup_ui()

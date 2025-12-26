@@ -37,7 +37,7 @@ def start_drag(
     """Handle drag start for file copy or move using checkbox selection or traditional selection."""
     selected_items = get_selected_items_for_drag(view)
     if selected_items:
-        handle_start_drag(selected_items, icon_service, None, file_deleted_signal)
+        handle_start_drag(selected_items, icon_service)
 
 
 def get_selected_items_for_drag(view: 'FileListView') -> list[QTableWidgetItem]:

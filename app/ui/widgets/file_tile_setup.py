@@ -44,7 +44,7 @@ def setup_layout(tile: 'FileTile') -> None:
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(6)
     
-    container_widget = QWidget()
+    container_widget = QWidget(tile)
     container_widget.setFixedSize(70, 64)
     container_widget.setAutoFillBackground(False)
     container_widget.setStyleSheet("QWidget { background-color: transparent; }")
@@ -76,7 +76,7 @@ def add_text_band(tile: 'FileTile', layout: QVBoxLayout) -> None:
 
 
 def _create_bottom_band_with_badge(tile: 'FileTile', name_label: QLabel) -> QWidget:
-    bottom_band = QWidget()
+    bottom_band = QWidget(tile)
     bottom_band.setFixedWidth(96)
     bottom_band.setFixedHeight(56)
     bottom_band.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -92,7 +92,7 @@ def _create_bottom_band_with_badge(tile: 'FileTile', name_label: QLabel) -> QWid
 
 
 def _create_and_configure_name_label(tile: 'FileTile') -> QLabel:
-    name_label = QLabel()
+    name_label = QLabel(tile)
     name_label.setWordWrap(True)
     name_label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignTop)
     
@@ -236,7 +236,8 @@ def _add_dock_text_shadow(name_label: QLabel) -> None:
 
 
 def _add_state_badge_to_band(tile: 'FileTile', band_layout: QVBoxLayout, band_widget: QWidget) -> None:
-    tile._state_badge = StateBadgeWidget(band_widget)
+    get_label_callback = getattr(tile, '_get_label_callback', None)
+    tile._state_badge = StateBadgeWidget(band_widget, get_label_callback=get_label_callback)
     tile._state_badge.setFixedWidth(96)
     tile._state_badge.setFixedHeight(20)
     band_layout.addWidget(tile._state_badge, 0, Qt.AlignmentFlag.AlignHCenter)

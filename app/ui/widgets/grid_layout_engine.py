@@ -81,6 +81,12 @@ def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: 
     """
     current_width = view.width()
     
+    # Posponer cálculo de layout hasta que el widget tenga ancho válido
+    # Evita layout inicial con ancho provisional que causa salto visual
+    if current_width <= 0:
+        # Ancho inválido: no construir layout, se construirá en resizeEvent
+        return
+    
     _emit_expansion_height(view)
     setup_normal_grid_config(grid_layout)
     
@@ -95,6 +101,11 @@ def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: 
     
     columns = view._cached_columns
     
+    # Verificar que columns es válido antes de continuar
+    # Evita usar columnas inválidas que causan cálculo incorrecto de posiciones
+    if columns is None or columns <= 0:
+        return
+    
     # Convert items to ordered tile_ids
     is_categorized = items_to_render and isinstance(items_to_render[0], tuple) if items_to_render and len(items_to_render) > 0 else False
     
@@ -107,7 +118,6 @@ def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: 
         ordered_ids = _items_to_tile_ids(items_to_render, view)
         header_rows = []
         # Calculate positions without headers
-        state_model = GridStateModel()
         new_state_with_headers = {}
         for index, tile_id in enumerate(ordered_ids):
             row = index // columns
@@ -153,6 +163,11 @@ def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: 
     try:
         content_widget.setUpdatesEnabled(False)
         
+        # Añadir headers ANTES de los tiles para evitar reflow del layout
+        # Esto asegura que el layout se calcule correctamente desde el inicio
+        if is_categorized and header_rows:
+            _add_category_headers_at_rows(view, items_to_render, grid_layout, header_rows, columns, col_offset)
+        
         # Apply changes incrementally
         # 1. Detach removed + moved
         for tile_id in diff.removed + list(diff.moved.keys()):
@@ -183,12 +198,14 @@ def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: 
             row, col = diff.new_state[tile_id]
             tile_manager.attach(tile, row, col + col_offset)
         
-        # Add category headers if needed
-        if is_categorized and header_rows:
-            _add_category_headers_at_rows(view, items_to_render, grid_layout, header_rows, columns, col_offset)
-        
     finally:
         content_widget.setUpdatesEnabled(updates_enabled)
+    
+    # Forzar cálculo del layout antes de revelar tiles
+    # Esto asegura que las posiciones estén correctas desde el primer frame
+    # Evita salto visual de vertical a horizontal
+    grid_layout.activate()
+    content_widget.updateGeometry()
     
     # Update state
     view._grid_state = diff.new_state
@@ -361,7 +378,7 @@ def _remove_existing_headers(grid_layout: QGridLayout) -> None:
     # Remove headers
     for header in headers_to_remove:
         grid_layout.removeWidget(header)
-        header.setParent(None)
+        # Eliminar directamente sin cambiar parent para evitar top-level temporal
         header.deleteLater()
 
 

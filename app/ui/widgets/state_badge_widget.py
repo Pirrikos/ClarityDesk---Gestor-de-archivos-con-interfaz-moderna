@@ -5,7 +5,7 @@ Displays a colored horizontal bar with state text positioned above file icons.
 Animates state changes with opacity transitions.
 """
 
-from typing import Optional
+from typing import Callable, Optional
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QSize
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
@@ -40,12 +40,24 @@ STATE_COLORS = {
 class StateBadgeWidget(QWidget):
     """Horizontal bar widget for displaying file state indicators."""
 
-    def __init__(self, parent: Optional[QWidget] = None):
-        """Initialize state badge widget."""
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        get_label_callback: Optional[Callable[[str], str]] = None
+    ):
+        """
+        Initialize state badge widget.
+        
+        Args:
+            parent: Parent widget.
+            get_label_callback: Optional callback to get label text for a state.
+                              If None, uses STATE_LABELS dict.
+        """
         super().__init__(parent)
         self._state: Optional[str] = None
         self._bar_height = 20  # Height of horizontal bar
         self._animation_duration = 200  # ms
+        self._get_label_callback = get_label_callback
         
         # Setup widget properties - width will be set by parent
         self.setFixedHeight(self._bar_height)
@@ -57,6 +69,12 @@ class StateBadgeWidget(QWidget):
         self._opacity_animation: Optional[QPropertyAnimation] = None
         
         self._setup_animations()
+    
+    def set_get_label_callback(self, callback: Optional[Callable[[str], str]]) -> None:
+        """Set callback to get label text. Updates display if state is set."""
+        self._get_label_callback = callback
+        if self._state:
+            self.update()
 
     def _setup_animations(self) -> None:
         """Setup animation effects for state changes."""
@@ -96,7 +114,7 @@ class StateBadgeWidget(QWidget):
         
         # Reset opacity
         self._opacity_effect.setOpacity(0.0)
-        self.show()
+        self.setVisible(True)
         
         # Opacity animation
         self._opacity_animation = QPropertyAnimation(self._opacity_effect, b"opacity", self)
@@ -132,7 +150,10 @@ class StateBadgeWidget(QWidget):
         
         # Get state color and label
         bar_color = STATE_COLORS[self._state]
-        label_text = STATE_LABELS.get(self._state, "")
+        if self._get_label_callback:
+            label_text = self._get_label_callback(self._state)
+        else:
+            label_text = STATE_LABELS.get(self._state, "")
         
         rect = self.rect()
         

@@ -12,7 +12,8 @@ from pathlib import Path
 from app.services.preview_file_extensions import (
     PREVIEW_IMAGE_EXTENSIONS,
     PREVIEW_TEXT_EXTENSIONS,
-    PREVIEW_PDF_DOCX_EXTENSIONS
+    PREVIEW_PDF_DOCX_EXTENSIONS,
+    normalize_extension
 )
 
 
@@ -52,7 +53,8 @@ def filter_previewable_files(file_paths: list[str]) -> list[str]:
     
     allowed = []
     for file_path in file_paths:
-        ext = Path(file_path).suffix.lower()
+        # R11: Normalize extension in single entry point
+        ext = normalize_extension(file_path)
         if ext in previewable_extensions:
             allowed.append(file_path)
     

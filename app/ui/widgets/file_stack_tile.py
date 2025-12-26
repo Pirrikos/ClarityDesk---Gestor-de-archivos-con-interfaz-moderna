@@ -69,7 +69,7 @@ class FileStackTile(QWidget):
         layout.setSpacing(4)
         
         # Container widget for icon (70x70)
-        container_widget = QWidget()
+        container_widget = QWidget(self)
         container_widget.setFixedSize(70, 70)
         container_widget.setAutoFillBackground(False)
         # Make container transparent to mouse events so clicks pass through to parent
@@ -138,7 +138,7 @@ class FileStackTile(QWidget):
         
         self._icon_pixmap = pixmap
         
-        self._icon_label = QLabel()
+        self._icon_label = QLabel(self)
         self._icon_label.setFixedSize(icon_width, icon_height)
         self._icon_label.setPixmap(pixmap)
         self._icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -238,14 +238,14 @@ class FileStackTile(QWidget):
             
             self._badge_overlay.move(int(badge_x), int(badge_y))
             self._badge_overlay.raise_()
-            self._badge_overlay.show()
+            self._badge_overlay.setVisible(True)
         except (RuntimeError, AttributeError):
             # Widget was deleted or invalid, clean up reference
             self._badge_overlay = None
 
     def _add_text_band(self, layout: QVBoxLayout) -> None:
         """Add text label below icon - bright white text with shadow for Dock visibility."""
-        name_label = QLabel()
+        name_label = QLabel(self)
         name_label.setWordWrap(False)
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name_label.setFixedWidth(70)  # Match container width

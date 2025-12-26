@@ -74,9 +74,20 @@ class FileViewContainer(QWidget):
         icon_service: Optional[IconService] = None,
         filesystem_service: Optional = None,
         parent=None,
-        is_desktop: bool = False
+        is_desktop: bool = False,
+        get_label_callback: Optional = None
     ):
-        """Initialize FileViewContainer with TabManager and services."""
+        """
+        Initialize FileViewContainer with TabManager and services.
+        
+        Args:
+            tab_manager: TabManager instance.
+            icon_service: Optional IconService instance.
+            filesystem_service: Deprecated, kept for compatibility.
+            parent: Parent widget.
+            is_desktop: True if this is desktop mode.
+            get_label_callback: Optional callback to get state labels.
+        """
         super().__init__(parent)
         self._tab_manager = tab_manager
         self._icon_service = icon_service or IconService()
@@ -87,6 +98,7 @@ class FileViewContainer(QWidget):
         self._saved_selections: dict[str, list[str]] = {}  # Store selections per view
         
         self._state_manager = FileStateManager()
+        self._get_label_callback = get_label_callback
         self._handlers = FileViewHandlers(tab_manager, lambda: update_files(self))
         self._workspace_selector = None
         
@@ -97,10 +109,19 @@ class FileViewContainer(QWidget):
         # Umbral anti-doble clic para prevenir aperturas repetidas
         self._last_open_ts_ms: int = 0
         self._open_threshold_ms: int = DOUBLE_CLICK_THRESHOLD_MS
+        
+        # Warm-up de primer paint: contenedor con vistas ya añadidas, primera activación en siguiente ciclo
+        self.setVisible(False)
+        QTimer.singleShot(0, self._activate_first_paint)
+        
         update_files(self)
         update_nav_buttons_state(self)
 
 
+    def _activate_first_paint(self) -> None:
+        """Activar primera visualización después de estabilizar layout."""
+        self.setVisible(True)
+    
     def _setup_selection_timer(self) -> None:
         """Setup timer to periodically update selection count."""
         self._selection_timer = QTimer(self)

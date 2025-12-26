@@ -51,12 +51,18 @@ class IconLoadWorker(QRunnable):
     def run(self) -> None:
         """Load icon in background thread."""
         try:
-            from app.services.preview_service import get_file_preview
+            from app.services.icon_render_service import IconRenderService
+            from app.services.icon_service import IconService
+            
+            # Usar IconRenderService para aprovechar validaciones R16 y fallbacks
+            icon_service = IconService()
+            render_service = IconRenderService(icon_service)
             
             # Load preview - returns QPixmap, convert to QImage for thread safety
-            pixmap = get_file_preview(self._file_path, self._size, self._icon_provider)
+            pixmap = render_service.get_file_preview(self._file_path, self._size)
             
-            if pixmap and not pixmap.isNull():
+            # R16: Validar pixmap antes de convertir a QImage
+            if pixmap and not pixmap.isNull() and pixmap.width() > 0 and pixmap.height() > 0:
                 # Convert QPixmap to QImage (thread-safe, can be done in worker thread)
                 # QImage is thread-safe, QPixmap is not
                 image = pixmap.toImage()
@@ -70,9 +76,26 @@ class IconLoadWorker(QRunnable):
                         Qt.TransformationMode.SmoothTransformation
                     )
             else:
-                # Create empty transparent image as fallback
-                image = QImage(self._size, QImage.Format.Format_ARGB32)
-                image.fill(0)  # Transparent
+                # R16: Pixmap inválido - aplicar fallback inmediato
+                # Intentar obtener icono directamente del sistema
+                try:
+                    from PySide6.QtCore import QFileInfo
+                    from PySide6.QtWidgets import QFileIconProvider
+                    qfile_info = QFileInfo(self._file_path)
+                    icon_provider = QFileIconProvider()
+                    icon = icon_provider.icon(qfile_info)
+                    fallback_pixmap = icon.pixmap(self._size)
+                    
+                    if fallback_pixmap and not fallback_pixmap.isNull() and fallback_pixmap.width() > 0 and fallback_pixmap.height() > 0:
+                        image = fallback_pixmap.toImage()
+                    else:
+                        # Último recurso: imagen transparente
+                        image = QImage(self._size, QImage.Format.Format_ARGB32)
+                        image.fill(0)  # Transparent
+                except Exception:
+                    # Error en fallback - imagen transparente
+                    image = QImage(self._size, QImage.Format.Format_ARGB32)
+                    image.fill(0)  # Transparent
             
             # Call callback with result (pass file_path and size for caching)
             self._callback(self._tile_id, self._file_path, self._size, image, self._request_id)

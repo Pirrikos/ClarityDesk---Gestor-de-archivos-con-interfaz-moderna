@@ -72,6 +72,9 @@ class WorkspaceSelector(QWidget):
         self.setAutoFillBackground(False)
         self._workspace_manager = None
         self._state_label_manager = None
+        self._tab_manager = None
+        self._sidebar = None
+        self._signal_controller = None
         self._workspace_button = None
         self._focus_button = None
         self._back_button = None
@@ -111,6 +114,33 @@ class WorkspaceSelector(QWidget):
         if state_label_manager:
             state_label_manager.labels_changed.connect(self._refresh_state_menu)
             self._refresh_state_menu()
+    
+    def set_tab_manager(self, tab_manager) -> None:
+        """
+        Set TabManager instance for workspace operations.
+        
+        Args:
+            tab_manager: TabManager instance.
+        """
+        self._tab_manager = tab_manager
+    
+    def set_sidebar(self, sidebar) -> None:
+        """
+        Set FolderTreeSidebar instance for workspace operations.
+        
+        Args:
+            sidebar: FolderTreeSidebar instance.
+        """
+        self._sidebar = sidebar
+    
+    def set_signal_controller(self, signal_controller) -> None:
+        """
+        Set signal controller for workspace operations.
+        
+        Args:
+            signal_controller: Object with disconnect_signals() and reconnect_signals() methods.
+        """
+        self._signal_controller = signal_controller
     
     def _setup_ui(self) -> None:
         """Build UI layout as horizontal compact bar."""
@@ -418,11 +448,16 @@ class WorkspaceSelector(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
         
-        # Eliminar workspace (el manager manejará el cambio automático si es necesario)
-        deleted = self._workspace_manager.delete_workspace(workspace_id)
+        # Eliminar workspace (el manager guardará estado y hará switch completo si es necesario)
+        deleted = self._workspace_manager.delete_workspace(
+            workspace_id,
+            tab_manager=self._tab_manager,
+            sidebar=self._sidebar,
+            signal_controller=self._signal_controller
+        )
         
         if deleted:
-            # El manager ya cambió automáticamente si había otros workspaces
+            # El manager ya guardó estado, cambió y cargó el nuevo workspace si era necesario
             # Solo necesitamos actualizar la UI y emitir señal si hay un nuevo workspace activo
             current_active_id = self._workspace_manager.get_active_workspace_id()
             if current_active_id:

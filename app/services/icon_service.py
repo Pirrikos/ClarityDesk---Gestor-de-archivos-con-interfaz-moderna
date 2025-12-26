@@ -50,6 +50,14 @@ class IconService:
         self._mtime_cache_timestamp: dict[str, float] = {}  # Última vez que se verificó mtime
         self._mtime_check_interval: float = 5.0  # Verificar mtime máximo cada 5 segundos
 
+    def _is_valid_pixmap(self, pixmap: QPixmap) -> bool:
+        """Validar pixmap según R16: no nulo, no 0x0, válido visualmente."""
+        if not pixmap or pixmap.isNull():
+            return False
+        if pixmap.width() <= 0 or pixmap.height() <= 0:
+            return False
+        return True
+
     def get_file_icon(self, file_path: str, size: QSize = None) -> QIcon:
         """Get native Windows icon for a file."""
         if not file_path or not os.path.isfile(file_path):
@@ -95,7 +103,20 @@ class IconService:
         
         if size:
             pixmap = self._get_best_quality_pixmap(icon, size)
-            icon = QIcon(pixmap)
+            # R16: No crear QIcon a partir de pixmaps inválidos
+            if self._is_valid_pixmap(pixmap):
+                icon = QIcon(pixmap)
+            else:
+                # Fallback a icono sin tamaño específico si pixmap inválido
+                icon = self._icon_provider.icon(qfile_info)
+
+        # R16: No cachear iconos inválidos
+        if icon and not icon.isNull():
+            # Validar que el icono tiene contenido válido
+            test_pixmap = icon.pixmap(size if size else QSize(32, 32))
+            if not self._is_valid_pixmap(test_pixmap):
+                # Icono inválido, retornar sin cachear
+                return icon
 
         if ext:
             # Estimar tamaño del icono en bytes (width * height * 4 bytes por píxel RGBA)
@@ -104,7 +125,7 @@ class IconService:
             # Verificar límite de cache antes de agregar
             self._ensure_cache_space(estimated_size)
             
-            # Agregar al cache
+            # Agregar al cache solo si es válido
             self._icon_cache[cache_key] = icon
             self._icon_cache_size[cache_key] = estimated_size
             self._cache_access_counter += 1
@@ -117,7 +138,7 @@ class IconService:
         return icon
 
     def get_folder_icon(self, folder_path: str = None, size: QSize = None) -> QIcon:
-        """Get native Windows icon for a folder."""
+        """Get native Windows icon for a folder (R16 validated)."""
         if folder_path and os.path.isdir(folder_path):
             qfile_info = QFileInfo(folder_path)
             icon = self._icon_provider.icon(qfile_info)
@@ -125,7 +146,12 @@ class IconService:
             icon = self._icon_provider.icon(QFileIconProvider.IconType.Folder)
 
         if size:
-            return QIcon(icon.pixmap(size))
+            pixmap = icon.pixmap(size)
+            # R16: No crear QIcon a partir de pixmaps inválidos
+            if self._is_valid_pixmap(pixmap):
+                return QIcon(pixmap)
+            # Fallback: retornar icono sin tamaño específico si pixmap inválido
+            return icon
         return icon
 
     def get_file_icon_pixmap(
@@ -159,12 +185,19 @@ class IconService:
 
 
     def _get_best_quality_pixmap(self, icon: QIcon, target_size: QSize) -> QPixmap:
-        """Get pixmap at best available quality, scaling to fill exact size."""
+        """Get pixmap at best available quality, scaling to fill exact size (R16 validated)."""
+        if not icon or icon.isNull():
+            return QPixmap()
+        
         available_sizes = icon.availableSizes()
         
         if available_sizes:
             best_size = max(available_sizes, key=lambda s: s.width() * s.height())
             pixmap = icon.pixmap(best_size)
+            
+            # R16: Validar pixmap antes de escalar
+            if not self._is_valid_pixmap(pixmap):
+                return QPixmap()
             
             if pixmap.width() != target_size.width() or pixmap.height() != target_size.height():
                 # Use SmoothTransformation for high quality (like PDFs)
@@ -173,15 +206,27 @@ class IconService:
                     Qt.AspectRatioMode.IgnoreAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )
+                # R16: Validar después de escalar
+                if not self._is_valid_pixmap(pixmap):
+                    return QPixmap()
             return pixmap
         else:
             high_dpi_size = QSize(target_size.width() * 2, target_size.height() * 2)
             pixmap_2x = icon.pixmap(high_dpi_size)
-            return pixmap_2x.scaled(
+            
+            # R16: Validar antes de escalar
+            if not self._is_valid_pixmap(pixmap_2x):
+                return QPixmap()
+            
+            scaled = pixmap_2x.scaled(
                 target_size.width(), target_size.height(),
                 Qt.AspectRatioMode.IgnoreAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
+            # R16: Validar después de escalar
+            if not self._is_valid_pixmap(scaled):
+                return QPixmap()
+            return scaled
 
     def _get_default_icon(self) -> QIcon:
         """Get default document icon when file icon unavailable."""

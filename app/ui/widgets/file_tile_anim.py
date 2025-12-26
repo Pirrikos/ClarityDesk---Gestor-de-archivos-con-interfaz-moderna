@@ -7,6 +7,45 @@ Handles enter and exit animations for dock-style tiles.
 from PySide6.QtCore import QPoint, QPropertyAnimation, QEasingCurve, QTimer, QParallelAnimationGroup
 
 
+def soft_reveal(tile) -> None:
+    """
+    Soft reveal profesional: muestra tile con micro-fade ≤120ms o en siguiente ciclo de evento.
+    
+    Los tiles se crean ocultos y se revelan suavemente sin delays artificiales.
+    Prioriza rapidez percibida y elegancia visual.
+    """
+    if tile._dock_style:
+        # Dock style usa animate_enter con animación completa
+        return
+    
+    # Crear tiles ocultos inicialmente
+    tile.setVisible(False)
+    
+    # Revelar en siguiente ciclo de evento con micro-fade
+    QTimer.singleShot(0, lambda: _reveal_with_fade(tile))
+
+
+def _reveal_with_fade(tile) -> None:
+    """Revelar tile con micro-fade ≤120ms."""
+    try:
+        tile.setVisible(True)
+        tile.setWindowOpacity(0.0)
+        
+        fade_anim = QPropertyAnimation(tile, b"windowOpacity", tile)
+        fade_anim.setDuration(100)  # ≤120ms para rapidez percibida
+        fade_anim.setStartValue(0.0)
+        fade_anim.setEndValue(1.0)
+        fade_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+        fade_anim.start()
+    except RuntimeError:
+        # Widget fue destruido, simplemente mostrar
+        try:
+            tile.setVisible(True)
+            tile.setWindowOpacity(1.0)
+        except RuntimeError:
+            pass
+
+
 def animate_enter(tile, delay_ms: int = 0, start_offset: int = 80) -> None:
     """
     Animate tile entrance Apple-style: emerge from below with fade.
@@ -21,7 +60,7 @@ def animate_enter(tile, delay_ms: int = 0, start_offset: int = 80) -> None:
     
     # Start invisible
     tile.setWindowOpacity(0)
-    tile.show()
+    tile.setVisible(True)
     
     # Minimum delay to allow Qt layout to calculate correct positions
     actual_delay = max(delay_ms, 20)

@@ -140,15 +140,24 @@ class WorkspaceManager(QObject):
         logger.info(f"Renamed workspace from '{old_name}' to '{new_name.strip()}' ({workspace_id})")
         return True
     
-    def delete_workspace(self, workspace_id: str) -> bool:
+    def delete_workspace(
+        self,
+        workspace_id: str,
+        tab_manager: Optional['TabManager'] = None,
+        sidebar: Optional['FolderTreeSidebar'] = None,
+        signal_controller=None
+    ) -> bool:
         """
         Delete a workspace.
         
-        Si es el workspace activo, cambia automáticamente a otro workspace válido
-        antes de eliminar. Si es el único workspace, crea uno por defecto.
+        Si es el workspace activo, guarda el estado actual y cambia automáticamente
+        a otro workspace válido antes de eliminar. Si es el único workspace, crea uno por defecto.
         
         Args:
             workspace_id: ID of workspace to delete.
+            tab_manager: Optional TabManager instance to save/load state.
+            sidebar: Optional FolderTreeSidebar instance to save/load state.
+            signal_controller: Optional object with disconnect_signals() and reconnect_signals() methods.
         
         Returns:
             True if deleted, False if not found.
@@ -160,13 +169,19 @@ class WorkspaceManager(QObject):
         is_active = workspace_id == self._active_workspace_id
         other_workspaces = [w for w in self._workspaces if w.id != workspace_id]
         
-        # Si es el activo y hay otros workspaces, cambiar al primero antes de eliminar
+        # Si es el activo, guardar estado actual ANTES de cambiar
+        if is_active and tab_manager is not None and sidebar is not None:
+            self.save_current_state(tab_manager, sidebar)
+        
+        # Determinar nuevo workspace activo
+        new_active_id: Optional[str] = None
         if is_active and other_workspaces:
-            self._active_workspace_id = other_workspaces[0].id
-            logger.info(f"Switched to workspace {other_workspaces[0].name} before deleting active workspace")
-        # Si es el activo y es el único, resetear a None (se creará uno por defecto después)
+            new_active_id = other_workspaces[0].id
+            logger.info(f"Will switch to workspace {other_workspaces[0].name} before deleting active workspace")
         elif is_active and not other_workspaces:
-            self._active_workspace_id = None
+            new_active_id = None  # Se creará uno por defecto
+        else:
+            new_active_id = self._active_workspace_id  # No cambia
         
         # Eliminar workspace de la lista
         self._workspaces = [w for w in self._workspaces if w.id != workspace_id]
@@ -174,9 +189,17 @@ class WorkspaceManager(QObject):
         # Si no quedan workspaces, crear uno por defecto
         if not self._workspaces:
             default_workspace = self.create_workspace("Default")
-            self._active_workspace_id = default_workspace.id
+            new_active_id = default_workspace.id
         
-        self._save_workspaces_metadata()
+        # Cambiar al nuevo workspace activo (si cambió y tenemos los managers)
+        if new_active_id != self._active_workspace_id:
+            if tab_manager is not None and sidebar is not None:
+                # Hacer switch completo para cargar estado del nuevo workspace
+                self.switch_workspace(new_active_id, tab_manager, sidebar, signal_controller)
+            else:
+                # Solo actualizar ID si no tenemos managers (modo básico)
+                self._active_workspace_id = new_active_id
+                self._save_workspaces_metadata()
         
         # Eliminar archivo de estado
         try:
@@ -217,7 +240,7 @@ class WorkspaceManager(QObject):
             return False
         
         # Save current workspace state before switching
-        if self._active_workspace_id:
+        if self._active_workspace_id and tab_manager is not None and sidebar is not None:
             self.save_current_state(tab_manager, sidebar)
         
         # Load new workspace state (puede ser None si es workspace nuevo)
@@ -240,28 +263,31 @@ class WorkspaceManager(QObject):
         view_mode = state.get('view_mode', 'grid') if state else 'grid'
         workspace.view_mode = view_mode
         
-        # Cargar estado en TabManager sin emitir señales
-        tab_manager.load_workspace_state({
-            'tabs': tabs,
-            'active_tab': active_tab
-        }, emit_signals=False)
+        # Cargar estado en TabManager sin emitir señales (si está disponible)
+        if tab_manager is not None:
+            tab_manager.load_workspace_state({
+                'tabs': tabs,
+                'active_tab': active_tab
+            }, emit_signals=False)
         
-        # Reconstruir sidebar explícitamente una sola vez desde aquí
+        # Reconstruir sidebar explícitamente una sola vez desde aquí (si está disponible)
         # (El reseteo visual se hace dentro de restore_tree con señales bloqueadas)
-        sidebar.load_workspace_state(focus_paths, expanded_nodes, root_folders_order)
+        if sidebar is not None:
+            sidebar.load_workspace_state(focus_paths, expanded_nodes, root_folders_order)
         
         # Reconectar señales
         if signal_controller and hasattr(signal_controller, 'reconnect_signals'):
             signal_controller.reconnect_signals()
         
-        # Emitir única señal final activeTabChanged para actualizar vista
-        if tab_manager.get_active_index() >= 0 and tab_manager.get_active_index() < len(tab_manager.get_tabs()):
-            active_path = tab_manager.get_tabs()[tab_manager.get_active_index()]
-            tab_manager._watch_and_emit_internal(active_path)
-        else:
-            # Si NO hay tab activo válido, vaciar explícitamente la vista central
-            if signal_controller and hasattr(signal_controller, 'clear_file_view'):
-                signal_controller.clear_file_view()
+        # Emitir única señal final activeTabChanged para actualizar vista (si tab_manager está disponible)
+        if tab_manager is not None:
+            if tab_manager.get_active_index() >= 0 and tab_manager.get_active_index() < len(tab_manager.get_tabs()):
+                active_path = tab_manager.get_tabs()[tab_manager.get_active_index()]
+                tab_manager._watch_and_emit_internal(active_path)
+            else:
+                # Si NO hay tab activo válido, vaciar explícitamente la vista central
+                if signal_controller and hasattr(signal_controller, 'clear_file_view'):
+                    signal_controller.clear_file_view()
         
         # Emit signal with workspace state
         self.workspace_changed.emit(workspace_id)

@@ -17,10 +17,12 @@ SEPARATOR_BOTTOM_OFFSET = 4
 class CategorySectionHeader(QWidget):
     """Header widget displaying category name with separator line."""
     
-    def __init__(self, category_label: str, parent=None):
+    def __init__(self, category_label: str, parent: QWidget):
         """Initialize section header with category label."""
         super().__init__(parent)
         self._category_label = category_label
+        # Asegurar que siempre sea widget embebido, nunca ventana top-level
+        self.setWindowFlags(Qt.WindowType.Widget)
         self._setup_ui()
     
     def _setup_ui(self) -> None:

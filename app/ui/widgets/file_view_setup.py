@@ -101,13 +101,15 @@ def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
         container._tab_manager,
         container._state_manager,
         is_desktop=container._is_desktop,
-        desktop_window=desktop_window
+        desktop_window=desktop_window,
+        get_label_callback=container._get_label_callback
     )
     container._list_view = FileListView(
         icon_service=container._icon_service,
         parent=container,
         tab_manager=container._tab_manager,
-        state_manager=container._state_manager
+        state_manager=container._state_manager,
+        get_label_callback=container._get_label_callback
     )
 
     container._stacked.addWidget(container._grid_view)

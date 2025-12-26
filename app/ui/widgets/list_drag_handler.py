@@ -14,18 +14,18 @@ from PySide6.QtWidgets import QTableWidgetItem
 from app.managers.tab_manager import TabManager
 from app.services.icon_service import IconService
 from app.ui.widgets.drag_common import (
-    check_files_after_drag,
     is_same_folder_drop,
     should_reject_dock_to_dock_drop
 )
-from app.ui.widgets.drag_preview_helper import create_multi_file_preview
+from app.ui.widgets.drag_preview_helper import (
+    calculate_drag_hotspot,
+    get_drag_preview_pixmap
+)
 
 
 def handle_start_drag(
     selected_items: list[QTableWidgetItem],
-    icon_service: IconService,
-    delete_service: Optional[object] = None,
-    file_deleted_signal: Callable[[str], None] = None
+    icon_service: IconService
 ) -> None:
     """
     Handle drag start for file copy or move.
@@ -43,21 +43,23 @@ def handle_start_drag(
     mime_data = QMimeData()
     urls = [QUrl.fromLocalFile(path) for path in file_paths]
     mime_data.setUrls(urls)
+    
+    # Marcar como drag interno para que los drop handlers puedan detectarlo
+    mime_data.setProperty("internal_drag_source", id(selected_items[0].tableWidget()))
+    
     drag.setMimeData(mime_data)
     
-    preview_pixmap = create_multi_file_preview(file_paths, icon_service, QSize(48, 48))
+    preview_pixmap = get_drag_preview_pixmap(file_paths, icon_service)
     if not preview_pixmap.isNull():
         drag.setPixmap(preview_pixmap)
-        # Center cursor on pixmap
-        hot_spot = QPoint(preview_pixmap.width() // 2, preview_pixmap.height() // 2)
-        drag.setHotSpot(hot_spot)
+        drag.setHotSpot(calculate_drag_hotspot(preview_pixmap))
     
-    original_file_paths = file_paths.copy()
-    original_dir = os.path.dirname(os.path.abspath(original_file_paths[0])) if original_file_paths else None
-    returned_action = drag.exec(Qt.DropAction.MoveAction | Qt.DropAction.CopyAction)
+    returned_action = drag.exec(Qt.DropAction.CopyAction)
     
-    if returned_action != Qt.DropAction.IgnoreAction:
-        check_files_after_drag(original_file_paths, original_dir, file_deleted_signal.emit)
+    if returned_action == Qt.DropAction.CopyAction:
+        pass
+    elif returned_action == Qt.DropAction.IgnoreAction:
+        pass
 
 
 def _extract_file_paths_from_items(selected_items: list[QTableWidgetItem]) -> list[str]:

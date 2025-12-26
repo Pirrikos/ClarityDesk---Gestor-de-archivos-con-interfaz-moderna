@@ -2,8 +2,11 @@
 Quick Preview PDF Handler - PDF-specific preview logic.
 
 Handles PDF file detection, page management, and PDF preview loading.
+R1: Tracks request_id for validation.
+R4: Ensures fallback visual always available.
 """
 
+import os
 from pathlib import Path
 from typing import Optional, Callable
 
@@ -12,6 +15,7 @@ from PySide6.QtGui import QPixmap
 
 from app.services.docx_converter import DocxConverter
 from app.services.preview_pdf_service import PreviewPdfService
+from app.services.preview_file_extensions import normalize_extension
 
 
 class QuickPreviewPdfHandler:
@@ -30,17 +34,20 @@ class QuickPreviewPdfHandler:
     @staticmethod
     def is_pdf_file(path: str) -> bool:
         """Check if file is a PDF."""
-        return Path(path).suffix.lower() == ".pdf"
+        # R11: Normalize extension in single entry point
+        return normalize_extension(path) == ".pdf"
     
     @staticmethod
     def is_docx_file(path: str) -> bool:
         """Check if file is a DOCX."""
-        return Path(path).suffix.lower() == ".docx"
+        # R11: Normalize extension in single entry point
+        return normalize_extension(path) == ".docx"
     
     @staticmethod
     def is_pdf_or_docx_file(path: str) -> bool:
         """Check if file is PDF or DOCX."""
-        ext = Path(path).suffix.lower()
+        # R11: Normalize extension in single entry point
+        ext = normalize_extension(path)
         return ext == ".pdf" or ext == ".docx"
     
     def load_pdf_info(self, path: str) -> bool:
@@ -96,19 +103,27 @@ class QuickPreviewPdfHandler:
                 # Use async conversion
                 if hasattr(self._preview_service, 'convert_docx_to_pdf_async'):
                     def handle_conversion(pdf_path: str) -> None:
-                        if pdf_path:
+                        # R6: Validate result before using
+                        if pdf_path and os.path.exists(pdf_path):
                             self._pdf_path = pdf_path
                             self._is_pdf = True
                             if self._pdf_path:
-                                self._total_pages = self._preview_service.get_pdf_page_count(self._pdf_path)
-                                if self._current_page >= self._total_pages:
+                                try:
+                                    self._total_pages = self._preview_service.get_pdf_page_count(self._pdf_path)
+                                    if self._current_page >= self._total_pages:
+                                        self._current_page = 0
+                                except Exception:
+                                    # R5: Encapsulate error
+                                    self._total_pages = 0
                                     self._current_page = 0
                             on_finished(True)
                         else:
+                            # R4: Fallback - mark as non-PDF
                             self._is_pdf = False
                             self._pdf_path = None
                             on_finished(False)
                     
+                    # R1: Request ID returned but not used here (conversion is internal)
                     self._preview_service.convert_docx_to_pdf_async(
                         path, handle_conversion, on_error
                     )
@@ -153,36 +168,50 @@ class QuickPreviewPdfHandler:
         max_size: QSize,
         on_finished: Callable[[QPixmap], None],
         on_error: Optional[Callable[[str], None]] = None
-    ) -> None:
+    ) -> Optional[str]:
         """
         Render current PDF page asynchronously.
+        
+        R1: Returns request_id for validation.
+        R4: Always provides fallback visual.
         
         Args:
             max_size: Maximum size for rendered pixmap.
             on_finished: Callback called with QPixmap when rendering completes.
             on_error: Optional callback called with error message on failure.
+        
+        Returns:
+            request_id: Unique identifier for this request, or None if validation failed.
         """
         if not self._is_pdf or not self._pdf_path:
+            # R4: Fallback visual
             on_finished(QPixmap())
-            return
+            return None
         
         if not (0 <= self._current_page < self._total_pages):
+            # R4: Fallback visual
             on_finished(QPixmap())
-            return
+            return None
         
         # Use async rendering from preview service
         if hasattr(self._preview_service, 'render_pdf_page_async'):
-            self._preview_service.render_pdf_page_async(
+            # R1: Get request_id from async call
+            request_id = self._preview_service.render_pdf_page_async(
                 self._pdf_path,
                 max_size,
                 self._current_page,
                 on_finished,
                 on_error
             )
+            return request_id
         else:
             # Fallback to synchronous rendering
             pixmap = self.render_page(max_size)
+            # R4: Fallback if null
+            if pixmap.isNull():
+                pixmap = QPixmap()
             on_finished(pixmap)
+            return None
     
     def get_header_text(self, file_path: str) -> str:
         """Get header text for PDF or DOCX file."""

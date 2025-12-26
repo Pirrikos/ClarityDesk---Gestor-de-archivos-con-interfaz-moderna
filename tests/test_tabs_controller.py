@@ -42,63 +42,85 @@ def test_activate_tab_validates_index(monkeypatch):
 
 
 def test_go_back_calls_manager(monkeypatch):
-    """Verifica que go_back() devuelve True cuando el handler retorna índice."""
+    """Verifica que go_back() usa _history_manager correctamente."""
     tm = TabManager()
+    tm._tabs = ["/path1", "/path2"]
+    tm._active_index = 1
 
-    class NavStub:
-        def go_back(self):
-            return 0
+    class HistoryStub:
+        def can_go_back(self):
+            return True
+        def get_back_path(self):
+            return "/path1"
+        def move_back(self):
+            pass
+        def set_navigating_flag(self, value):
+            pass
 
-    monkeypatch.setattr(tm, "_nav_handler", NavStub())
-    assert tm.go_back() is True
+    monkeypatch.setattr(tm, "_history_manager", HistoryStub())
+    monkeypatch.setattr(tm, "select_tab", lambda idx: True)
+    
+    result = tm.go_back()
+    assert result is True
 
 
 def test_go_forward_calls_manager(monkeypatch):
-    """Verifica que go_forward() devuelve True cuando el handler retorna índice."""
+    """Verifica que go_forward() usa _history_manager correctamente."""
     tm = TabManager()
+    tm._tabs = ["/path1", "/path2"]
+    tm._active_index = 0
 
-    class NavStub:
-        def go_forward(self):
-            return 1
+    class HistoryStub:
+        def can_go_forward(self):
+            return True
+        def get_forward_path(self):
+            return "/path2"
+        def move_forward(self):
+            pass
+        def set_navigating_flag(self, value):
+            pass
 
-    monkeypatch.setattr(tm, "_nav_handler", NavStub())
-    assert tm.go_forward() is True
+    monkeypatch.setattr(tm, "_history_manager", HistoryStub())
+    monkeypatch.setattr(tm, "select_tab", lambda idx: True)
+    
+    result = tm.go_forward()
+    assert result is True
 
 
 def test_can_go_back_returns_manager_value(monkeypatch):
-    """Verifica que can_go_back() refleja el valor del handler."""
+    """Verifica que can_go_back() refleja el valor del _history_manager."""
     tm = TabManager()
 
-    class NavStubTrue:
+    class HistoryStubTrue:
         def can_go_back(self):
             return True
 
-    class NavStubFalse:
+    class HistoryStubFalse:
         def can_go_back(self):
             return False
 
-    monkeypatch.setattr(tm, "_nav_handler", NavStubTrue())
+    monkeypatch.setattr(tm, "_history_manager", HistoryStubTrue())
     assert tm.can_go_back() is True
 
-    monkeypatch.setattr(tm, "_nav_handler", NavStubFalse())
+    monkeypatch.setattr(tm, "_history_manager", HistoryStubFalse())
     assert tm.can_go_back() is False
 
 
 def test_can_go_forward_returns_manager_value(monkeypatch):
-    """Verifica que can_go_forward() refleja el valor del handler."""
+    """Verifica que can_go_forward() refleja el valor del _history_manager."""
     tm = TabManager()
 
-    class NavStubTrue:
+    class HistoryStubTrue:
         def can_go_forward(self):
             return True
 
-    class NavStubFalse:
+    class HistoryStubFalse:
         def can_go_forward(self):
             return False
 
-    monkeypatch.setattr(tm, "_nav_handler", NavStubTrue())
+    monkeypatch.setattr(tm, "_history_manager", HistoryStubTrue())
     assert tm.can_go_forward() is True
 
-    monkeypatch.setattr(tm, "_nav_handler", NavStubFalse())
+    monkeypatch.setattr(tm, "_history_manager", HistoryStubFalse())
     assert tm.can_go_forward() is False
 

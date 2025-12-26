@@ -4,10 +4,21 @@ DragPreviewHelper - Helper for creating drag preview images.
 Generates composite preview images for multiple file drag operations.
 """
 
-from PySide6.QtCore import QSize, Qt
+import os
+from typing import Optional
+
+from PySide6.QtCore import QPoint, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
+from PySide6.QtWidgets import QFileIconProvider
 
 from app.services.icon_service import IconService
+from app.services.preview_file_extensions import (
+    normalize_extension,
+    is_previewable_image,
+    validate_file_for_preview
+)
+from app.services.icon_renderer import render_image_preview
+from app.services.preview_service import get_windows_shell_icon
 from app.ui.utils.font_manager import FontManager
 
 
@@ -127,4 +138,128 @@ def _draw_count_badge(
     )
 
 
+def get_drag_preview_pixmap(
+    file_paths: list[str],
+    icon_service: IconService,
+    fallback_icon_pixmap: Optional[QPixmap] = None
+) -> QPixmap:
+    """
+    Get unified drag preview pixmap for any file type.
+    
+    Unifies behavior for all file types:
+    - Images: large preview (96-128px maintaining proportion)
+    - Other files: icon scaled to consistent visual size (96-112px)
+    - Multiple files: composite of icons
+    
+    Args:
+        file_paths: List of file paths to drag.
+        icon_service: IconService for getting file icons.
+        fallback_icon_pixmap: Optional fallback pixmap (used by tile view).
+    
+    Returns:
+        Preview pixmap for drag operation.
+    """
+    if len(file_paths) > 1:
+        if icon_service:
+            return create_multi_file_preview(file_paths, icon_service, QSize(48, 48))
+        if fallback_icon_pixmap and not fallback_icon_pixmap.isNull():
+            return fallback_icon_pixmap
+        return QPixmap()
+    
+    if len(file_paths) == 1:
+        file_path = file_paths[0]
+        ext = normalize_extension(file_path)
+        
+        if is_previewable_image(ext):
+            is_valid, _ = validate_file_for_preview(file_path)
+            if is_valid:
+                try:
+                    max_size = QSize(128, 128)
+                    image_preview = render_image_preview(file_path, max_size)
+                    
+                    if not image_preview.isNull():
+                        min_size = 96
+                        if image_preview.width() < min_size and image_preview.height() < min_size:
+                            scale_factor = min_size / max(image_preview.width(), image_preview.height())
+                            new_width = int(image_preview.width() * scale_factor)
+                            new_height = int(image_preview.height() * scale_factor)
+                            image_preview = image_preview.scaled(
+                                new_width, new_height,
+                                Qt.AspectRatioMode.KeepAspectRatio,
+                                Qt.TransformationMode.SmoothTransformation
+                            )
+                        return image_preview
+                except Exception:
+                    pass
+        
+        if icon_service:
+            try:
+                high_res_size = QSize(256, 256)
+                target_size = QSize(112, 112)
+                icon_provider = QFileIconProvider()
+                
+                if os.path.isdir(file_path):
+                    folder_pixmap = get_windows_shell_icon(file_path, high_res_size, icon_provider, scale_to_target=False)
+                    
+                    if not folder_pixmap.isNull():
+                        file_icon_pixmap = folder_pixmap.scaled(
+                            target_size,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                    else:
+                        icon = icon_service.get_folder_icon(file_path, target_size)
+                        file_icon_pixmap = icon.pixmap(target_size)
+                else:
+                    file_pixmap = get_windows_shell_icon(file_path, high_res_size, icon_provider, scale_to_target=False)
+                    
+                    if not file_pixmap.isNull():
+                        file_icon_pixmap = file_pixmap.scaled(
+                            target_size,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                    else:
+                        icon = icon_service.get_file_icon(file_path, target_size)
+                        file_icon_pixmap = icon.pixmap(target_size)
+                
+                if not file_icon_pixmap.isNull():
+                    min_size = 96
+                    if file_icon_pixmap.width() < min_size or file_icon_pixmap.height() < min_size:
+                        scale_factor = min_size / max(file_icon_pixmap.width(), file_icon_pixmap.height())
+                        new_width = int(file_icon_pixmap.width() * scale_factor)
+                        new_height = int(file_icon_pixmap.height() * scale_factor)
+                        file_icon_pixmap = file_icon_pixmap.scaled(
+                            new_width, new_height,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                    return file_icon_pixmap
+            except Exception:
+                pass
+        
+        if fallback_icon_pixmap and not fallback_icon_pixmap.isNull():
+            min_size = 96
+            if fallback_icon_pixmap.width() < min_size or fallback_icon_pixmap.height() < min_size:
+                scale_factor = min_size / max(fallback_icon_pixmap.width(), fallback_icon_pixmap.height())
+                new_width = int(fallback_icon_pixmap.width() * scale_factor)
+                new_height = int(fallback_icon_pixmap.height() * scale_factor)
+                return fallback_icon_pixmap.scaled(
+                    new_width, new_height,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+            return fallback_icon_pixmap
+        
+        if icon_service:
+            return create_multi_file_preview(file_paths, icon_service, QSize(48, 48))
+    
+    return QPixmap()
+
+
+def calculate_drag_hotspot(preview_pixmap: QPixmap) -> QPoint:
+    """Calculate optimal hotspot for drag preview."""
+    if preview_pixmap.width() > 64:
+        return QPoint(preview_pixmap.width() // 2, preview_pixmap.height() // 3)
+    return QPoint(preview_pixmap.width() // 2, preview_pixmap.height() // 2)
 

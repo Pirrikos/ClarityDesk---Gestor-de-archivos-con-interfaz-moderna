@@ -5,16 +5,15 @@ Handles drag out operations from file tiles with file deletion logic.
 Supports single and multiple tile drag operations.
 """
 
-import os
-
-from PySide6.QtCore import QMimeData, QPoint, QSize, Qt, QUrl, QTimer
-from PySide6.QtGui import QDrag, QPixmap
+from PySide6.QtCore import QMimeData, QPoint, Qt, QUrl, QTimer
+from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import QApplication
 
-from app.services.desktop_path_helper import get_desktop_path
-from app.services.desktop_operations import is_file_in_dock
 from app.services.icon_service import IconService
-from app.ui.widgets.drag_preview_helper import create_multi_file_preview
+from app.ui.widgets.drag_preview_helper import (
+    calculate_drag_hotspot,
+    get_drag_preview_pixmap
+)
 
 
 def handle_tile_drag(
@@ -59,27 +58,11 @@ def handle_tile_drag(
     if not drag:
         return False
     
-    original_file_paths = file_paths.copy()
+    returned_action = drag.exec(Qt.DropAction.CopyAction)
     
-    # Check if files are from dock
-    files_from_dock = [fp for fp in original_file_paths if is_file_in_dock(fp)]
-    
-    # Allow both MoveAction and CopyAction
-    # Windows will choose:
-    # - CopyAction for external services (mail, web, etc.)
-    # - MoveAction for desktop and folders (we handle this)
-    returned_action = drag.exec(Qt.DropAction.MoveAction | Qt.DropAction.CopyAction)
-    
-    # Emit deleted for files that were moved (not copied)
-    # Files from dock that are moved should be removed from dock
-    if returned_action == Qt.DropAction.MoveAction:
-        for file_path in original_file_paths:
-            if not os.path.exists(file_path):
-                parent_view.file_deleted.emit(file_path)
-    elif returned_action == Qt.DropAction.CopyAction:
-        # Copy action - files remain in dock (Windows handles copy to external services)
-        # But if file was copied to desktop, we might want to handle it differently
-        # For now, files remain in dock when copied
+    if returned_action == Qt.DropAction.CopyAction:
+        pass
+    elif returned_action == Qt.DropAction.IgnoreAction:
         pass
     
     # Force cleanup of drag preview artifacts (Qt/Windows bug workaround)
@@ -131,14 +114,17 @@ def _create_drag_object(parent_view, file_paths: list[str], icon_pixmap, icon_se
     mime_data = QMimeData()
     urls = [QUrl.fromLocalFile(path) for path in file_paths]
     mime_data.setUrls(urls)
+    
+    # Marcar como drag interno para que los drop handlers puedan detectarlo
+    # Los drop handlers internos pueden usar MoveAction para reorganización
+    mime_data.setProperty("internal_drag_source", id(parent_view))
+    
     drag.setMimeData(mime_data)
     
-    preview_pixmap = _get_drag_preview(file_paths, icon_pixmap, icon_service)
+    preview_pixmap = get_drag_preview_pixmap(file_paths, icon_service, icon_pixmap)
     if not preview_pixmap.isNull():
         drag.setPixmap(preview_pixmap)
-        # Center cursor on pixmap
-        hot_spot = QPoint(preview_pixmap.width() // 2, preview_pixmap.height() // 2)
-        drag.setHotSpot(hot_spot)
+        drag.setHotSpot(calculate_drag_hotspot(preview_pixmap))
     
     return drag
 
@@ -162,24 +148,4 @@ def _get_drag_file_paths(file_path: str, selected_tiles: set) -> list[str]:
         file_paths.insert(0, file_path)
     
     return file_paths if file_paths else [file_path]
-
-
-def _get_drag_preview(
-    file_paths: list[str],
-    icon_pixmap: QPixmap,
-    icon_service: IconService
-) -> QPixmap:
-    """Get preview pixmap for drag operation."""
-    if len(file_paths) == 1 and icon_pixmap and not icon_pixmap.isNull():
-        return icon_pixmap
-    
-    if icon_service and len(file_paths) > 1:
-        return create_multi_file_preview(file_paths, icon_service, QSize(48, 48))
-    
-    if icon_pixmap and not icon_pixmap.isNull():
-        return icon_pixmap
-    
-    return QPixmap()
-
-
 

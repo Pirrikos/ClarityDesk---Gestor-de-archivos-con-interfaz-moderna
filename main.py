@@ -11,6 +11,7 @@ import traceback
 from PySide6.QtCore import QtMsgType, QTimer, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication
 
+from app.core.top_level_detector import TopLevelDetector
 from app.ui.windows.desktop_window import DesktopWindow
 from app.ui.windows.main_window import MainWindow
 
@@ -39,6 +40,12 @@ def main() -> int:
     app.setApplicationName("ClarityDesk Pro")
     # No cerrar aplicación cuando se oculta MainWindow (DesktopWindow siempre está activo)
     app.setQuitOnLastWindowClosed(False)
+    
+    # Install top-level window detector
+    detector = TopLevelDetector(app)
+    app.installEventFilter(detector)
+    # Store detector reference for activation during workspace switch
+    app._top_level_detector = detector
 
     # Create DesktopWindow (auto-start)
     desktop_window = DesktopWindow()

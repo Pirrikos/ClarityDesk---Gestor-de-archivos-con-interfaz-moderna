@@ -1,7 +1,7 @@
 import os
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, QMimeData, QUrl, QPoint, QSize, Signal
+from PySide6.QtCore import Qt, QMimeData, QUrl, QSize, Signal
 from PySide6.QtGui import QDrag, QMouseEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -16,8 +16,13 @@ from PySide6.QtWidgets import (
 from app.core.logger import get_logger
 from app.models.file_box_session import FileBoxSession
 from app.services.file_box_history_service import FileBoxHistoryService
-from app.services.file_box_icon_helper import LIST_ROW_ICON_SIZE, create_history_list_item, get_file_box_icon
-from app.core.constants import FILE_BOX_BORDER
+from app.services.file_box_icon_helper import LIST_ROW_ICON_SIZE, get_file_box_icon
+from app.services.icon_service import IconService
+from app.ui.utils.file_box_ui_utils import open_folder_in_system_manager
+from app.ui.widgets.drag_preview_helper import (
+    calculate_drag_hotspot,
+    get_drag_preview_pixmap
+)
 from app.ui.widgets.file_box_styles import (
     get_file_box_panel_stylesheet,
     get_file_box_header_stylesheet,
@@ -28,10 +33,6 @@ from app.ui.widgets.file_box_styles import (
     get_file_box_label_stylesheet,
     get_file_box_primary_button_stylesheet,
 )
-from app.services.file_box_utils import create_date_header_item, group_sessions_by_date
-from app.services.icon_service import IconService
-from app.ui.utils.file_box_ui_utils import open_folder_in_system_manager
-from app.ui.widgets.drag_preview_helper import create_multi_file_preview
 
 logger = get_logger(__name__)
 
@@ -53,9 +54,16 @@ class FileBoxFileListWidget(QListWidget):
             if item:
                 modifiers = event.modifiers()
                 
-                # Control+Click: Qt maneja el toggle correctamente con ExtendedSelection
+                # Control+Click: manejar toggle manualmente (como grid view)
                 if modifiers & Qt.KeyboardModifier.ControlModifier:
-                    super().mousePressEvent(event)
+                    if item.isSelected():
+                        item.setSelected(False)
+                    else:
+                        item.setSelected(True)
+                    self.setCurrentItem(item)
+                    # Aceptar evento para evitar que Qt sobrescriba nuestra selección
+                    # Qt manejará el drag a través de mouseMoveEvent automáticamente
+                    event.accept()
                     return
                 
                 # Click normal: si el item ya está seleccionado y hay múltiples seleccionados,
@@ -102,10 +110,9 @@ class FileBoxPanel(QWidget):
         
         self._setup_ui()
         if self._current_session:
-            self._load_temporary_history()
+            self._populate_current_files()
         else:
             self._current_files_list.clear()
-            self._history_list.clear()
     
     def _setup_ui(self) -> None:
         self.setMinimumWidth(400)
@@ -164,7 +171,8 @@ class FileBoxPanel(QWidget):
         body_layout.addWidget(current_label)
         
         self._current_files_list = FileBoxFileListWidget()
-        self._current_files_list.setStyleSheet(get_file_box_list_stylesheet(min_height=120))
+        self._current_files_list.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
+        self._current_files_list.setStyleSheet(get_file_box_list_stylesheet(min_height=400))
         self._current_files_list.setAcceptDrops(False)
         self._current_files_list.setDragEnabled(True)
         self._current_files_list.setDefaultDropAction(Qt.DropAction.CopyAction)
@@ -172,27 +180,12 @@ class FileBoxPanel(QWidget):
         self._current_files_list.set_drag_handler(self._start_drag_files)
         self._current_files_list.itemDoubleClicked.connect(self._on_current_file_double_clicked)
         self._populate_current_files()
-        body_layout.addWidget(self._current_files_list)
+        body_layout.addWidget(self._current_files_list, 1)
         
         open_folder_btn = QPushButton("Abrir carpeta")
         open_folder_btn.setStyleSheet(get_file_box_primary_button_stylesheet())
         open_folder_btn.clicked.connect(self._on_open_current_folder)
         body_layout.addWidget(open_folder_btn)
-        
-        separator = QWidget()
-        separator.setFixedHeight(1)
-        separator.setStyleSheet(f"background-color: {FILE_BOX_BORDER};")
-        body_layout.addWidget(separator)
-        
-        history_label = QLabel("Historial")
-        history_label.setStyleSheet(get_file_box_label_stylesheet() + " margin-top: 8px;")
-        body_layout.addWidget(history_label)
-        
-        self._history_list = QListWidget()
-        self._history_list.setIconSize(LIST_ROW_ICON_SIZE)
-        self._history_list.setStyleSheet(get_file_box_list_stylesheet())
-        self._history_list.itemDoubleClicked.connect(self._on_history_item_double_clicked)
-        body_layout.addWidget(self._history_list, 1)
         
         layout.addWidget(body_widget, 1)
     
@@ -225,10 +218,8 @@ class FileBoxPanel(QWidget):
         self._current_session = session
         if session:
             self._populate_current_files()
-            self._load_temporary_history()
         else:
             self._current_files_list.clear()
-            self._history_list.clear()
     
     def add_files_to_session(self, new_file_paths: List[str]) -> None:
         """Add files to the current session and refresh the UI."""
@@ -267,32 +258,18 @@ class FileBoxPanel(QWidget):
         mime_data = QMimeData()
         urls = [QUrl.fromLocalFile(path) for path in file_paths]
         mime_data.setUrls(urls)
+        
+        # Marcar como drag interno para que los drop handlers puedan detectarlo
+        mime_data.setProperty("internal_drag_source", id(self._current_files_list))
+        
         drag.setMimeData(mime_data)
         
-        preview_pixmap = create_multi_file_preview(file_paths, self._icon_service, QSize(48, 48))
+        preview_pixmap = get_drag_preview_pixmap(file_paths, self._icon_service)
         if not preview_pixmap.isNull():
             drag.setPixmap(preview_pixmap)
-            hot_spot = QPoint(preview_pixmap.width() // 2, preview_pixmap.height() // 2)
-            drag.setHotSpot(hot_spot)
+            drag.setHotSpot(calculate_drag_hotspot(preview_pixmap))
         
         drag.exec(Qt.DropAction.CopyAction)
-    
-    def _load_temporary_history(self) -> None:
-        try:
-            from app.services.file_box_utils import populate_history_list
-            
-            recent_sessions = self._history_service.get_recent_sessions(limit=5)
-            
-            temporary_history = [
-                s for s in recent_sessions
-                if s.temp_folder_path != self._current_session.temp_folder_path
-            ]
-            
-            temporary_history = temporary_history[:4]
-            populate_history_list(self._history_list, temporary_history, self._icon_service)
-            
-        except Exception as e:
-            logger.error(f"Failed to load history: {e}", exc_info=True)
     
     def _on_open_current_folder(self) -> None:
         open_folder_in_system_manager(self._current_session.temp_folder_path, self)
@@ -332,11 +309,7 @@ class FileBoxPanel(QWidget):
         
         return file_paths
     
-    def _on_history_item_double_clicked(self, item: QListWidgetItem) -> None:
-        folder_path = item.data(Qt.ItemDataRole.UserRole)
-        if folder_path:
-            open_folder_in_system_manager(folder_path, self)
-    
     def refresh(self) -> None:
-        self._load_temporary_history()
+        """Refresh the current files list."""
+        self._populate_current_files()
 

@@ -9,6 +9,8 @@ import platform
 import subprocess
 from pathlib import Path
 
+from app.services.preview_file_extensions import normalize_extension
+
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
@@ -105,7 +107,8 @@ class QuickPreviewHeader:
         self._name_label.setText(header_text)
         self._on_close_callback = on_close_callback
         
-        ext = Path(file_path).suffix.lower() if file_path else ""
+        # R11: Normalize extension in single entry point
+        ext = normalize_extension(file_path) if file_path else ""
         self._open_pdf_btn.setVisible(ext == ".pdf")
         self._open_word_btn.setVisible(ext == ".docx")
 

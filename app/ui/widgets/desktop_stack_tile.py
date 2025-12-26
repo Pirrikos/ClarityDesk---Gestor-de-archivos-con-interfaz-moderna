@@ -64,7 +64,7 @@ class DesktopStackTile(QWidget):
         layout.setSpacing(4)
         
         # Container widget for icon (70x70)
-        container_widget = QWidget()
+        container_widget = QWidget(self)
         container_widget.setFixedSize(70, 70)
         container_widget.setAutoFillBackground(False)
         container_widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -115,7 +115,7 @@ class DesktopStackTile(QWidget):
         
         self._icon_pixmap = pixmap
         
-        self._icon_label = QLabel()
+        self._icon_label = QLabel(self)
         self._icon_label.setFixedSize(icon_width, icon_height)
         self._icon_label.setPixmap(pixmap)
         self._icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -132,7 +132,7 @@ class DesktopStackTile(QWidget):
 
     def _add_text_band(self, layout: QVBoxLayout) -> None:
         """Add text label below icon."""
-        name_label = QLabel()
+        name_label = QLabel(self)
         name_label.setWordWrap(False)
         name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         name_label.setFixedWidth(70)

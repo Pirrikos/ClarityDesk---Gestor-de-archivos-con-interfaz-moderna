@@ -100,7 +100,7 @@ class RenameStateDialog(QDialog):
                 padding: 8px;
                 border: 1px solid #d1d1d1;
                 border-radius: 4px;
-                background-color: white;
+                background-color: #f5f5f5;
             }
             QComboBox:hover {
                 border-color: #0078d4;
@@ -108,6 +108,13 @@ class RenameStateDialog(QDialog):
             QComboBox:focus {
                 border-color: #0078d4;
                 outline: none;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #f5f5f5;
+                border: 1px solid #d1d1d1;
+                border-radius: 4px;
+                selection-background-color: #e0e0e0;
+                color: #1f1f1f;
             }
         """)
         

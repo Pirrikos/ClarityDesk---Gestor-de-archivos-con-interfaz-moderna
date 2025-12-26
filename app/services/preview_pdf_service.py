@@ -6,10 +6,11 @@ Supports both synchronous and asynchronous (QThread) rendering.
 """
 
 import os
+import uuid
 from pathlib import Path
 from typing import Optional, Callable
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QThread
 from PySide6.QtGui import QPixmap
 
 from app.core.logger import get_logger
@@ -22,7 +23,10 @@ from app.services.preview_file_extensions import (
     PREVIEW_IMAGE_EXTENSIONS,
     PREVIEW_TEXT_EXTENSIONS,
     is_previewable_image,
-    is_previewable_text
+    is_previewable_text,
+    normalize_extension,
+    validate_file_for_preview,
+    validate_pixmap
 )
 from app.services.icon_renderer import render_image_preview
 
@@ -41,7 +45,12 @@ logger = get_logger(__name__)
 
 
 class PreviewPdfService:
-    """Service for generating PDF and DOCX preview images."""
+    """Service for generating PDF and DOCX preview images.
+    
+    R1: Each request has unique request_id.
+    R2: Cooperative cancellation - workers mark requests as invalid.
+    R6: Validates results before publishing to UI.
+    """
     
     def __init__(self, icon_service) -> None:
         """Initialize PreviewPdfService with icon service."""
@@ -51,20 +60,33 @@ class PreviewPdfService:
         self._active_pdf_worker: Optional[PdfRenderWorker] = None
         self._active_docx_worker: Optional[DocxConvertWorker] = None
         self._active_thumbs_worker: Optional[PdfThumbnailsWorker] = None
+        self._current_request_id: Optional[str] = None  # R1: Track current request
 
+    def _cancel_worker(self, worker: Optional[QThread], timeout_ms: int = 1000) -> None:
+        """Cancel worker cooperatively (R2)."""
+        if not worker:
+            return
+        try:
+            if hasattr(worker, 'cancel'):
+                worker.cancel()
+        except Exception:
+            pass
+        try:
+            worker.quit()
+            worker.wait(timeout_ms)
+        except Exception:
+            pass
+    
     def get_pdf_page_count(self, pdf_path: str) -> int:
         """Get total number of pages in PDF."""
         return self._pdf_renderer.get_page_count(pdf_path)
 
-    def _render_pdf_page(self, pdf_path: str, max_size: QSize, page_num: int = 0) -> QPixmap:
+    def render_pdf_page(self, pdf_path: str, max_size: QSize, page_num: int = 0) -> QPixmap:
         """Render specific page of PDF as pixmap using PyMuPDF (synchronous)."""
         pixmap = self._pdf_renderer.render_page(pdf_path, max_size, page_num)
         if pixmap.isNull():
             logger.warning(f"Failed to render PDF page {page_num} from {pdf_path}")
         return pixmap
-    
-    def render_pdf_page(self, pdf_path: str, max_size: QSize, page_num: int = 0) -> QPixmap:
-        return self._render_pdf_page(pdf_path, max_size, page_num)
     
     def render_pdf_page_async(
         self,
@@ -73,9 +95,13 @@ class PreviewPdfService:
         page_num: int,
         on_finished: Callable[[QPixmap], None],
         on_error: Optional[Callable[[str], None]] = None
-    ) -> None:
+    ) -> str:
         """
         Render PDF page asynchronously using QThread worker.
+        
+        R1: Returns request_id for validation.
+        R2: Cancels previous worker cooperatively.
+        R6: Validates result before calling callback.
         
         Args:
             pdf_path: Path to PDF file.
@@ -83,32 +109,51 @@ class PreviewPdfService:
             page_num: Page number to render (0-indexed).
             on_finished: Callback called with QPixmap when rendering completes.
             on_error: Optional callback called with error message on failure.
-        """
-        if self._active_pdf_worker:
-            try:
-                self._active_pdf_worker.cancel()
-            except Exception:
-                pass
-            self._active_pdf_worker.quit()
-            self._active_pdf_worker.wait()
         
-        worker = PdfRenderWorker(pdf_path, max_size, page_num)
+        Returns:
+            request_id: Unique identifier for this request.
+        """
+        self._cancel_worker(self._active_pdf_worker)
+        
+        # R1: Generate unique request_id
+        request_id = str(uuid.uuid4())
+        self._current_request_id = request_id
+        
+        worker = PdfRenderWorker(pdf_path, max_size, page_num, request_id)
         self._active_pdf_worker = worker
         
-        def handle_finished(pixmap: QPixmap) -> None:
+        def handle_finished(pixmap: QPixmap, result_request_id: str) -> None:
+            if result_request_id != self._current_request_id:
+                logger.debug(f"Ignoring stale result (current: {self._current_request_id}, received: {result_request_id})")
+                return
+            
+            if not validate_pixmap(pixmap):
+                logger.warning(f"Received invalid pixmap, using fallback")
+                if on_error:
+                    on_error("Failed to render PDF page")
+                else:
+                    on_finished(QPixmap())
+                return
+            
             self._active_pdf_worker = None
             on_finished(pixmap)
         
-        def handle_error(error_msg: str) -> None:
+        def handle_error(error_msg: str, result_request_id: str) -> None:
+            if result_request_id != self._current_request_id:
+                logger.debug("Ignoring stale error")
+                return
+            
             self._active_pdf_worker = None
             if on_error:
                 on_error(error_msg)
             else:
-                on_finished(QPixmap())  # Return empty pixmap on error
+                on_finished(QPixmap())
         
         worker.finished.connect(handle_finished)
         worker.error.connect(handle_error)
         worker.start()
+        
+        return request_id
 
     def get_pdf_thumbnail(self, pdf_path: str, page_num: int, thumbnail_size: QSize) -> QPixmap:
         """Get thumbnail of a specific PDF page."""
@@ -122,39 +167,53 @@ class PreviewPdfService:
         on_progress,
         on_finished,
         on_error=None,
-    ) -> None:
+    ) -> str:
         """Render thumbnails in background and emit progress.
 
-        on_progress(page_num: int, pixmap: QPixmap)
-        on_finished()
-        on_error(msg: str)
-        """
-        if self._active_thumbs_worker:
-            try:
-                self._active_thumbs_worker.cancel()
-            except Exception:
-                pass
-            self._active_thumbs_worker.quit()
-            self._active_thumbs_worker.wait()
-            self._active_thumbs_worker = None
+        R1: Returns request_id for validation.
+        R2: Cancels previous worker cooperatively.
+        R6: Validates results before calling callbacks.
 
-        worker = PdfThumbnailsWorker(pdf_path, total_pages, thumbnail_size)
+        on_progress(page_num: int, pixmap: QPixmap, request_id: str)
+        on_finished(request_id: str)
+        on_error(msg: str, request_id: str)
+        
+        Returns:
+            request_id: Unique identifier for this request.
+        """
+        self._cancel_worker(self._active_thumbs_worker)
+        self._active_thumbs_worker = None
+
+        # R1: Generate unique request_id
+        request_id = str(uuid.uuid4())
+
+        worker = PdfThumbnailsWorker(pdf_path, total_pages, thumbnail_size, request_id)
         self._active_thumbs_worker = worker
 
-        def _on_progress(page_num: int, pixmap: QPixmap):
+        def _on_progress(page_num: int, pixmap: QPixmap, result_request_id: str):
+            if result_request_id != request_id:
+                logger.debug(f"Ignoring stale thumbnail progress (current: {request_id}, received: {result_request_id})")
+                return
             try:
-                on_progress(page_num, pixmap)
-            except Exception:
-                pass
+                if validate_pixmap(pixmap):
+                    on_progress(page_num, pixmap, result_request_id)
+            except Exception as e:
+                logger.warning(f"Error in thumbnail progress callback: {e}", exc_info=True)
 
-        def _on_finished():
+        def _on_finished(result_request_id: str):
+            if result_request_id != request_id:
+                logger.debug("Ignoring stale thumbnail finished")
+                return
             self._active_thumbs_worker = None
             try:
                 on_finished()
             except Exception:
                 pass
 
-        def _on_error(msg: str):
+        def _on_error(msg: str, result_request_id: str):
+            if result_request_id != request_id:
+                logger.debug("Ignoring stale thumbnail error")
+                return
             self._active_thumbs_worker = None
             if on_error:
                 try:
@@ -166,6 +225,8 @@ class PreviewPdfService:
         worker.finished.connect(_on_finished)
         worker.error.connect(_on_error)
         worker.start()
+        
+        return request_id
     
     def _convert_docx_to_pdf(self, docx_path: str) -> str:
         """Convert DOCX to PDF using docx2pdf (synchronous)."""
@@ -176,93 +237,123 @@ class PreviewPdfService:
         docx_path: str,
         on_finished: Callable[[str], None],
         on_error: Optional[Callable[[str], None]] = None
-    ) -> None:
+    ) -> str:
         """
         Convert DOCX to PDF asynchronously using QThread worker.
+        
+        R1: Returns request_id for validation.
+        R2: Cancels previous worker cooperatively.
+        R6: Validates result before calling callback.
         
         Args:
             docx_path: Path to DOCX file.
             on_finished: Callback called with PDF path when conversion completes.
             on_error: Optional callback called with error message on failure.
-        """
-        if self._active_docx_worker:
-            try:
-                self._active_docx_worker.cancel()
-            except Exception:
-                pass
-            self._active_docx_worker.quit()
-            self._active_docx_worker.wait()
         
-        worker = DocxConvertWorker(docx_path)
+        Returns:
+            request_id: Unique identifier for this request.
+        """
+        self._cancel_worker(self._active_docx_worker)
+        
+        # R1: Generate unique request_id
+        request_id = str(uuid.uuid4())
+        
+        worker = DocxConvertWorker(docx_path, request_id)
         self._active_docx_worker = worker
         
-        def handle_finished(pdf_path: str) -> None:
+        def handle_finished(pdf_path: str, result_request_id: str) -> None:
+            if not pdf_path or not os.path.exists(pdf_path):
+                logger.warning("Invalid PDF path result, using fallback")
+                if on_error:
+                    on_error("Failed to convert DOCX to PDF")
+                else:
+                    on_finished("")
+                return
+            
             self._active_docx_worker = None
             on_finished(pdf_path)
         
-        def handle_error(error_msg: str) -> None:
+        def handle_error(error_msg: str, result_request_id: str) -> None:
             self._active_docx_worker = None
             if on_error:
                 on_error(error_msg)
             else:
-                on_finished("")  # Return empty string on error
+                on_finished("")
         
         worker.finished.connect(handle_finished)
         worker.error.connect(handle_error)
         worker.start()
+        
+        return request_id
 
     def get_quicklook_pixmap(self, path: str, max_size: QSize) -> QPixmap:
-        """Get pixmap for quick preview with real rendering for PDFs, DOCX, images, and text files."""
-        if not path or not os.path.exists(path):
-            logger.warning(f"get_quicklook_pixmap: Path does not exist: {path}")
-            return QPixmap()
-
-        ext = Path(path).suffix.lower()
+        """Get pixmap for quick preview with real rendering for PDFs, DOCX, images, and text files.
         
-        # PDFs: renderizar página real
-        if ext == ".pdf":
-            logger.debug(f"get_quicklook_pixmap: Rendering PDF {path} with max_size {max_size.width()}x{max_size.height()}")
-            pdf_pixmap = self._render_pdf_page(path, max_size)
-            if not pdf_pixmap.isNull():
-                logger.debug(f"get_quicklook_pixmap: PDF rendered successfully, size: {pdf_pixmap.width()}x{pdf_pixmap.height()}")
-                return pdf_pixmap
-            else:
-                logger.warning(f"get_quicklook_pixmap: PDF render returned null pixmap for {path}")
-
-        # DOCX: convertir a PDF y renderizar
-        elif ext == ".docx":
-            pdf_path = self._convert_docx_to_pdf(path)
-            if pdf_path:
-                pdf_pixmap = self._render_pdf_page(pdf_path, max_size)
-                if not pdf_pixmap.isNull():
-                    return pdf_pixmap
-
-        # Imágenes: usar render_image_preview directamente con tamaño grande
-        if is_previewable_image(ext):
-            pixmap = render_image_preview(path, max_size)
-            if not pixmap.isNull():
-                return pixmap
-
-        # Archivos de texto: renderizar contenido como imagen
-        if is_previewable_text(ext):
-            pixmap = self._render_text_preview(path, max_size)
-            if not pixmap.isNull():
-                return pixmap
-
-        # Otros tipos: usar icono grande como fallback
-        # Import aquí para evitar importación circular
-        from app.services.icon_render_service import IconRenderService
-        render_service = IconRenderService(self._icon_service)
-        base = render_service.get_file_preview(path, max_size)
-        if base.isNull():
+        R5: All external access is encapsulated in try/except.
+        R4: Always returns valid pixmap (may be empty for fallback).
+        R12: Hard file size limits prevent preview of oversized files.
+        R13: Early existence validation before any rendering.
+        R14: Pixmap validation before returning.
+        """
+        is_valid, error_msg = validate_file_for_preview(path)
+        if not is_valid:
+            logger.warning(f"Cannot preview {path}: {error_msg}")
             return QPixmap()
 
-        # Escalar manteniendo calidad para preview grande
-        return base.scaled(
-            max_size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
+        ext = normalize_extension(path)
+        
+        if ext == ".pdf":
+            try:
+                pdf_pixmap = self.render_pdf_page(path, max_size)
+                if validate_pixmap(pdf_pixmap):
+                    return pdf_pixmap
+            except Exception as e:
+                logger.error(f"Exception rendering PDF: {e}", exc_info=True)
+
+        elif ext == ".docx":
+            try:
+                pdf_path = self._convert_docx_to_pdf(path)
+                if pdf_path:
+                    pdf_pixmap = self.render_pdf_page(pdf_path, max_size)
+                    if validate_pixmap(pdf_pixmap):
+                        return pdf_pixmap
+            except Exception as e:
+                logger.error(f"Exception converting DOCX: {e}", exc_info=True)
+
+        if is_previewable_image(ext):
+            try:
+                pixmap = render_image_preview(path, max_size)
+                if validate_pixmap(pixmap):
+                    return pixmap
+            except Exception as e:
+                logger.error(f"Exception rendering image: {e}", exc_info=True)
+
+        if is_previewable_text(ext):
+            try:
+                pixmap = self._render_text_preview(path, max_size)
+                if validate_pixmap(pixmap):
+                    return pixmap
+            except Exception as e:
+                logger.error(f"Exception rendering text: {e}", exc_info=True)
+
+        try:
+            from app.services.icon_render_service import IconRenderService
+            render_service = IconRenderService(self._icon_service)
+            base = render_service.get_file_preview(path, max_size)
+            if base.isNull():
+                return QPixmap()
+
+            scaled = base.scaled(
+                max_size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            if not validate_pixmap(scaled):
+                return QPixmap()
+            return scaled
+        except Exception as e:
+            logger.error(f"Exception getting icon fallback: {e}", exc_info=True)
+            return QPixmap()
     
     def _render_text_preview(self, path: str, max_size: QSize) -> QPixmap:
         """Render text file content as preview image."""

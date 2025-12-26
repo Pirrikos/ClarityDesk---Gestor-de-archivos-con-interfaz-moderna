@@ -22,17 +22,24 @@ def calculate_columns_for_normal_grid(view_width: int) -> int:
     Calculate number of columns for normal grid layout.
     
     Args:
-        view_width: Width of the view widget.
+        view_width: Width of the view widget (must be > 0).
         
     Returns:
         Number of columns that fit in the available width.
+        Returns 0 if width is insufficient for at least 2 columns (avoids columns=1 provisional layout).
     """
-    if view_width < 100:
-        view_width = 800
-    
     available_width = max(0, view_width - GRID_HORIZONTAL_MARGIN)
-    columns = max(1, available_width // (TILE_WIDTH + TILE_SPACING))
     
+    # Calcular columnas sin fallback a 1
+    # Si el ancho no es suficiente para al menos 2 columnas, retornar 0
+    # Esto evita construcción con columns=1 que causa salto visual vertical→horizontal
+    tile_unit_width = TILE_WIDTH + TILE_SPACING  # 82px
+    min_width_for_2_columns = 2 * tile_unit_width  # 164px
+    
+    if available_width < min_width_for_2_columns:
+        return 0  # Ancho insuficiente, evitar construcción con columns=1
+    
+    columns = available_width // tile_unit_width
     return columns
 
 

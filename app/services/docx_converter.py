@@ -10,6 +10,10 @@ import hashlib
 import tempfile
 from pathlib import Path
 
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class DocxConverter:
     """Converts DOCX files to PDF for preview rendering."""
@@ -29,8 +33,18 @@ class DocxConverter:
         return self._cache_dir / f"{file_hash}.pdf"
     
     def convert_to_pdf(self, docx_path: str) -> str:
-        """Convert DOCX to PDF using docx2pdf."""
-        if not docx_path or not os.path.exists(docx_path):
+        """Convert DOCX to PDF using docx2pdf.
+        
+        R5: All external access (docx2pdf, file system) is encapsulated in try/except.
+        R6: Validates file exists and mtime before/after conversion.
+        """
+        if not docx_path:
+            return ""
+        
+        try:
+            if not os.path.exists(docx_path):
+                return ""
+        except (OSError, ValueError):
             return ""
         
         if not docx_path.lower().endswith('.docx'):
@@ -42,24 +56,34 @@ class DocxConverter:
             return ""
         
         try:
-            # Check cache size and cleanup if needed
             self._cleanup_cache_if_needed()
             
             pdf_path = self.get_cached_pdf_path(docx_path)
             
             if pdf_path.exists():
-                docx_mtime = os.path.getmtime(docx_path)
-                pdf_mtime = os.path.getmtime(str(pdf_path))
-                if pdf_mtime >= docx_mtime:
+                try:
+                    docx_mtime = os.path.getmtime(docx_path)
+                    pdf_mtime = os.path.getmtime(str(pdf_path))
+                    if pdf_mtime >= docx_mtime:
+                        return str(pdf_path)
+                except (OSError, ValueError):
+                    pass  # Continue to regenerate
+            
+            try:
+                convert(docx_path, str(pdf_path))
+            except Exception as e:
+                logger.warning(f"DOCX conversion failed: {e}")
+                return ""
+            
+            try:
+                if pdf_path.exists():
                     return str(pdf_path)
-            
-            convert(docx_path, str(pdf_path))
-            
-            if pdf_path.exists():
-                return str(pdf_path)
+            except (OSError, ValueError):
+                pass
             
             return ""
-        except Exception:
+        except Exception as e:
+            logger.error(f"Exception in convert_to_pdf: {e}", exc_info=True)
             return ""
     
     def _get_cache_size(self) -> int:

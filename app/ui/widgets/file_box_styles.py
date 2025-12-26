@@ -62,6 +62,8 @@ def get_file_box_list_stylesheet(min_height: Optional[int] = None) -> str:
             padding: 4px;
             background-color: {FILE_BOX_LIST_BG};
             color: {FILE_BOX_TEXT};
+            outline: none;
+            show-decoration-selected: 0;
         }}
         QListWidget::item {{
             padding: 6px 8px;
@@ -74,6 +76,20 @@ def get_file_box_list_stylesheet(min_height: Optional[int] = None) -> str:
         }}
         QListWidget::item:hover {{
             background-color: {FILE_BOX_HOVER_BG};
+        }}
+        QListWidget::item:selected {{
+            background-color: {FILE_BOX_HOVER_BG};
+            border: none;
+            outline: none;
+        }}
+        QListWidget::item:selected:focus {{
+            background-color: {FILE_BOX_HOVER_BG};
+            border: none;
+            outline: none;
+        }}
+        QListWidget::item:focus {{
+            border: none;
+            outline: none;
         }}
         {FILE_BOX_SCROLLBAR_STYLES}
     """

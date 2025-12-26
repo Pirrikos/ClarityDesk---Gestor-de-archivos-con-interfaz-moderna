@@ -25,6 +25,7 @@ from app.services.icon_extraction_fallbacks import (
 )
 from app.services.windows_icon_extractor import get_icon_via_imagelist
 from app.services.preview_scaling import scale_pixmap_to_size, scale_if_needed
+from app.services.preview_file_extensions import normalize_extension, validate_file_for_preview, validate_pixmap
 
 
 
@@ -39,8 +40,10 @@ def get_file_preview(
 
 def _get_file_preview_impl(path: str, size: QSize, icon_provider) -> QPixmap:
     """Internal implementation of get_file_preview."""
-    if not path or not os.path.exists(path):
-        return QPixmap()
+    # R13: Early existence validation
+    is_valid, error_msg = validate_file_for_preview(path)
+    if not is_valid:
+        return QPixmap()  # R4: Fallback
     
     if os.path.isdir(path):
         return _get_folder_preview_impl(path, size, icon_provider)
@@ -74,7 +77,8 @@ def _get_folder_preview_impl(path: str, size: QSize, icon_provider) -> QPixmap:
 
 def _get_file_preview_impl_helper(path: str, size: QSize, icon_provider) -> QPixmap:
     """Get file preview with SVG fallback logic."""
-    ext = Path(path).suffix.lower()
+    # R11: Normalize extension in single entry point
+    ext = normalize_extension(path)
     image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tiff', '.ico'}
     
     if ext in image_extensions:
@@ -93,10 +97,20 @@ def _get_file_preview_impl_helper(path: str, size: QSize, icon_provider) -> QPix
     if not skip_svg_fallback and not pixmap.isNull() and has_excessive_whitespace(pixmap, threshold=0.4):
         svg_name = get_svg_for_extension(ext)
         svg_pixmap = render_svg_icon(svg_name, size, ext)
-        if not svg_pixmap.isNull():
+        # R14: Validate pixmap before using
+        if validate_pixmap(svg_pixmap):
             return svg_pixmap
     
-    return scale_pixmap_to_size(pixmap, size)
+    # R14: Validate pixmap before scaling
+    if not validate_pixmap(pixmap):
+        return QPixmap()  # R4: Fallback
+    
+    scaled = scale_pixmap_to_size(pixmap, size)
+    # R14: Validate scaled result
+    if not validate_pixmap(scaled):
+        return QPixmap()  # R4: Fallback
+    
+    return scaled
 
 
 def get_windows_shell_icon(path: str, size: QSize, icon_provider, scale_to_target: bool = True) -> QPixmap:

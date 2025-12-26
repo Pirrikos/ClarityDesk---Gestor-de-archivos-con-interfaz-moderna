@@ -173,6 +173,18 @@ class MainWindow(QWidget):
         # Set state label manager
         self._workspace_selector.set_state_label_manager(self._state_label_manager)
         self._state_label_manager.labels_changed.connect(self._on_state_labels_changed)
+        
+        # Set label callback for file views
+        if hasattr(self, '_file_view_container') and self._file_view_container:
+            callback = self._get_label_callback()
+            self._file_view_container._get_label_callback = callback
+            # Update existing widgets
+            self._update_widgets_label_callback()
+        
+        # Set tab_manager and sidebar for workspace deletion operations
+        self._workspace_selector.set_tab_manager(self._tab_manager)
+        self._workspace_selector.set_sidebar(self._sidebar)
+        self._workspace_selector.set_signal_controller(self)
 
     def _on_show_desktop_requested(self) -> None:
         """Ocultar MainWindow y mostrar DesktopWindow con animación elegante tipo macOS."""
@@ -997,35 +1009,45 @@ class MainWindow(QWidget):
             # Labels already updated by manager, just refresh UI
             self._on_state_labels_changed()
     
+    def _get_label_callback(self):
+        """Get callback function for retrieving state labels."""
+        if not self._state_label_manager:
+            from app.ui.widgets.state_badge_widget import STATE_LABELS
+            return lambda state: STATE_LABELS.get(state, "")
+        return self._state_label_manager.get_label
+    
+    def _update_widgets_label_callback(self) -> None:
+        """Update label callback in all existing widgets."""
+        if not hasattr(self, '_file_view_container'):
+            return
+        
+        container = self._file_view_container
+        callback = self._get_label_callback()
+        
+        # Update grid view tiles
+        if hasattr(container, '_grid_view') and container._grid_view:
+            grid_view = container._grid_view
+            grid_view._get_label_callback = callback
+            # Update existing badges
+            for i in range(grid_view.layout().count()):
+                item = grid_view.layout().itemAt(i)
+                if item and item.widget():
+                    widget = item.widget()
+                    if hasattr(widget, '_state_badge') and widget._state_badge:
+                        widget._state_badge.set_get_label_callback(callback)
+                    widget.update()
+        
+        # Update list view cells
+        if hasattr(container, '_list_view') and container._list_view:
+            list_view = container._list_view
+            list_view._get_label_callback = callback
+            list_view.viewport().update()
+    
     def _on_state_labels_changed(self) -> None:
         """Handle state labels change - refresh UI components."""
-        # Update STATE_LABELS dynamically
-        if self._state_label_manager:
-            custom_labels = self._state_label_manager.get_all_labels()
-            from app.ui.widgets import state_badge_widget
-            # Update the module-level STATE_LABELS dict
-            for state, label in custom_labels.items():
-                state_badge_widget.STATE_LABELS[state] = label
+        # Update callback in all widgets
+        self._update_widgets_label_callback()
         
-        # Refresh file views to show updated labels
-        if hasattr(self, '_file_view_container'):
-            # Force update of all file tiles and list cells
-            container = self._file_view_container
-            if hasattr(container, '_grid_view') and container._grid_view:
-                # Refresh grid view badges
-                for i in range(container._grid_view.layout().count()):
-                    item = container._grid_view.layout().itemAt(i)
-                    if item and item.widget():
-                        widget = item.widget()
-                        if hasattr(widget, '_state_badge') and widget._state_badge:
-                            state = widget._state_badge.get_state()
-                            widget._state_badge.set_state(state)  # Force repaint
-                        widget.update()
-            
-            if hasattr(container, '_list_view') and container._list_view:
-                # Refresh list view state cells
-                container._list_view.viewport().update()
-            
-            # Refresh workspace selector menu
-            if hasattr(self, '_workspace_selector') and self._workspace_selector:
-                self._workspace_selector._refresh_state_menu()
+        # Refresh workspace selector menu
+        if hasattr(self, '_workspace_selector') and self._workspace_selector:
+            self._workspace_selector._refresh_state_menu()

@@ -169,7 +169,7 @@ def add_icon_zone(tile: 'FileTile', layout: QVBoxLayout, icon_service: IconServi
         tile._icon_shadow = icon_shadow
         icon_label = icon_widget
     else:
-        icon_label = QLabel()
+        icon_label = QLabel(tile)
         icon_label.setFixedSize(icon_width, icon_height)
         icon_label.setPixmap(placeholder_pixmap)
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)

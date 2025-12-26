@@ -139,4 +139,20 @@ class StateLabelManager(QObject):
     def has_custom_label(self, state: str) -> bool:
         """Check if state has a custom label."""
         return state in self._custom_labels
+    
+    def refresh_from_storage(self) -> bool:
+        """
+        Reload custom labels from storage and emit signal if changed.
+        
+        Returns:
+            True if labels changed, False otherwise.
+        """
+        old_labels = self._custom_labels.copy()
+        self._load_custom_labels()
+        
+        if old_labels != self._custom_labels:
+            self.labels_changed.emit()
+            logger.info("State labels refreshed from storage")
+            return True
+        return False
 

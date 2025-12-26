@@ -10,9 +10,13 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
 from app.ui.windows.quick_preview_constants import GENERATING_THUMBNAILS, DOCUMENT_READY
 
+from app.core.logger import get_logger
 from app.services.preview_pdf_service import PreviewPdfService
+from app.services.preview_file_extensions import validate_pixmap
 from app.ui.windows.quick_preview_styles import get_thumbnail_scrollbar_style
 from app.ui.windows.quick_preview_thumbnail_widget import QuickPreviewThumbnailWidget
+
+logger = get_logger(__name__)
 
 
 class QuickPreviewThumbnails:
@@ -70,15 +74,23 @@ class QuickPreviewThumbnails:
         return self._panel
     
     def load_thumbnails_async(self, pdf_path: str, total_pages: int, current_page: int, 
-                       on_click_callback, progress_cb=None, finished_cb=None) -> None:
+                       on_click_callback, progress_cb=None, finished_cb=None) -> str:
         """
         Load all PDF page thumbnails.
+        
+        R1: Returns request_id for validation.
+        R4: Ensures fallback visual for failed thumbnails.
         
         Args:
             pdf_path: Path to PDF file.
             total_pages: Total number of pages.
             current_page: Currently selected page (0-indexed).
             on_click_callback: Callback function(page_num) for thumbnail clicks.
+            progress_cb: Optional callback(percent, text) for progress updates.
+            finished_cb: Optional callback() when finished.
+        
+        Returns:
+            request_id: Unique identifier for this request.
         """
         while self._layout.count() > 1:  # Keep stretch
             item = self._layout.takeAt(0)
@@ -91,12 +103,22 @@ class QuickPreviewThumbnails:
         
         thumbnail_size = QSize(100, 120)
         
-        def on_progress(page_num: int, pixmap: QPixmap):
-            if not pixmap.isNull():
-                thumb_container = QuickPreviewThumbnailWidget.create(
-                    pixmap, page_num, current_page, on_click_callback
-                )
-                self._layout.insertWidget(page_num, thumb_container)
+        request_id_holder = {"value": None}
+        
+        def on_progress(page_num: int, pixmap: QPixmap, result_request_id: str):
+            if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
+                logger.debug(f"Ignoring stale thumbnail (current: {request_id_holder['value']}, received: {result_request_id})")
+                return
+            
+            if validate_pixmap(pixmap):
+                try:
+                    thumb_container = QuickPreviewThumbnailWidget.create(
+                        pixmap, page_num, current_page, on_click_callback
+                    )
+                    self._layout.insertWidget(page_num, thumb_container)
+                except Exception as e:
+                    logger.warning(f"Error creating thumbnail widget: {e}")
+            
             if progress_cb:
                 try:
                     pct = int(((page_num + 1) / max(1, total_pages)) * 100)
@@ -104,7 +126,13 @@ class QuickPreviewThumbnails:
                 except Exception:
                     pass
         
-        def on_finished():
+        def on_finished(result_request_id: str):
+            if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
+                logger.debug(f"Ignoring stale thumbnail finished (current: {request_id_holder['value']}, received: {result_request_id})")
+                return
+            
+            logger.debug(f"Thumbnails finished loading, total widgets: {self._layout.count() - 1}")
+            
             if finished_cb:
                 try:
                     finished_cb()
@@ -116,14 +144,31 @@ class QuickPreviewThumbnails:
                 except Exception:
                     pass
         
-        self._preview_service.render_thumbnails_async(
+        def on_error(msg: str, result_request_id: str):
+            if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
+                logger.debug("Ignoring stale thumbnail error")
+                return
+            
+            logger.warning(f"Thumbnails error: {msg}")
+            
+            if finished_cb:
+                try:
+                    finished_cb()
+                except Exception:
+                    pass
+        
+        request_id_holder["value"] = self._preview_service.render_thumbnails_async(
             pdf_path,
             total_pages,
             thumbnail_size,
             on_progress,
             on_finished,
-            on_error=None,
+            on_error=on_error,
         )
+        
+        logger.debug(f"Started loading {total_pages} thumbnails for {pdf_path} with request_id: {request_id_holder['value']}")
+        
+        return request_id_holder["value"]
     
     def update_selection(self, current_page: int) -> None:
         """

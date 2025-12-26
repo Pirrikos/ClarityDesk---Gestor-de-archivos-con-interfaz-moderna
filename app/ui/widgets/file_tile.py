@@ -43,8 +43,19 @@ class FileTile(QWidget):
         icon_service: IconService,
         dock_style: bool = False,
         initial_state: Optional[str] = None,
+        get_label_callback: Optional = None
     ):
-        """Initialize file tile."""
+        """
+        Initialize file tile.
+        
+        Args:
+            file_path: Full path to the file.
+            parent_view: Parent FileGridView instance.
+            icon_service: IconService instance.
+            dock_style: If True, use dock style.
+            initial_state: Optional initial file state.
+            get_label_callback: Optional callback to get state labels.
+        """
         super().__init__(parent_view)
         self._file_path = file_path
         self._parent_view = parent_view
@@ -58,6 +69,7 @@ class FileTile(QWidget):
         self._file_state: Optional[str] = initial_state
         self._dock_style = dock_style
         self._is_hovered: bool = False  # Estado de hover para efecto tipo Finder
+        self._get_label_callback = get_label_callback
         setup_ui(self)
 
     def paintEvent(self, event) -> None:

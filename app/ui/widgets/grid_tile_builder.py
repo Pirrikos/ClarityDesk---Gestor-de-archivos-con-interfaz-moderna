@@ -12,6 +12,7 @@ from app.models.file_stack import FileStack
 from app.services.icon_service import IconService
 from app.ui.widgets.file_stack_tile import FileStackTile
 from app.ui.widgets.file_tile import FileTile
+from app.ui.widgets.file_tile_anim import soft_reveal
 
 if TYPE_CHECKING:
     from app.ui.widgets.file_grid_view import FileGridView
@@ -42,11 +43,17 @@ def create_file_tile(
     if state_manager and not dock_style:
         state = state_manager.get_file_state(file_path)
     
+    get_label_callback = getattr(parent_view, '_get_label_callback', None)
     tile = FileTile(
         file_path, parent_view, icon_service,
         dock_style=dock_style,
-        initial_state=state
+        initial_state=state,
+        get_label_callback=get_label_callback
     )
+    
+    # Soft reveal para tiles no-dock: crear ocultos, revelar en siguiente ciclo
+    if not dock_style:
+        soft_reveal(tile)
     
     return tile
 

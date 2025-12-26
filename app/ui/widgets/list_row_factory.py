@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtGui import QFont, QIcon, QPixmap
 from PySide6.QtWidgets import QTableWidgetItem, QVBoxLayout, QWidget
 
 from app.services.icon_service import IconService
@@ -26,9 +26,10 @@ STATE_CELL_LEFT_OFFSET = -30
 def create_checkbox_cell(
     file_path: str,
     is_checked: bool,
-    on_state_changed: Callable[[str, int], None]
+    on_state_changed: Callable[[str, int], None],
+    parent: Optional[QWidget] = None
 ) -> QWidget:
-    checkbox = CustomCheckBox()
+    checkbox = CustomCheckBox(parent)
     checkbox.setText("")
     checkbox.setChecked(is_checked)
     checkbox.setFixedSize(15, 56)  # Ancho mínimo: 11px indicador + 4px margen
@@ -36,12 +37,12 @@ def create_checkbox_cell(
         lambda state, path=file_path: on_state_changed(path, state)
     )
     # Envolver en contenedor centrado para alinearlo con el header
-    return _create_centered_container(checkbox)
+    return _create_centered_container(checkbox, parent)
 
 
-def _create_centered_container(widget: QWidget) -> QWidget:
+def _create_centered_container(widget: QWidget, parent: Optional[QWidget] = None) -> QWidget:
     """Create a centered container widget for list view cells."""
-    container = QWidget()
+    container = QWidget(parent)
     container.setStyleSheet("QWidget { background-color: transparent; border: none; }")
     layout = QVBoxLayout(container)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -65,12 +66,39 @@ def create_name_cell(
     return name_item
 
 
+def _is_valid_pixmap(pixmap) -> bool:
+    """Validar pixmap según R16: no nulo, no 0x0, válido visualmente."""
+    if not pixmap or pixmap.isNull():
+        return False
+    if pixmap.width() <= 0 or pixmap.height() <= 0:
+        return False
+    # Verificar que tiene contenido visual (no completamente transparente)
+    if pixmap.hasAlphaChannel():
+        # Verificar que al menos algunos píxeles son visibles
+        return True
+    return True
+
+
 def _get_file_icon(file_path: str, icon_service: IconService) -> Optional[QIcon]:
+    """Obtener icono con validación estricta según R16."""
     render_service = IconRenderService(icon_service)
     pixmap = render_service.get_file_preview_list(file_path, LIST_ROW_ICON_SIZE)
-    if not pixmap.isNull():
+    
+    # R16: Validar pixmap antes de crear QIcon
+    if _is_valid_pixmap(pixmap):
         return QIcon(pixmap)
-    return icon_service.get_file_icon(file_path, LIST_ROW_ICON_SIZE)
+    
+    # Fallback inmediato si pixmap inválido
+    folder_icon = icon_service.get_folder_icon(file_path, LIST_ROW_ICON_SIZE) if os.path.isdir(file_path) else icon_service.get_file_icon(file_path, LIST_ROW_ICON_SIZE)
+    
+    # Validar icono del fallback antes de retornar
+    if folder_icon and not folder_icon.isNull():
+        fallback_pixmap = folder_icon.pixmap(LIST_ROW_ICON_SIZE)
+        if _is_valid_pixmap(fallback_pixmap):
+            return folder_icon
+    
+    # Último fallback: icono genérico
+    return None
 
 
 def create_extension_cell(file_path: str, font: QFont) -> QTableWidgetItem:
@@ -108,10 +136,10 @@ def create_date_cell(file_path: str, font: QFont) -> QTableWidgetItem:
     return date_item
 
 
-def create_state_cell(state: Optional[str], font: QFont) -> QWidget:
+def create_state_cell(state: Optional[str], font: QFont, parent: Optional[QWidget] = None, get_label_callback=None) -> QWidget:
     """Create state cell widget centered vertically in the row."""
-    state_widget = ListStateCell(state)
-    container = _create_centered_container(state_widget)
+    state_widget = ListStateCell(state, parent, get_label_callback=get_label_callback)
+    container = _create_centered_container(state_widget, parent)
     # Desplazar widget para alinearlo con el título del header
     container.layout().setContentsMargins(STATE_CELL_LEFT_OFFSET, 0, -STATE_CELL_LEFT_OFFSET, 0)
     return container

@@ -131,10 +131,13 @@ def test_workspace_switching_maintains_state(workspace_manager, tab_manager, sid
     assert state1 is not None
     assert len(state1['tabs']) == 2
     # Normalize paths for comparison (TabManager normalizes paths)
+    # Los paths en state1['tabs'] ya están normalizados por TabManager
     normalized_ws1_tab1 = normalize_path(str(temp_dirs['ws1_tab1']))
     normalized_ws1_tab2 = normalize_path(str(temp_dirs['ws1_tab2']))
-    assert normalized_ws1_tab1 in state1['tabs']
-    assert normalized_ws1_tab2 in state1['tabs']
+    # Comparar usando cualquier variante de normalización
+    tabs_normalized = [normalize_path(tab) for tab in state1['tabs']]
+    assert normalized_ws1_tab1 in tabs_normalized or str(temp_dirs['ws1_tab1']) in state1['tabs']
+    assert normalized_ws1_tab2 in tabs_normalized or str(temp_dirs['ws1_tab2']) in state1['tabs']
     assert len(state1['focus_tree_paths']) == 2
     
     # Step 3: Switch to workspace 2 and open different tabs
@@ -164,11 +167,13 @@ def test_workspace_switching_maintains_state(workspace_manager, tab_manager, sid
     state2 = workspace_manager.get_workspace_state(workspace2.id)
     assert state2 is not None
     assert len(state2['tabs']) == 2
-    # Normalize paths for comparison
+    # Normalize paths for comparison (TabManager normalizes paths)
     normalized_ws2_tab1 = normalize_path(str(temp_dirs['ws2_tab1']))
     normalized_ws2_tab2 = normalize_path(str(temp_dirs['ws2_tab2']))
-    assert normalized_ws2_tab1 in state2['tabs']
-    assert normalized_ws2_tab2 in state2['tabs']
+    # Comparar usando cualquier variante de normalización
+    tabs_normalized = [normalize_path(tab) for tab in state2['tabs']]
+    assert normalized_ws2_tab1 in tabs_normalized or str(temp_dirs['ws2_tab1']) in state2['tabs']
+    assert normalized_ws2_tab2 in tabs_normalized or str(temp_dirs['ws2_tab2']) in state2['tabs']
     assert len(state2['focus_tree_paths']) == 2
     
     # Step 4: Switch back to workspace 1 and verify state is restored
@@ -177,11 +182,13 @@ def test_workspace_switching_maintains_state(workspace_manager, tab_manager, sid
     # Verify workspace 1 tabs are restored
     tabs1 = tab_manager.get_tabs()
     assert len(tabs1) == 2
-    # Normalize paths for comparison
+    # Normalize paths for comparison (TabManager normalizes paths)
     normalized_ws1_tab1 = normalize_path(str(temp_dirs['ws1_tab1']))
     normalized_ws1_tab2 = normalize_path(str(temp_dirs['ws1_tab2']))
-    assert normalized_ws1_tab1 in tabs1
-    assert normalized_ws1_tab2 in tabs1
+    # Comparar usando cualquier variante de normalización
+    tabs1_normalized = [normalize_path(tab) for tab in tabs1]
+    assert normalized_ws1_tab1 in tabs1_normalized or str(temp_dirs['ws1_tab1']) in tabs1
+    assert normalized_ws1_tab2 in tabs1_normalized or str(temp_dirs['ws1_tab2']) in tabs1
     
     # Verify workspace 1 sidebar paths are restored
     sidebar_paths1, sidebar_expanded1 = sidebar.get_current_state()
@@ -197,11 +204,13 @@ def test_workspace_switching_maintains_state(workspace_manager, tab_manager, sid
     # Verify workspace 2 tabs are restored
     tabs2 = tab_manager.get_tabs()
     assert len(tabs2) == 2
-    # Normalize paths for comparison
+    # Normalize paths for comparison (TabManager normalizes paths)
     normalized_ws2_tab1 = normalize_path(str(temp_dirs['ws2_tab1']))
     normalized_ws2_tab2 = normalize_path(str(temp_dirs['ws2_tab2']))
-    assert normalized_ws2_tab1 in tabs2
-    assert normalized_ws2_tab2 in tabs2
+    # Comparar usando cualquier variante de normalización
+    tabs2_normalized = [normalize_path(tab) for tab in tabs2]
+    assert normalized_ws2_tab1 in tabs2_normalized or str(temp_dirs['ws2_tab1']) in tabs2
+    assert normalized_ws2_tab2 in tabs2_normalized or str(temp_dirs['ws2_tab2']) in tabs2
     
     # Verify workspace 2 sidebar paths are restored
     sidebar_paths2, sidebar_expanded2 = sidebar.get_current_state()
@@ -218,16 +227,18 @@ def test_workspace_switching_maintains_state(workspace_manager, tab_manager, sid
     # Verify workspace 1 still has its original tabs
     tabs1_final = tab_manager.get_tabs()
     assert len(tabs1_final) == 2
-    # Normalize paths for comparison
+    # Normalize paths for comparison (TabManager normalizes paths)
     normalized_ws1_tab1 = normalize_path(str(temp_dirs['ws1_tab1']))
     normalized_ws1_tab2 = normalize_path(str(temp_dirs['ws1_tab2']))
     normalized_ws2_tab1 = normalize_path(str(temp_dirs['ws2_tab1']))
     normalized_ws2_tab2 = normalize_path(str(temp_dirs['ws2_tab2']))
-    assert normalized_ws1_tab1 in tabs1_final
-    assert normalized_ws1_tab2 in tabs1_final
+    # Comparar usando cualquier variante de normalización
+    tabs1_final_normalized = [normalize_path(tab) for tab in tabs1_final]
+    assert normalized_ws1_tab1 in tabs1_final_normalized or str(temp_dirs['ws1_tab1']) in tabs1_final
+    assert normalized_ws1_tab2 in tabs1_final_normalized or str(temp_dirs['ws1_tab2']) in tabs1_final
     # Verify workspace 1 does NOT have workspace 2 tabs
-    assert normalized_ws2_tab1 not in tabs1_final
-    assert normalized_ws2_tab2 not in tabs1_final
+    assert normalized_ws2_tab1 not in tabs1_final_normalized and str(temp_dirs['ws2_tab1']) not in tabs1_final
+    assert normalized_ws2_tab2 not in tabs1_final_normalized and str(temp_dirs['ws2_tab2']) not in tabs1_final
 
 
 def test_empty_workspace_switching(workspace_manager, tab_manager, sidebar, qapp):

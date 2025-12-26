@@ -4,7 +4,7 @@ ListStateCell - Widget for displaying state in list view table cells.
 Shows a colored horizontal bar with state text, similar to grid badge.
 """
 
-from typing import Optional
+from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
@@ -26,14 +26,34 @@ except ImportError:
 class ListStateCell(QWidget):
     """Widget for displaying file state in list view table cells."""
 
-    def __init__(self, state: Optional[str], parent=None):
-        """Initialize state cell widget."""
+    def __init__(
+        self,
+        state: Optional[str],
+        parent=None,
+        get_label_callback: Optional[Callable[[str], str]] = None
+    ):
+        """
+        Initialize state cell widget.
+        
+        Args:
+            state: State constant.
+            parent: Parent widget.
+            get_label_callback: Optional callback to get label text for a state.
+                              If None, uses STATE_LABELS dict.
+        """
         super().__init__(parent)
         self._state = state
+        self._get_label_callback = get_label_callback
         self.setFixedHeight(24)  # Height of state bar
         self.setMinimumWidth(80)
         self.setMaximumHeight(24)
         self.setStyleSheet("QWidget { background-color: transparent; border: none; }")
+    
+    def set_get_label_callback(self, callback: Optional[Callable[[str], str]]) -> None:
+        """Set callback to get label text. Updates display if state is set."""
+        self._get_label_callback = callback
+        if self._state:
+            self.update()
         
     def set_state(self, state: Optional[str]) -> None:
         """Update state and repaint."""
@@ -50,7 +70,10 @@ class ListStateCell(QWidget):
         
         # Get state color and label
         bar_color = STATE_COLORS[self._state]
-        label_text = STATE_LABELS.get(self._state, "")
+        if self._get_label_callback:
+            label_text = self._get_label_callback(self._state)
+        else:
+            label_text = STATE_LABELS.get(self._state, "")
         
         rect = self.rect()
         

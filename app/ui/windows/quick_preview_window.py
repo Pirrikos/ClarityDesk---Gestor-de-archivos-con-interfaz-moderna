@@ -5,6 +5,7 @@ Shows a large preview image with QuickLook-style interface.
 Supports navigation, PDF multi-page viewing, and animations.
 """
 
+import uuid
 from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, QTimer
@@ -12,6 +13,7 @@ from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget, QStackedLayout, QProgressBar, QApplication
 
 from app.services.preview_pdf_service import PreviewPdfService
+from app.services.preview_file_extensions import validate_pixmap
 from app.ui.windows.quick_preview_cache import QuickPreviewCache
 from app.ui.windows.quick_preview_animations import QuickPreviewAnimations
 from app.ui.windows.quick_preview_thumbnails import QuickPreviewThumbnails
@@ -77,6 +79,7 @@ class QuickPreviewWindow(QWidget):
         self._navigation = None  # Will be initialized after UI setup
         self._zoom = 1.0
         self._thumbs_loading = False
+        self._current_request_id: Optional[str] = None  # R1: Track current request
         
         
         self._setup_ui()
@@ -210,18 +213,51 @@ class QuickPreviewWindow(QWidget):
                         finished_cb=self._on_thumbnails_finished
                     )
                 max_size = self._effective_content_max_size()
+                # R1: Generate request_id for this load
+                request_id = str(uuid.uuid4())
+                self._current_request_id = request_id
+                
                 def on_page_finished(pixmap: QPixmap) -> None:
+                    # R1: Validate request_id matches current request
+                    if self._current_request_id != request_id:
+                        from app.core.logger import get_logger
+                        get_logger(__name__).debug(f"R1: Ignoring stale result (current: {self._current_request_id}, received: {request_id})")
+                        return  # Stale result, ignore
+                    
+                    # R14: Validate pixmap before applying
+                    if not validate_pixmap(pixmap):
+                        from app.core.logger import get_logger
+                        logger = get_logger(__name__)
+                        logger.warning(f"R14: Pixmap validation failed (null: {pixmap.isNull() if pixmap else 'None'}, size: {pixmap.width()}x{pixmap.height() if pixmap else 'N/A'})")
+                        # R4: Fallback visual
+                        self._header.update_file(current_path, Path(current_path).name, self.close)
+                        self._image_label.setText(NO_PREVIEW)
+                        self._image_label.setStyleSheet(get_error_label_style())
+                        self._show_loading(False)  # Siempre ocultar loading
+                        return
+                    
+                    from app.core.logger import get_logger
+                    get_logger(__name__).debug(f"on_page_finished: Applying pixmap (size: {pixmap.width()}x{pixmap.height()})")
+                    
                     header_text = self._pdf_handler.get_header_text(current_path)
                     self._header.update_file(current_path, header_text, self.close)
                     self._header.set_zoom_percent(int(self._zoom * 100))
                     self._apply_pixmap(pixmap, use_crossfade=True)
-                    if not self._thumbs_loading:
-                        self._show_loading(False)
+                    # Ocultar loading overlay siempre - el pixmap ya está aplicado
+                    # Las miniaturas pueden seguir cargando en segundo plano sin bloquear la vista
+                    self._show_loading(False)
+                
                 def on_page_error(msg: str) -> None:
+                    # R1: Validate request_id matches current request
+                    if self._current_request_id != request_id:
+                        return  # Stale error, ignore
+                    
+                    # R4: Fallback visual
                     self._header.update_file(current_path, Path(current_path).name, self.close)
                     self._image_label.setText(NO_PREVIEW)
                     self._image_label.setStyleSheet(get_error_label_style())
                     self._show_loading(False)
+                
                 self._pdf_handler.render_page_async(
                     max_size,
                     on_finished=on_page_finished,
@@ -243,23 +279,52 @@ class QuickPreviewWindow(QWidget):
             self._show_loading(False)
 
     def _apply_pixmap(self, pixmap: QPixmap, use_crossfade: bool) -> None:
-        if pixmap and not pixmap.isNull():
-            self._image_label.setText("")
-            effective_size = self._effective_content_max_size()
-            target = QSize(
-                int(effective_size.width() * self._zoom),
-                int(effective_size.height() * self._zoom)
-            )
-            scaled = pixmap.scaled(
-                target,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            if use_crossfade:
-                self._animations.apply_crossfade(self._image_label, scaled)
-            else:
-                self._image_label.setPixmap(scaled)
+        """Apply pixmap to UI with fallback visual guarantee.
+        
+        R4: Always shows something - never blank screen or null pixmap.
+        R14: Validates pixmap before applying (not null, minimum size, coherence).
+        """
+        from app.core.logger import get_logger
+        logger = get_logger(__name__)
+        
+        # R14: Validate pixmap before applying
+        if validate_pixmap(pixmap):
+            logger.debug(f"_apply_pixmap: Valid pixmap (size: {pixmap.width()}x{pixmap.height()})")
+            try:
+                self._image_label.setText("")
+                effective_size = self._effective_content_max_size()
+                target = QSize(
+                    int(effective_size.width() * self._zoom),
+                    int(effective_size.height() * self._zoom)
+                )
+                scaled = pixmap.scaled(
+                    target,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                # R14: Validate scaled result
+                if not validate_pixmap(scaled):
+                    # R4: Fallback if scaling failed
+                    from app.core.logger import get_logger
+                    get_logger(__name__).warning(f"R14: Scaled pixmap invalid in _apply_pixmap (size: {scaled.width()}x{scaled.height() if scaled else 'N/A'})")
+                    self._image_label.clear()
+                    self._image_label.setText(NO_PREVIEW)
+                    self._image_label.setStyleSheet(get_error_label_style())
+                else:
+                    if use_crossfade:
+                        self._animations.apply_crossfade(self._image_label, scaled)
+                    else:
+                        self._image_label.setPixmap(scaled)
+            except Exception as e:
+                # R5: Encapsulate any UI errors
+                logger.warning(f"R5: Error applying pixmap: {e}", exc_info=True)
+                # R4: Fallback visual
+                self._image_label.clear()
+                self._image_label.setText(NO_PREVIEW)
+                self._image_label.setStyleSheet(get_error_label_style())
         else:
+            # R4: Fallback visual - never show blank
+            logger.warning(f"_apply_pixmap: Invalid pixmap rejected (null: {pixmap.isNull() if pixmap else 'None'}, size: {pixmap.width()}x{pixmap.height() if pixmap else 'N/A'})")
             self._image_label.clear()
             self._image_label.setText(NO_PREVIEW)
             self._image_label.setStyleSheet(get_error_label_style())
@@ -344,18 +409,50 @@ class QuickPreviewWindow(QWidget):
             self._show_loading(True, LOADING_DOCUMENT)
             self._load_pdf_info(current_path)
             max_size = self._effective_content_max_size()
+            
+            # R1: Generate request_id for this load
+            request_id = str(uuid.uuid4())
+            self._current_request_id = request_id
+            
             def on_page_finished(pixmap: QPixmap) -> None:
+                # R1: Validate request_id matches current request
+                if self._current_request_id != request_id:
+                    from app.core.logger import get_logger
+                    get_logger(__name__).debug(f"R1: Ignoring stale result in _load_preview (current: {self._current_request_id}, received: {request_id})")
+                    return  # Stale result, ignore
+                
+                # R14: Validate pixmap before applying
+                if not validate_pixmap(pixmap):
+                    from app.core.logger import get_logger
+                    logger = get_logger(__name__)
+                    logger.warning(f"R14: Pixmap validation failed in _load_preview (null: {pixmap.isNull() if pixmap else 'None'}, size: {pixmap.width()}x{pixmap.height() if pixmap else 'N/A'})")
+                    # R4: Fallback visual
+                    self._header.update_file(current_path, Path(current_path).name, self.close)
+                    self._image_label.setText(NO_PREVIEW)
+                    self._image_label.setStyleSheet(get_error_label_style())
+                    self._show_loading(False)  # Siempre ocultar loading
+                    return
+                
+                from app.core.logger import get_logger
+                get_logger(__name__).debug(f"_load_preview on_page_finished: Applying pixmap (size: {pixmap.width()}x{pixmap.height()})")
+                
                 header_text = self._pdf_handler.get_header_text(current_path)
                 self._header.update_file(current_path, header_text, self.close)
                 self._header.set_zoom_percent(int(self._zoom * 100))
                 self._apply_pixmap(pixmap, use_crossfade)
-                if not self._thumbs_loading:
-                    self._show_loading(False)
+                self._show_loading(False)  # Siempre ocultar loading
+            
             def on_page_error(msg: str) -> None:
+                # R1: Validate request_id matches current request
+                if self._current_request_id != request_id:
+                    return  # Stale error, ignore
+                
+                # R4: Fallback visual
                 self._header.update_file(current_path, Path(current_path).name, self.close)
                 self._image_label.setText(NO_PREVIEW)
                 self._image_label.setStyleSheet(get_error_label_style())
                 self._show_loading(False)
+            
             self._pdf_handler.render_page_async(
                 max_size,
                 on_finished=on_page_finished,
