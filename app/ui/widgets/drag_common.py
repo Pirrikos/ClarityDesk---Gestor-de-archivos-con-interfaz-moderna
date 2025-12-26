@@ -24,9 +24,10 @@ def should_reject_dock_to_dock_drop(mime_data: QMimeData, tab_manager: Optional[
     Esto evita duplicación innecesaria de archivos en el Desktop Focus.
     
     Verifica:
-    1. Si el folder activo es Desktop Focus
-    2. Si algún archivo arrastrado está en el dock (is_file_in_dock)
-    3. Si ambas condiciones son verdaderas, rechaza el drop
+    1. Si hay contexto de estado activo (rechazar siempre)
+    2. Si el folder activo es Desktop Focus
+    3. Si algún archivo arrastrado está en el dock (is_file_in_dock)
+    4. Si las condiciones 2 y 3 son verdaderas, rechaza el drop
     
     Args:
         mime_data: QMimeData from drag event.
@@ -37,6 +38,10 @@ def should_reject_dock_to_dock_drop(mime_data: QMimeData, tab_manager: Optional[
     """
     if not tab_manager:
         return False
+    
+    # REGLA CRÍTICA: Drag & drop NO funciona en vistas por estado
+    if tab_manager.has_state_context():
+        return True
     
     active_folder = tab_manager.get_active_folder()
     if not (active_folder and is_desktop_focus(active_folder)):
@@ -69,6 +74,10 @@ def is_same_folder_drop(source_path: str, tab_manager: Optional[TabManager]) -> 
     """
     if not tab_manager:
         return False
+    
+    # REGLA CRÍTICA: Drag & drop NO funciona en vistas por estado
+    if tab_manager.has_state_context():
+        return True  # Rechazar siempre en vistas por estado
     
     active_folder = tab_manager.get_active_folder()
     if not active_folder:

@@ -6,7 +6,7 @@ Handles loading and saving tab state and complete application state.
 
 from typing import List, Optional, Tuple
 
-from app.services.path_utils import normalize_path
+from app.services.path_utils import normalize_path, is_state_context_path
 from app.services.tab_helpers import validate_folder
 from app.services.tab_storage_service import load_app_state, load_state, save_app_state, save_state
 
@@ -75,6 +75,9 @@ class TabStateManager:
         """
         Build complete application state dict from current state.
         
+        REGLA CRÍTICA: Los paths virtuales de estado (@state://...) NO se guardan como tabs activos.
+        Si active_tab_path es un path virtual, se guarda como None.
+        
         Args:
             tabs: List of open tab paths.
             active_tab_path: Currently active tab path (or None).
@@ -87,6 +90,11 @@ class TabStateManager:
         Returns:
             State dict ready for persistence.
         """
+        # REGLA CRÍTICA: No guardar paths virtuales como active_tab
+        # Los contextos de estado se manejan por separado, no como tabs
+        if active_tab_path and is_state_context_path(active_tab_path):
+            active_tab_path = None
+        
         # NO normalizar al guardar - preservar paths originales (case-preserving)
         # Los paths ya vienen case-preserving desde TabManager
         # La normalización solo se usa para comparaciones internas

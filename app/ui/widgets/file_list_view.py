@@ -85,8 +85,29 @@ class FileListView(QTableWidget):
         """Rebuild table rows from file list."""
         refresh_table(
             self, self._files, self._icon_service,
-            self._state_manager, self._checked_paths, self._on_checkbox_changed
+            self._state_manager, self._checked_paths, self._on_checkbox_changed,
+            self._get_label_callback
         )
+    
+    def refresh_state_labels(self, state_id: str) -> None:
+        """
+        Refrescar labels de estado en todas las filas visibles.
+        
+        Cuando se renombra un label de estado, este método actualiza solo el texto
+        visible sin reconstruir la tabla.
+        
+        Args:
+            state_id: ID del estado cuyo label cambió.
+        """
+        from app.ui.widgets.list_state_cell import ListStateCell
+        
+        # Iterar sobre todas las filas y refrescar los widgets de estado
+        for row in range(self.rowCount()):
+            state_widget = self.cellWidget(row, 4)
+            if isinstance(state_widget, ListStateCell):
+                current_state = getattr(state_widget, '_state', None)
+                if current_state == state_id:
+                    state_widget.update()
 
     def startDrag(self, supported_actions) -> None:
         """Handle drag start for file copy or move using checkbox selection."""

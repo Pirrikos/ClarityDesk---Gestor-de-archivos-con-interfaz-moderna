@@ -26,10 +26,12 @@ from app.core.logger import get_logger
 from app.ui.widgets.folder_tree_icon_utils import load_folder_icon_with_fallback
 from app.ui.widgets.toolbar_navigation_buttons import create_navigation_buttons
 from app.ui.utils.rounded_background_painter import paint_rounded_background
+from app.ui.widgets.view_icon_utils import load_view_icon
 from app.ui.widgets.workspace_selector_styles import (
     get_base_stylesheet,
     get_workspace_menu_stylesheet,
-    get_state_menu_stylesheet
+    get_state_menu_stylesheet,
+    get_view_toggle_button_style
 )
 
 logger = get_logger(__name__)
@@ -213,23 +215,40 @@ class WorkspaceSelector(QWidget):
         layout.addWidget(self._create_separator(), 0)
         
         # Grid button
-        self._grid_button = QPushButton("⧉")
-        self._grid_button.setObjectName("HeaderButton")
+        self._grid_button = QPushButton()
+        self._grid_button.setObjectName("ViewToggleButton")
         self._grid_button.setFixedSize(28, 28)
         self._grid_button.setCheckable(True)
         self._grid_button.setChecked(True)  # Grid es la vista por defecto
         self._grid_button.setToolTip("Vista Grid")
+        icon_size = QSize(20, 20)
+        grid_icon = load_view_icon("grid.svg", icon_size, True)
+        if not grid_icon.isNull():
+            self._grid_button.setIcon(grid_icon)
+            self._grid_button.setIconSize(icon_size)
+        else:
+            self._grid_button.setText("⧉")
         self._grid_button.clicked.connect(self.view_grid_requested.emit)
+        self._grid_button.toggled.connect(lambda checked: self._update_view_button_icon_and_style(self._grid_button, "grid.svg", checked))
+        self._update_view_button_style(self._grid_button, True)
         layout.addWidget(self._grid_button, 0)
         
         # List button
-        self._list_button = QPushButton("☰")
-        self._list_button.setObjectName("HeaderButton")
+        self._list_button = QPushButton()
+        self._list_button.setObjectName("ViewToggleButton")
         self._list_button.setFixedSize(28, 28)
         self._list_button.setCheckable(True)
         self._list_button.setChecked(False)
         self._list_button.setToolTip("Vista Lista")
+        list_icon = load_view_icon("lista.svg", icon_size, False)
+        if not list_icon.isNull():
+            self._list_button.setIcon(list_icon)
+            self._list_button.setIconSize(icon_size)
+        else:
+            self._list_button.setText("☰")
         self._list_button.clicked.connect(self.view_list_requested.emit)
+        self._list_button.toggled.connect(lambda checked: self._update_view_button_icon_and_style(self._list_button, "lista.svg", checked))
+        self._update_view_button_style(self._list_button, False)
         layout.addWidget(self._list_button, 0)
         
         # Separador visual
@@ -495,11 +514,26 @@ class WorkspaceSelector(QWidget):
         if folder_path:
             self.new_focus_requested.emit(folder_path)
     
+    def _update_view_button_icon_and_style(self, button: QPushButton, svg_name: str, checked: bool) -> None:
+        """Update view button icon and style based on checked state."""
+        icon_size = QSize(20, 20)
+        icon = load_view_icon(svg_name, icon_size, checked)
+        if not icon.isNull():
+            button.setIcon(icon)
+            button.setIconSize(icon_size)
+        self._update_view_button_style(button, checked)
+    
+    def _update_view_button_style(self, button: QPushButton, checked: bool) -> None:
+        """Update view button style based on checked state."""
+        button.setStyleSheet(get_view_toggle_button_style(checked))
+    
     def update_button_styles(self, grid_checked: bool) -> None:
         """Update button checked states to reflect current view."""
         if self._grid_button and self._list_button:
             self._grid_button.setChecked(grid_checked)
             self._list_button.setChecked(not grid_checked)
+            self._update_view_button_icon_and_style(self._grid_button, "grid.svg", grid_checked)
+            self._update_view_button_icon_and_style(self._list_button, "lista.svg", not grid_checked)
     
     def _attach_state_menu(self, button: QPushButton) -> None:
         """Attach state menu to button with proper positioning."""

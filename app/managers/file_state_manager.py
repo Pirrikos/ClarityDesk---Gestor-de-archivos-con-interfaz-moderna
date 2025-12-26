@@ -6,7 +6,7 @@ Emits signals to notify UI of state changes.
 """
 
 import os
-from typing import Optional
+from typing import List, Optional
 
 from PySide6.QtCore import QObject, Signal
 
@@ -21,6 +21,7 @@ from app.services.file_state_storage import (
     set_state as storage_set_state,
     set_states_batch as storage_set_states_batch,
 )
+from app.services.file_state_storage_query import get_items_by_state as query_get_items_by_state
 
 
 class FileStateManager(QObject):
@@ -229,4 +230,18 @@ class FileStateManager(QObject):
             self._path_to_id_cache.clear()
         
         return removed_count
+    
+    def get_items_by_state(self, state: str) -> List[str]:
+        """
+        Obtener lista de archivos y carpetas con un estado específico.
+        
+        Incluye tanto archivos como carpetas (items).
+        
+        Args:
+            state: Estado constante (e.g., "pending", "delivered").
+            
+        Returns:
+            Lista de paths de archivos y carpetas con el estado especificado.
+        """
+        return query_get_items_by_state(state)
 

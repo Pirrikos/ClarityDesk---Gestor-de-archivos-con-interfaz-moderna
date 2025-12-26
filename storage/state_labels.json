@@ -1,6 +1,13 @@
 {
   "labels": {
-    "pending": "AYUDADO"
+    "pending": "probando",
+    "review": "SIN REVISAR"
   },
+  "order": [
+    "pending",
+    "delivered",
+    "corrected",
+    "review"
+  ],
   "version": 1
 }

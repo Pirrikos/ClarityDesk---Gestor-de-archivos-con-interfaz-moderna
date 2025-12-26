@@ -163,8 +163,14 @@ def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: 
     try:
         content_widget.setUpdatesEnabled(False)
         
-        # Añadir headers ANTES de los tiles para evitar reflow del layout
-        # Esto asegura que el layout se calcule correctamente desde el inicio
+        # REGLA CRÍTICA: Eliminar headers existentes SIEMPRE antes de procesar cambios
+        # Esto asegura que:
+        # 1. Categorías vacías no dejen headers huérfanos
+        # 2. Transiciones de categorizado a no categorizado limpien headers
+        # 3. Cambios de categorías eliminen headers antiguos antes de añadir nuevos
+        _remove_existing_headers(grid_layout)
+        
+        # Añadir headers nuevos solo si hay categorización Y categorías con archivos
         if is_categorized and header_rows:
             _add_category_headers_at_rows(view, items_to_render, grid_layout, header_rows, columns, col_offset)
         
@@ -330,7 +336,8 @@ def _add_category_headers_at_rows(
     """
     Add category section headers at specified rows.
     
-    First removes any existing headers to avoid duplicates.
+    IMPORTANTE: _remove_existing_headers() debe llamarse ANTES de esta función.
+    Esta función solo añade headers nuevos, no elimina los antiguos.
     
     Args:
         view: FileGridView instance
@@ -341,9 +348,6 @@ def _add_category_headers_at_rows(
         col_offset: Column offset
     """
     from app.ui.widgets.category_section_header import CategorySectionHeader
-    
-    # Remove existing headers first to avoid duplicates
-    _remove_existing_headers(grid_layout)
     
     category_idx = 0
     for category_label, files in items_to_render:

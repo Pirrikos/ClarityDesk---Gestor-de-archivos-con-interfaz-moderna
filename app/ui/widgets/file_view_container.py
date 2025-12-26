@@ -7,7 +7,7 @@ Subscribes to TabManager to update files when active tab changes.
 
 import os
 from time import perf_counter
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, List
 
 from PySide6.QtCore import QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -101,10 +101,26 @@ class FileViewContainer(QWidget):
         self._get_label_callback = get_label_callback
         self._handlers = FileViewHandlers(tab_manager, lambda: update_files(self))
         self._workspace_selector = None
+        self._state_label_manager = None  # Se inyecta desde MainWindow
+        self._workspace_manager = None  # Se inyecta desde MainWindow para resolver workspace_name
+        
+        # Modo búsqueda
+        self._is_search_mode = False
+        self._search_results: List = []  # List[SearchResult]
+        self._file_to_workspace: dict[str, str] = {}  # file_path -> workspace_id
         
         self.setAcceptDrops(True)
         setup_ui(self)
         connect_tab_signals(self, tab_manager)
+        
+        # Conectar señal de cambio de estado para refrescar vista si hay contexto de estado activo
+        self._state_manager.state_changed.connect(self._on_state_changed)
+        self._state_manager.states_changed.connect(self._on_states_changed)
+        
+        # Conectar señal de cambio de modo de visualización para estados
+        if tab_manager:
+            tab_manager.view_mode_changed.connect(self._on_state_view_mode_changed)
+        
         self._setup_selection_timer()
         # Umbral anti-doble clic para prevenir aperturas repetidas
         self._last_open_ts_ms: int = 0
@@ -155,8 +171,18 @@ class FileViewContainer(QWidget):
         if self._grid_view:
             self._grid_view.set_desktop_mode(is_desktop)
     
-    def _on_active_tab_changed(self, index: int, path: str) -> None:
-        """Handle active tab change from TabManager."""
+    def _on_active_tab_changed(self, index: int, path: Optional[str]) -> None:
+        """
+        Handle active tab change from TabManager.
+        
+        Si path es None, significa que hay contexto de estado activo.
+        """
+        # Si hay contexto de estado, el modo se restaurará desde la señal view_mode_changed
+        if path is None:
+            # Vista por estado activa - el modo se restaurará automáticamente
+            on_active_tab_changed(self, index, path or "")
+            return
+        
         # Actualizar estado de Desktop Focus basado en el path del tab activo
         if index >= 0 and path:
             is_desktop = is_desktop_focus(path)
@@ -198,14 +224,23 @@ class FileViewContainer(QWidget):
 
     def dragEnterEvent(self, event) -> None:
         """Handle drag enter as fallback."""
+        if self._is_search_mode:
+            event.ignore()
+            return
         self._handlers.handle_drag_enter(event)
 
     def dragMoveEvent(self, event) -> None:
         """Handle drag move as fallback."""
+        if self._is_search_mode:
+            event.ignore()
+            return
         self._handlers.handle_drag_move(event)
 
     def dropEvent(self, event) -> None:
         """Handle file drop as fallback."""
+        if self._is_search_mode:
+            event.ignore()
+            return
         self._handlers.handle_drop(event)
 
     def _on_open_file(self, file_path: str) -> None:
@@ -323,6 +358,39 @@ class FileViewContainer(QWidget):
         if not selected_files:
             return
         set_selected_states(self, state)
+    
+    def _on_state_changed(self, file_path: str, state: Optional[str]) -> None:
+        """
+        Manejar cambio de estado de un archivo.
+        
+        Si hay contexto de estado activo, refrescar la vista automáticamente
+        para que el archivo desaparezca/aparezca según corresponda.
+        """
+        if self._tab_manager and self._tab_manager.has_state_context():
+            # Refrescar vista para que el archivo desaparezca/aparezca según su nuevo estado
+            update_files(self)
+    
+    def _on_states_changed(self, changes: list) -> None:
+        """
+        Manejar cambio de estados de múltiples archivos.
+        
+        Si hay contexto de estado activo, refrescar la vista automáticamente.
+        """
+        if self._tab_manager and self._tab_manager.has_state_context():
+            # Refrescar vista para que los archivos desaparezcan/aparezcan según sus nuevos estados
+            update_files(self)
+    
+    def _on_state_view_mode_changed(self, view_mode: str) -> None:
+        """
+        Manejar cambio de modo de visualización para vista por estado.
+        
+        Restaura el modo guardado cuando se activa un estado.
+        
+        Args:
+            view_mode: Modo de visualización ("grid" o "list").
+        """
+        from app.ui.widgets.file_view_sync import switch_view
+        switch_view(self, view_mode)
 
     def _update_nav_buttons_state(self) -> None:
         """Update navigation buttons enabled state."""
@@ -339,6 +407,97 @@ class FileViewContainer(QWidget):
     def set_workspace_selector(self, workspace_selector: Optional['WorkspaceSelector']) -> None:
         """Inyectar referencia al WorkspaceSelector para actualización de botones."""
         self._workspace_selector = workspace_selector
+    
+    def set_state_label_manager(self, state_label_manager) -> None:
+        """
+        Inyectar StateLabelManager y conectar señal para refrescar labels.
+        
+        Cuando se renombra un label de estado, todas las vistas deben actualizarse
+        inmediatamente sin necesidad de reconstruir completamente.
+        """
+        self._state_label_manager = state_label_manager
+        if state_label_manager:
+            state_label_manager.state_label_changed.connect(self._on_state_label_changed)
+    
+    def set_workspace_manager(self, workspace_manager) -> None:
+        """
+        Inyectar WorkspaceManager para resolver workspace_name en UI.
+        
+        Necesario para mostrar el nombre del workspace en resultados de búsqueda.
+        """
+        self._workspace_manager = workspace_manager
+    
+    def set_search_mode(self, enabled: bool, results: List = None) -> None:
+        """
+        Activar/desactivar modo búsqueda y mostrar resultados.
+        
+        Args:
+            enabled: True para activar modo búsqueda, False para restaurar vista normal
+            results: Lista de SearchResult cuando enabled=True, None cuando enabled=False
+        """
+        self._is_search_mode = enabled
+        if results is not None:
+            self._search_results = results if enabled else []
+            # Crear mapa file_path -> workspace_id para acceso rápido
+            if enabled:
+                self._file_to_workspace = {result.file_path: result.workspace_id for result in results}
+            else:
+                self._file_to_workspace = {}
+        else:
+            self._search_results = []
+            self._file_to_workspace = {}
+        
+        if enabled and self._search_results:
+            # Mostrar resultados de búsqueda
+            file_paths = [result.file_path for result in self._search_results]
+            self._grid_view.update_files(file_paths)
+            self._list_view.update_files(file_paths)
+        else:
+            # Restaurar vista normal sin efectos secundarios
+            update_files(self)
+    
+    def get_workspace_id_for_file(self, file_path: str) -> Optional[str]:
+        """
+        Obtener workspace_id para un archivo (solo en modo búsqueda).
+        
+        Args:
+            file_path: Ruta del archivo
+            
+        Returns:
+            workspace_id si está en modo búsqueda, None en caso contrario
+        """
+        if self._is_search_mode:
+            return self._file_to_workspace.get(file_path)
+        return None
+    
+    def get_workspace_name_for_file(self, file_path: str) -> Optional[str]:
+        """
+        Obtener nombre del workspace para un archivo (solo en modo búsqueda).
+        
+        Args:
+            file_path: Ruta del archivo
+            
+        Returns:
+            Nombre del workspace si está en modo búsqueda, None en caso contrario
+        """
+        if self._is_search_mode and self._workspace_manager:
+            workspace_id = self._file_to_workspace.get(file_path)
+            if workspace_id:
+                workspace = self._workspace_manager.get_workspace(workspace_id)
+                if workspace:
+                    return workspace.name
+        return None
+    
+    def _on_state_label_changed(self, state_id: str) -> None:
+        """
+        Manejar cambio de label de estado - refrescar solo el texto visible.
+        
+        No reconstruye las vistas, solo actualiza el texto de los badges/cells existentes.
+        """
+        if self._grid_view:
+            self._grid_view.refresh_state_labels(state_id)
+        if self._list_view:
+            self._list_view.refresh_state_labels(state_id)
     
     def closeEvent(self, event) -> None:
         """Cleanup timers before closing."""

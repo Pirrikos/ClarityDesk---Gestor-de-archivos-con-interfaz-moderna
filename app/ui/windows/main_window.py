@@ -14,6 +14,7 @@ from app.core.constants import DEBUG_LAYOUT, FILE_SYSTEM_DEBOUNCE_MS, CENTRAL_AR
 from app.core.logger import get_logger
 from app.managers.tab_manager import TabManager
 from app.managers.workspace_manager import WorkspaceManager
+from app.managers.search_manager import SearchManager
 from app.services.desktop_path_helper import is_desktop_focus
 from app.services.file_box_history_service import FileBoxHistoryService
 from app.services.file_box_service import FileBoxService
@@ -61,6 +62,7 @@ class MainWindow(QWidget):
             self._icon_service = IconService()
             self._preview_service = PreviewPdfService(self._icon_service)
             self._state_label_manager = StateLabelManager()
+            self._search_manager = SearchManager(workspace_manager)
             self._current_preview_window = None
             self._is_initializing = True
             self._transition_animation: Optional[QParallelAnimationGroup] = None
@@ -109,9 +111,12 @@ class MainWindow(QWidget):
     def _setup_ui(self) -> None:
         """Build the UI layout with Focus Dock integrated."""
         self._file_view_container, self._sidebar, self._window_header, self._app_header, self._secondary_header, self._workspace_selector, self._history_panel, self._content_splitter, self._current_file_box_panel = setup_ui(
-            self, self._tab_manager, self._icon_service, self._workspace_manager
+            self, self._tab_manager, self._icon_service, self._workspace_manager, self._state_label_manager
         )
         self._file_box_panel_minimized = False
+        
+        # Obtener footer desde FileViewContainer
+        self._path_footer = getattr(self._file_view_container, '_path_footer', None)
         
         if self._current_file_box_panel:
             self._current_file_box_panel.close_requested.connect(self._close_file_box_panel)
@@ -178,6 +183,8 @@ class MainWindow(QWidget):
         if hasattr(self, '_file_view_container') and self._file_view_container:
             callback = self._get_label_callback()
             self._file_view_container._get_label_callback = callback
+            # Conectar señal de cambio de label específico para refrescar vistas
+            self._file_view_container.set_state_label_manager(self._state_label_manager)
             # Update existing widgets
             self._update_widgets_label_callback()
         
@@ -185,6 +192,41 @@ class MainWindow(QWidget):
         self._workspace_selector.set_tab_manager(self._tab_manager)
         self._workspace_selector.set_sidebar(self._sidebar)
         self._workspace_selector.set_signal_controller(self)
+        
+        # Conectar señales de búsqueda
+        self._secondary_header.search_changed.connect(self._search_manager.search)
+        self._search_manager.search_mode_changed.connect(self._on_search_mode_changed)
+        self._search_manager.search_results_changed.connect(self._on_search_results_changed)
+        
+        # Inyectar WorkspaceManager a FileViewContainer para resolver workspace_name
+        self._file_view_container.set_workspace_manager(self._workspace_manager)
+        
+        # Setup footer update timer
+        self._setup_footer_timer()
+
+    def _setup_footer_timer(self) -> None:
+        """Setup timer to periodically update footer with selected file path."""
+        from app.core.constants import SELECTION_UPDATE_INTERVAL_MS
+        self._footer_timer = QTimer(self)
+        self._footer_timer.timeout.connect(self._update_footer_path)
+        self._last_selected_path = ""
+        self._footer_timer.start(SELECTION_UPDATE_INTERVAL_MS)
+    
+    def _update_footer_path(self) -> None:
+        """Update footer with path of selected file (first selected if multiple)."""
+        if not self._path_footer:
+            return  # Footer no disponible (desktop mode)
+        
+        selected_files = get_selected_files(self._file_view_container)
+        if selected_files:
+            current_path = selected_files[0]
+            if current_path != self._last_selected_path:
+                self._last_selected_path = current_path
+                self._path_footer.set_text(current_path)
+        else:
+            if self._last_selected_path:
+                self._last_selected_path = ""
+                self._path_footer.set_text("")
 
     def _on_show_desktop_requested(self) -> None:
         """Ocultar MainWindow y mostrar DesktopWindow con animación elegante tipo macOS."""
@@ -281,10 +323,25 @@ class MainWindow(QWidget):
             load_app_state(self, self._tab_manager)
     
     def _load_workspace_state(self) -> None:
-        """Load workspace state and restore UI."""
+        """
+        Load workspace state and restore UI.
+        
+        REGLA OBLIGATORIA: El contexto de estado solo puede existir cuando el origen activo es un estado.
+        Cambiar de workspace es un cambio de origen → debe limpiar siempre el contexto de estado.
+        """
         if not self._workspace_manager:
             self._load_app_state()
             return
+        
+        # REGLA OBLIGATORIA: Limpiar contexto de estado antes de cargar workspace
+        if hasattr(self._tab_manager, '_current_state_context') and self._tab_manager._current_state_context:
+            self._tab_manager.clear_state_context()
+            # Restaurar modo del workspace al volver a carpeta normal
+            if self._workspace_manager:
+                workspace_mode = self._workspace_manager.get_view_mode()
+                self._tab_manager._current_view_mode = workspace_mode
+                if hasattr(self._tab_manager, 'view_mode_changed'):
+                    self._tab_manager.view_mode_changed.emit(workspace_mode)
         
         active_workspace = self._workspace_manager.get_active_workspace()
         if not active_workspace:
@@ -1051,3 +1108,14 @@ class MainWindow(QWidget):
         # Refresh workspace selector menu
         if hasattr(self, '_workspace_selector') and self._workspace_selector:
             self._workspace_selector._refresh_state_menu()
+    
+    def _on_search_mode_changed(self, enabled: bool) -> None:
+        """Handle search mode change."""
+        if not enabled:
+            # Limpiar modo búsqueda
+            self._file_view_container.set_search_mode(False)
+    
+    def _on_search_results_changed(self, results: list) -> None:
+        """Handle search results change - update file view with results."""
+        # Actualizar resultados en FileViewContainer
+        self._file_view_container.set_search_mode(True, results)

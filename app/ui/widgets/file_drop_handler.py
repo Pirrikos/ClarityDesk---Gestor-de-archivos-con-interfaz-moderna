@@ -39,6 +39,10 @@ def handle_file_drop(
         Tuple of (success, source_path, new_path) where new_path is the new location
         if a folder was moved, None otherwise.
     """
+    # REGLA CRÍTICA: Drag & drop NO funciona en vistas por estado
+    if tab_manager.has_state_context():
+        return False, source_file_path, None
+    
     active_folder = tab_manager.get_active_folder()
     if not active_folder:
         return False, source_file_path, None
@@ -197,6 +201,11 @@ def handle_drop(
         tab_manager: TabManager instance for checking active folder.
         update_files_callback: Callback to refresh file list after move.
     """
+    # REGLA CRÍTICA: Drag & drop NO funciona en vistas por estado
+    if tab_manager.has_state_context():
+        event.ignore()
+        return
+    
     mime_data = event.mimeData()
     if not mime_data.hasUrls():
         event.ignore()

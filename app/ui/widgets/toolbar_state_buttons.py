@@ -8,10 +8,7 @@ from typing import Callable, Dict
 
 from PySide6.QtWidgets import QPushButton, QWidget
 
-from app.ui.widgets.toolbar_button_styles import (
-    get_clear_button_style,
-    get_state_button_style,
-)
+from app.ui.widgets.toolbar_button_styles import get_state_button_style
 
 
 def create_state_buttons(
@@ -66,7 +63,7 @@ def create_state_buttons(
     clear_btn = QPushButton("✕")
     clear_btn.setFixedSize(30, 30)
     clear_btn.setToolTip("Quitar estado de archivos seleccionados")
-    clear_btn.setStyleSheet(get_clear_button_style())
+    clear_btn.setStyleSheet(get_state_button_style())
     clear_btn.clicked.connect(lambda: state_button_clicked_signal(None))
     layout.addWidget(clear_btn)
     

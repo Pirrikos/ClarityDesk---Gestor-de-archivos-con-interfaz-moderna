@@ -4,47 +4,36 @@ from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QTreeVi
 
 from app.ui.widgets.folder_tree_menu_utils import calculate_menu_rect_viewport
 from app.ui.widgets.folder_tree_widget_utils import find_sidebar
+from app.ui.widgets.folder_tree_constants import (
+    CONTROLS_AREA_PAD_X_RIGHT,
+    CONTROLS_AREA_PADDING,
+    CONTROLS_AREA_OFFSET,
+    CONTROLS_AREA_BUTTON_SIZE,
+    CONTROLS_AREA_SEPARATOR_MARGIN,
+    CONTROLS_AREA_TOTAL_OFFSET,
+    MENU_BUTTON_SIZE,
+    MENU_BUTTON_PADDING,
+    MENU_BUTTON_VERTICAL_OFFSET,
+    MENU_BUTTON_MIN_TOP_MARGIN,
+    ARROW_SIZE,
+    ARROW_BODY_RATIO,
+    CHEVRON_CLICKABLE_WIDTH,
+    CHEVRON_CLICKABLE_HEIGHT,
+    CHEVRON_VERTICAL_SPACING,
+    CHEVRON_VERTICAL_OFFSET,
+    SEPARATOR_VERTICAL_COLOR,
+    SEPARATOR_VERTICAL_MARGIN_TOP,
+    SEPARATOR_VERTICAL_MARGIN_BOTTOM,
+    SEPARATOR_VERTICAL_TEXT_MARGIN,
+    SEPARATOR_HORIZONTAL_COLOR,
+    ROOT_ITEM_TOP_SPACING,
+)
 from app.core.constants import CHEVRON_COLOR, TEXT_SUBFOLDER
 from app.ui.widgets.folder_tree_styles import TEXT_PRIMARY
 
 
 class FolderTreeSectionDelegate(QStyledItemDelegate):
     """Delegate de pintura para agrupar visualmente la sección activa como bloque tipo tarjeta."""
-
-    CONTROLS_AREA_PAD_X_RIGHT = 10
-    CONTROLS_AREA_PADDING = 4
-    CONTROLS_AREA_OFFSET = 8
-    CONTROLS_AREA_BUTTON_SIZE = 24
-    CONTROLS_AREA_SEPARATOR_MARGIN = 12
-    
-    CONTROLS_AREA_TOTAL_OFFSET = (
-        CONTROLS_AREA_PAD_X_RIGHT + 
-        CONTROLS_AREA_PADDING + 
-        CONTROLS_AREA_OFFSET + 
-        CONTROLS_AREA_BUTTON_SIZE + 
-        CONTROLS_AREA_SEPARATOR_MARGIN
-    )
-    
-    MENU_BUTTON_SIZE = 24
-    MENU_BUTTON_PADDING = 4
-    MENU_BUTTON_VERTICAL_OFFSET = 6
-    MENU_BUTTON_MIN_TOP_MARGIN = 2
-    
-    ARROW_SIZE = 6
-    ARROW_BODY_RATIO = 0.6
-    CHEVRON_CLICKABLE_WIDTH = 32
-    CHEVRON_CLICKABLE_HEIGHT = 28
-    CHEVRON_VERTICAL_SPACING = 14
-    CHEVRON_VERTICAL_OFFSET = 0
-    
-    SEPARATOR_VERTICAL_COLOR = QColor(255, 255, 255, 40)
-    SEPARATOR_VERTICAL_MARGIN_TOP = 4
-    SEPARATOR_VERTICAL_MARGIN_BOTTOM = 4
-    SEPARATOR_VERTICAL_TEXT_MARGIN = 4
-    
-    SEPARATOR_HORIZONTAL_COLOR = QColor(255, 255, 255, 23)
-    
-    ROOT_ITEM_TOP_SPACING = 12  # Espacio arriba de cada bloque raíz
 
     def __init__(self, tree_view: QTreeView):
         super().__init__(tree_view)
@@ -266,8 +255,8 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         # Ajustar rectángulo para items raíz: desplazar contenido hacia abajo
         if is_root:
             adjusted_rect = QRect(option.rect)
-            adjusted_rect.setTop(option.rect.top() + self.ROOT_ITEM_TOP_SPACING)
-            adjusted_rect.setHeight(option.rect.height() - self.ROOT_ITEM_TOP_SPACING)
+            adjusted_rect.setTop(option.rect.top() + ROOT_ITEM_TOP_SPACING)
+            adjusted_rect.setHeight(option.rect.height() - ROOT_ITEM_TOP_SPACING)
             option.rect = adjusted_rect
         
         anim_data = self._animations.get(index)
@@ -300,7 +289,7 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                 painter.setBrush(QBrush(highlight_color))
                 painter.drawRoundedRect(option.rect, 6, 6)
             
-            pad_x_right = self.CONTROLS_AREA_PAD_X_RIGHT
+            pad_x_right = CONTROLS_AREA_PAD_X_RIGHT
             separator_x = self._calculate_separator_line_x(viewport_width)
             left = 0
             right = viewport_width - pad_x_right
@@ -332,12 +321,12 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             # painter.drawLine(0, separator_y, horizontal_right, separator_y)
             
             if should_draw_separator:
-                painter.setPen(QPen(self.SEPARATOR_VERTICAL_COLOR, 1))
+                painter.setPen(QPen(SEPARATOR_VERTICAL_COLOR, 1))
                 painter.drawLine(
                     int(separator_x), 
-                    int(option.rect.top() + self.SEPARATOR_VERTICAL_MARGIN_TOP), 
+                    int(option.rect.top() + SEPARATOR_VERTICAL_MARGIN_TOP), 
                     int(separator_x), 
-                    int(option.rect.bottom() - self.SEPARATOR_VERTICAL_MARGIN_BOTTOM)
+                    int(option.rect.bottom() - SEPARATOR_VERTICAL_MARGIN_BOTTOM)
                 )
             
             if is_child_anim and opacity < 1.0:
@@ -382,7 +371,7 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                     option.rect = option.rect.adjusted(icon_space, 0, 0, 0)
             
             if should_draw_separator:
-                text_clip_right = separator_x - self.SEPARATOR_VERTICAL_TEXT_MARGIN
+                text_clip_right = separator_x - SEPARATOR_VERTICAL_TEXT_MARGIN
                 if option.rect.right() > text_clip_right:
                     option.rect.setRight(text_clip_right)
             
@@ -417,7 +406,10 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         painter.save()
         try:
             sidebar = find_sidebar(self._view)
-            is_hovered = sidebar and sidebar._hovered_menu_index == index if sidebar else False
+            hovered_index = None
+            if sidebar and hasattr(sidebar, '_event_handler') and sidebar._event_handler:
+                hovered_index = sidebar._event_handler.hovered_menu_index
+            is_hovered = hovered_index == index if hovered_index else False
             
             dot_color = QColor(255, 255, 255)  # Color blanco
             dot_color.setAlpha(255 if is_hovered else 200)  # Ligeramente más transparente cuando no está hover
@@ -438,17 +430,17 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             painter.restore()
     
     def _get_menu_button_rect(self, option: QStyleOptionViewItem, index) -> QRect:
-        button_size = self.MENU_BUTTON_SIZE
+        button_size = MENU_BUTTON_SIZE
         viewport_width = self._view.viewport().width()
-        right_abs = viewport_width - self.CONTROLS_AREA_PAD_X_RIGHT - self.CONTROLS_AREA_PADDING - self.CONTROLS_AREA_OFFSET
+        right_abs = viewport_width - CONTROLS_AREA_PAD_X_RIGHT - CONTROLS_AREA_PADDING - CONTROLS_AREA_OFFSET
         
         left_rel = right_abs - button_size - option.rect.left()
         left_rel = max(0, left_rel)
         
         item_height = option.rect.height()
-        center_y_rel = (item_height // 2) - self.MENU_BUTTON_VERTICAL_OFFSET
+        center_y_rel = (item_height // 2) - MENU_BUTTON_VERTICAL_OFFSET
         top_rel = center_y_rel - button_size // 2
-        top_rel = max(self.MENU_BUTTON_MIN_TOP_MARGIN, top_rel)
+        top_rel = max(MENU_BUTTON_MIN_TOP_MARGIN, top_rel)
         bottom_rel = min(item_height, top_rel + button_size)
         
         height = bottom_rel - top_rel
@@ -460,22 +452,22 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             style = self._view.style()
             text_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, self._view)
             if text_rect.isValid():
-                center_x = text_rect.right() - self.CONTROLS_AREA_OFFSET
+                center_x = text_rect.right() - CONTROLS_AREA_OFFSET
             else:
-                center_x = option.rect.right() - self.CONTROLS_AREA_BUTTON_SIZE
+                center_x = option.rect.right() - CONTROLS_AREA_BUTTON_SIZE
             item_height = option.rect.height()
-            center_y = (item_height // 2) + self.CHEVRON_VERTICAL_OFFSET
+            center_y = (item_height // 2) + CHEVRON_VERTICAL_OFFSET
         else:
             menu_rect_abs = calculate_menu_rect_viewport(menu_rect, option.rect)
             center_x = menu_rect_abs.center().x()
             dot_radius = 2.0
-            center_y = menu_rect_abs.center().y() - 4 + dot_radius + self.CHEVRON_VERTICAL_SPACING + self.CHEVRON_VERTICAL_OFFSET
+            center_y = menu_rect_abs.center().y() - 4 + dot_radius + CHEVRON_VERTICAL_SPACING + CHEVRON_VERTICAL_OFFSET
         
         return center_x, center_y
     
     def _get_chevron_clickable_rect(self, option: QStyleOptionViewItem, index: QModelIndex) -> QRect:
-        clickable_width = self.CHEVRON_CLICKABLE_WIDTH
-        clickable_height = self.CHEVRON_CLICKABLE_HEIGHT
+        clickable_width = CHEVRON_CLICKABLE_WIDTH
+        clickable_height = CHEVRON_CLICKABLE_HEIGHT
         
         center_x, center_y = self._calculate_chevron_center(option, index)
         
@@ -538,14 +530,14 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             painter.restore()
 
     def _calculate_separator_line_x(self, viewport_width: int) -> int:
-        return viewport_width - self.CONTROLS_AREA_TOTAL_OFFSET
+        return viewport_width - CONTROLS_AREA_TOTAL_OFFSET
     
     def sizeHint(self, option: QStyleOptionViewItem, index) -> QSize:
         """Aumentar altura para items raíz para crear espacio arriba."""
         base_size = super().sizeHint(option, index)
         is_root = not index.parent().isValid()
         if is_root:
-            return QSize(base_size.width(), base_size.height() + self.ROOT_ITEM_TOP_SPACING)
+            return QSize(base_size.width(), base_size.height() + ROOT_ITEM_TOP_SPACING)
         return base_size
     
     def editorEvent(self, event: QEvent, model, option: QStyleOptionViewItem, index) -> bool:

@@ -51,14 +51,6 @@ class TopLevelDetector(QObject):
                         f"flags: {flags}, "
                         f"parent: {parent_name}"
                     )
-                    print(
-                        f"\n[TOP-LEVEL DETECTED] "
-                        f"Clase: {class_name}, "
-                        f"objectName: {object_name}, "
-                        f"isWindow: {is_window}, "
-                        f"flags: {flags}, "
-                        f"parent: {parent_name}\n"
-                    )
         
         return super().eventFilter(obj, event)
 

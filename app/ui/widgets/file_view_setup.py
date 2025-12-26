@@ -14,6 +14,7 @@ from app.core.constants import CENTRAL_AREA_BG, FILE_VIEW_LEFT_MARGIN
 from app.ui.widgets.file_grid_view import FileGridView
 from app.ui.widgets.file_list_view import FileListView
 from app.ui.widgets.focus_header_panel import FocusHeaderPanel
+from app.ui.widgets.path_footer_widget import PathFooterWidget
 
 if TYPE_CHECKING:
     from app.ui.windows.desktop_window import DesktopWindow
@@ -42,6 +43,7 @@ def setup_ui(container: "FileViewContainer") -> None:
     _setup_toolbar(container, layout, is_desktop_window)
     _setup_focus_panel(container, layout, is_desktop_window)
     _setup_views(container, layout)
+    _setup_footer(container, layout, is_desktop_window)
     _connect_view_signals(container)
 
 
@@ -121,7 +123,27 @@ def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
     
     views_layout.addWidget(container._stacked, 1)
     
-    layout.addLayout(views_layout)
+    layout.addLayout(views_layout, 1)  # Stretch=1 para que ocupe espacio disponible
+
+
+def _setup_footer(container: "FileViewContainer", layout: QVBoxLayout, is_desktop_window: bool) -> None:
+    """Setup footer widget for displaying selected file path."""
+    if is_desktop_window:
+        # No footer en desktop mode
+        container._path_footer = None
+        return
+    
+    from PySide6.QtWidgets import QSizePolicy
+    
+    container._path_footer = PathFooterWidget(container)
+    container._path_footer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    container._path_footer.setStyleSheet("""
+        QWidget {
+            background-color: #F5F5F7;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+    """)
+    layout.addWidget(container._path_footer, 0)  # Stretch=0 para altura fija
 
 
 def _connect_view_signals(container: "FileViewContainer") -> None:

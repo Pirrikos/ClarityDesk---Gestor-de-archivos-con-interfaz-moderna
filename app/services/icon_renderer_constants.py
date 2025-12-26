@@ -4,17 +4,13 @@ IconRendererConstants - Constants for icon rendering.
 SVG icon mapping and color definitions.
 """
 
+import os
+from pathlib import Path
+
 from PySide6.QtGui import QColor
 
 # Poppler path
-from pathlib import Path
-POPPLER_PATH = (
-    Path(__file__).resolve()
-    .parent.parent.parent
-    / "assets"
-    / "poppler"
-    / "bin"
-)
+POPPLER_PATH = Path(__file__).parent.parent.parent / "assets" / "poppler" / "bin"
 
 # SVG icon mapping
 SVG_ICON_MAP = {

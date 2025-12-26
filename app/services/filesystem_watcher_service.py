@@ -9,6 +9,7 @@ import os
 from typing import Optional
 
 from app.core.constants import FILE_SYSTEM_DEBOUNCE_MS
+from app.services.path_utils import is_state_context_path
 from PySide6.QtCore import QObject, QFileSystemWatcher, QTimer, Signal
 
 
@@ -53,6 +54,9 @@ class FileSystemWatcherService(QObject):
         ALWAYS stops previous watcher before adding new one.
         Only watches the active folder.
 
+        IMPORTANTE: Los contextos de estado (@state://...) NO son paths del filesystem.
+        NO se observan. Se retorna True sin observar.
+
         Args:
             folder_path: Path to the folder to watch.
 
@@ -64,6 +68,10 @@ class FileSystemWatcherService(QObject):
 
         if not folder_path:
             return False
+        
+        # REGLA CRÍTICA: Ignorar paths virtuales de estado
+        if is_state_context_path(folder_path):
+            return True  # Retornar True sin observar
 
         # Clear previous snapshot when changing folders
         # Set to empty list (not None) to indicate we have an initial snapshot

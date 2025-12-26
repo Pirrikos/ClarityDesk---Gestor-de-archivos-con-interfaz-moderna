@@ -82,7 +82,7 @@ def _get_log_directory() -> Path:
         return Path.home() / '.local' / 'share' / 'ClarityDesk' / 'logs'
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
+def get_logger(name: Optional[str] = None, level: Optional[int] = None) -> logging.Logger:
     """
     Get logger instance for a module.
     
@@ -90,6 +90,8 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     
     Args:
         name: Optional logger name. If None, uses caller's __name__.
+        level: Optional logging level. If None, uses default (INFO).
+               Use logging.DEBUG for debug messages.
     
     Returns:
         Logger instance.
@@ -103,5 +105,8 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         else:
             name = 'claritydesk'
     
-    return setup_logger(name)
+    if level is None:
+        level = logging.INFO
+    
+    return setup_logger(name, level=level)
 

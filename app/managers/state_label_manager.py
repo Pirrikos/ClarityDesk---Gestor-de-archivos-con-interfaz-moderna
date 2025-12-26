@@ -5,14 +5,16 @@ Orchestrates state label management: persistence + UI updates.
 Emits signals to notify UI of label changes.
 """
 
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from PySide6.QtCore import QObject, Signal
 
 from app.services.state_label_storage import (
     get_custom_label,
     load_custom_labels,
+    load_state_order,
     remove_custom_label,
+    save_state_order,
     set_custom_label,
 )
 from app.ui.widgets.state_badge_widget import (
@@ -31,18 +33,28 @@ logger = get_logger(__name__)
 class StateLabelManager(QObject):
     """Manager for custom state label names with persistence and UI updates."""
     
+    # Valid state constants (centralized to avoid duplication)
+    _VALID_STATES = [STATE_PENDING, STATE_DELIVERED, STATE_CORRECTED, STATE_REVIEW]
+    
     # Signal emitted when labels change
     labels_changed = Signal()  # Emitted when any label is renamed
+    state_label_changed = Signal(str)  # Emitted when a specific state label is renamed (state_id)
     
     def __init__(self):
-        """Initialize manager and load custom labels."""
+        """Initialize manager and load custom labels and order."""
         super().__init__()
         self._custom_labels: Dict[str, str] = {}
+        self._state_order: List[str] = []
         self._load_custom_labels()
+        self._load_state_order()
     
     def _load_custom_labels(self) -> None:
         """Load custom labels from storage."""
         self._custom_labels = load_custom_labels()
+    
+    def _load_state_order(self) -> None:
+        """Load state order from storage."""
+        self._state_order = load_state_order()
     
     def get_label(self, state: str) -> str:
         """
@@ -66,7 +78,7 @@ class StateLabelManager(QObject):
             Dictionary mapping state constants to display labels.
         """
         result = {}
-        for state in [STATE_PENDING, STATE_DELIVERED, STATE_CORRECTED, STATE_REVIEW]:
+        for state in self._VALID_STATES:
             result[state] = self.get_label(state)
         return result
     
@@ -83,8 +95,7 @@ class StateLabelManager(QObject):
             error_message is None on success.
         """
         # Validate state constant
-        valid_states = [STATE_PENDING, STATE_DELIVERED, STATE_CORRECTED, STATE_REVIEW]
-        if state not in valid_states:
+        if state not in self._VALID_STATES:
             return False, f"Estado inválido: {state}"
         
         # Validate label not empty
@@ -105,8 +116,9 @@ class StateLabelManager(QObject):
         # Update cache
         self._custom_labels[state] = new_label
         
-        # Emit signal for UI update
+        # Emit signals for UI update
         self.labels_changed.emit()
+        self.state_label_changed.emit(state)
         
         logger.info(f"State label renamed: {state} -> {new_label}")
         return True, None
@@ -130,8 +142,9 @@ class StateLabelManager(QObject):
         # Update cache
         self._custom_labels.pop(state, None)
         
-        # Emit signal for UI update
+        # Emit signals for UI update
         self.labels_changed.emit()
+        self.state_label_changed.emit(state)
         
         logger.info(f"State label reset to default: {state}")
         return True
@@ -148,11 +161,50 @@ class StateLabelManager(QObject):
             True if labels changed, False otherwise.
         """
         old_labels = self._custom_labels.copy()
+        old_order = self._state_order.copy()
         self._load_custom_labels()
+        self._load_state_order()
         
-        if old_labels != self._custom_labels:
+        if old_labels != self._custom_labels or old_order != self._state_order:
             self.labels_changed.emit()
             logger.info("State labels refreshed from storage")
             return True
         return False
+    
+    def get_states_in_order(self) -> List[str]:
+        """
+        Get all states in their display order.
+        
+        Returns:
+            List of state constants in display order.
+        """
+        return self._state_order.copy()
+    
+    def reorder_states(self, new_order: List[str]) -> bool:
+        """
+        Reorder states and persist the new order.
+        
+        Args:
+            new_order: List of state constants in new display order.
+            
+        Returns:
+            True if reordered successfully, False otherwise.
+        """
+        # Validar que todos los estados están presentes
+        if set(new_order) != set(self._VALID_STATES):
+            logger.error("Invalid state order: missing or extra states")
+            return False
+        
+        # Guardar nuevo orden
+        if not save_state_order(new_order):
+            return False
+        
+        # Actualizar cache
+        self._state_order = new_order.copy()
+        
+        # Emitir signal para actualizar UI
+        self.labels_changed.emit()
+        
+        logger.info(f"State order updated: {new_order}")
+        return True
 

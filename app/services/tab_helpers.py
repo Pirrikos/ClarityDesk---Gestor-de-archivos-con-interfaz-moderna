@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from app.services.path_utils import normalize_path
+from app.services.path_utils import normalize_path, is_state_context_path
 from app.services.desktop_path_helper import DESKTOP_FOCUS_PATH, is_desktop_focus
 from app.services.trash_storage import TRASH_FOCUS_PATH
 from app.services.file_path_utils import validate_folder as validate_folder_base
@@ -68,6 +68,9 @@ def validate_folder(folder_path: str) -> bool:
     Validate that a folder path exists and is accessible.
     Allows Desktop Focus and Trash Focus (virtual paths).
     
+    REGLA CRÍTICA: Los contextos de estado (@state://...) NO son válidos como tabs.
+    Solo son válidos como contextos temporales, no como carpetas navegables.
+    
     Usa file_path_utils.validate_folder como base y agrega soporte para paths virtuales.
 
     Args:
@@ -77,6 +80,11 @@ def validate_folder(folder_path: str) -> bool:
         True if valid folder, False otherwise.
     """
     if not folder_path or not isinstance(folder_path, str):
+        return False
+
+    # REGLA CRÍTICA: Rechazar paths virtuales de estado
+    # Los contextos de estado NO son tabs válidos
+    if is_state_context_path(folder_path):
         return False
 
     # Allow Desktop Focus (real Desktop or virtual identifier)

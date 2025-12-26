@@ -9,8 +9,9 @@ import os
 from app.services.path_utils import normalize_path
 
 
-# Virtual path identifier for Desktop Focus
 DESKTOP_FOCUS_PATH = "__CLARITY_DESKTOP__"
+
+_desktop_path_cache: str | None = None
 
 
 def get_desktop_path() -> str:
@@ -20,6 +21,11 @@ def get_desktop_path() -> str:
     Returns:
         Desktop folder path as string.
     """
+    global _desktop_path_cache
+    
+    if _desktop_path_cache is not None:
+        return _desktop_path_cache
+    
     try:
         import winreg
         key = winreg.OpenKey(
@@ -28,9 +34,12 @@ def get_desktop_path() -> str:
         )
         desktop_path = winreg.QueryValueEx(key, "Desktop")[0]
         winreg.CloseKey(key)
+        _desktop_path_cache = desktop_path
         return desktop_path
     except Exception:
-        return os.path.join(os.path.expanduser("~"), "Desktop")
+        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+        _desktop_path_cache = desktop_path
+        return desktop_path
 
 
 def is_desktop_focus(path: str) -> bool:

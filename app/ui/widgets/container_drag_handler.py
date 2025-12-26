@@ -16,6 +16,11 @@ from app.ui.widgets.drag_common import is_same_folder_drop
 
 def handle_drag_enter(event: QDragEnterEvent, tab_manager=None) -> None:
     """Handle drag enter for file drop on main widget."""
+    # REGLA CRÍTICA: Drag & drop NO funciona en vistas por estado
+    if tab_manager and tab_manager.has_state_context():
+        event.ignore()
+        return
+    
     mime_data = event.mimeData()
     if not mime_data.hasUrls():
         event.ignore()
@@ -43,6 +48,11 @@ def handle_drag_move(event: QDragMoveEvent, tab_manager=None) -> None:
     
     Mejora: Determina acción (move/copy) según tecla modificadora para mejor feedback visual.
     """
+    # REGLA CRÍTICA: Drag & drop NO funciona en vistas por estado
+    if tab_manager and tab_manager.has_state_context():
+        event.ignore()
+        return
+    
     mime_data = event.mimeData()
     if not mime_data.hasUrls():
         event.ignore()
@@ -84,6 +94,11 @@ def handle_drop(event: QDropEvent, tab_manager, file_dropped_signal) -> None:
         tab_manager: TabManager instance for checking active folder.
         file_dropped_signal: Signal to emit when file is dropped.
     """
+    # REGLA CRÍTICA: Drag & drop NO funciona en vistas por estado
+    if tab_manager.has_state_context():
+        event.ignore()
+        return
+    
     mime_data = event.mimeData()
     if not mime_data.hasUrls():
         event.ignore()

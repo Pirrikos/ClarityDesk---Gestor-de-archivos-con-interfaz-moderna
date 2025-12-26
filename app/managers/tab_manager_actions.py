@@ -4,14 +4,20 @@ Tab actions for TabManager.
 Handles tab operations: add, remove, select, and get files.
 """
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
+
 import os
 
 from app.services.file_extensions import SUPPORTED_EXTENSIONS
 from app.services.file_list_service import get_files
-from app.services.path_utils import normalize_path
+from app.services.path_utils import is_state_context_path, normalize_path
 from app.services.tab_helpers import find_tab_index, validate_folder
 from app.services.tab_history_manager import TabHistoryManager
+
+if TYPE_CHECKING:
+    from PySide6.QtCore import Signal
+    from app.managers.tab_manager import TabManager
+    from app.services.filesystem_watcher_service import FileSystemWatcherService
 
 
 def adjust_active_index_after_remove(
@@ -41,17 +47,30 @@ def adjust_active_index_after_remove(
 
 
 def add_tab(
-    manager,
+    manager: "TabManager",
     folder_path: str,
     tabs: List[str],
     active_index: int,
     history_manager: TabHistoryManager,
-    save_state_callback,
-    watch_and_emit_callback,
-    tabs_changed_signal=None,
-    active_tab_changed_signal=None
+    save_state_callback: Callable[[], None],
+    watch_and_emit_callback: Callable[[str], None],
+    tabs_changed_signal: Optional["Signal"] = None,
+    active_tab_changed_signal: Optional["Signal"] = None
 ) -> tuple[bool, List[str], int]:
-    """Add a folder as a tab and make it active."""
+    """
+    Add a folder as a tab and make it active.
+    
+    REGLA CRÍTICA: Los contextos de estado NO pueden ser tabs.
+    Un tab solo puede contener un path físico del filesystem.
+    
+    REGLA OBLIGATORIA: Toda navegación a un path físico debe limpiar siempre el contexto de estado.
+    REGLA OBLIGATORIA: Pasar de un contexto de estado a una carpeta física SIEMPRE es un cambio de contexto,
+    aunque el path coincida con el último folder físico.
+    """
+    # Rechazar explícitamente paths virtuales de estado
+    if is_state_context_path(folder_path):
+        return False, tabs, active_index
+    
     if not validate_folder(folder_path):
         return False, tabs, active_index
 
@@ -60,9 +79,23 @@ def add_tab(
     # Avoid duplicates using normalized comparison
     existing_index = find_tab_index(tabs, normalized_path)
     if existing_index is not None:
+        # REGLA OBLIGATORIA: Si el tab existe, dejar que select_tab maneje la limpieza del contexto
+        # para que pueda forzar navegación cuando hay contexto de estado activo
         # Get watcher from manager
         watcher = manager._watcher if hasattr(manager, '_watcher') else None
         return select_tab(manager, existing_index, tabs, active_index, history_manager, watcher, save_state_callback, watch_and_emit_callback)
+    
+    # REGLA OBLIGATORIA: Limpiar contexto de estado antes de crear nuevo tab
+    # (solo si no existe el tab, porque si existe, select_tab ya lo maneja)
+    if hasattr(manager, '_current_state_context') and manager._current_state_context:
+        manager.clear_state_context()
+        # Restaurar modo del workspace al volver a carpeta normal
+        if hasattr(manager, '_workspace_manager') and manager._workspace_manager:
+            workspace_mode = manager._workspace_manager.get_view_mode()
+            manager._current_view_mode = workspace_mode
+            # Emitir señal para restaurar el modo del workspace
+            if hasattr(manager, 'view_mode_changed'):
+                manager.view_mode_changed.emit(workspace_mode)
 
     new_tabs = tabs.copy()
     # Guardar el path ORIGINAL (case-preserving) para presentación
@@ -84,16 +117,16 @@ def add_tab(
 
 
 def remove_tab(
-    manager,
+    manager: "TabManager",
     index: int,
     tabs: List[str],
     active_index: int,
-    watcher,
-    save_state_callback,
-    watch_and_emit_callback,
-    tabs_changed_signal,
-    active_tab_changed_signal,
-    focus_cleared_signal=None
+    watcher: "FileSystemWatcherService",
+    save_state_callback: Callable[[], None],
+    watch_and_emit_callback: Callable[[str], None],
+    tabs_changed_signal: "Signal",
+    active_tab_changed_signal: "Signal",
+    focus_cleared_signal: Optional["Signal"] = None
 ) -> tuple[bool, List[str], int]:
     """Remove a tab by index."""
     if not (0 <= index < len(tabs)):
@@ -124,17 +157,13 @@ def remove_tab(
             active_tab_changed_signal.emit(-1, "")
         else:
             # There are more tabs - activate the next one
-            try:
+            if hasattr(manager, '_active_index'):
                 manager._active_index = new_active_index
-            except Exception:
-                pass
             watch_and_emit_callback(new_tabs[new_active_index])
     elif new_active_index >= 0:
         # Not the active tab was removed - continue normally
-        try:
+        if hasattr(manager, '_active_index'):
             manager._active_index = new_active_index
-        except Exception:
-            pass
         watch_and_emit_callback(new_tabs[new_active_index])
     else:
         # Edge case: inactive tab removed and no tabs remain
@@ -146,16 +175,16 @@ def remove_tab(
 
 
 def remove_tab_by_path(
-    manager,
+    manager: "TabManager",
     folder_path: str,
     tabs: List[str],
     active_index: int,
-    watcher,
-    save_state_callback,
-    watch_and_emit_callback,
-    tabs_changed_signal,
-    active_tab_changed_signal,
-    focus_cleared_signal=None
+    watcher: "FileSystemWatcherService",
+    save_state_callback: Callable[[], None],
+    watch_and_emit_callback: Callable[[str], None],
+    tabs_changed_signal: "Signal",
+    active_tab_changed_signal: "Signal",
+    focus_cleared_signal: Optional["Signal"] = None
 ) -> tuple[bool, List[str], int]:
     """
     Remove a tab by folder path, also removing any child tabs under that path.
@@ -207,31 +236,75 @@ def remove_tab_by_path(
 
 
 def select_tab(
-    manager,
+    manager: "TabManager",
     index: int,
     tabs: List[str],
     active_index: int,
     history_manager: TabHistoryManager,
-    watcher,
-    save_state_callback,
-    watch_and_emit_callback
+    watcher: "FileSystemWatcherService",
+    save_state_callback: Callable[[], None],
+    watch_and_emit_callback: Callable[[str], None]
 ) -> tuple[bool, List[str], int]:
-    """Select a tab as active."""
+    """
+    Select a tab as active.
+    
+    REGLA OBLIGATORIA: Toda navegación a un path físico debe limpiar siempre el contexto de estado.
+    REGLA OBLIGATORIA: Pasar de un contexto de estado a una carpeta física SIEMPRE es un cambio de contexto,
+    aunque el path coincida con el último folder físico.
+    REGLA OBLIGATORIA: La limpieza del contexto debe ocurrir ANTES de cualquier comparación o return temprano.
+    """
     if not (0 <= index < len(tabs)):
         return False, tabs, active_index
 
+    folder_path = tabs[index]
+    
+    # Rechazar explícitamente si el tab contiene un path virtual de estado
+    # (aunque esto no debería pasar nunca, es una protección adicional)
+    if is_state_context_path(folder_path):
+        return False, tabs, active_index
+    
+    # REGLA OBLIGATORIA: Limpiar contexto de estado SIEMPRE al seleccionar un tab físico
+    # Esto debe ocurrir ANTES de cualquier comparación o return temprano
+    # para garantizar que la vista se actualice correctamente
+    has_state_context = hasattr(manager, '_current_state_context') and manager._current_state_context
+    if has_state_context:
+        manager.clear_state_context()
+        # Restaurar modo del workspace al volver a carpeta normal
+        if hasattr(manager, '_workspace_manager') and manager._workspace_manager:
+            workspace_mode = manager._workspace_manager.get_view_mode()
+            manager._current_view_mode = workspace_mode
+            # Emitir señal para restaurar el modo del workspace
+            if hasattr(manager, 'view_mode_changed'):
+                manager.view_mode_changed.emit(workspace_mode)
+    
+    # REGLA OBLIGATORIA: Si se limpió el contexto de estado, SIEMPRE actualizar la vista
+    # incluso si el índice es el mismo, porque el contexto cambió
+    if has_state_context:
+        # Forzar actualización completa aunque el índice sea el mismo
+        watcher.stop_watching()
+        new_active_index = index
+        history_manager.update_on_navigate(folder_path, normalize_path)
+        
+        # Update manager active index BEFORE emitting, to ensure correct index in signal
+        if hasattr(manager, '_active_index'):
+            manager._active_index = new_active_index
+        save_state_callback()
+        watch_and_emit_callback(folder_path)
+        return True, tabs, new_active_index
+    
+    # REGLA OBLIGATORIA: Optimización solo si NO hay contexto de estado (ya limpiado arriba)
+    # y el índice es el mismo
     if active_index == index:
         return True, tabs, active_index
 
     watcher.stop_watching()
-    folder_path = tabs[index]
+    
     new_active_index = index
     history_manager.update_on_navigate(folder_path, normalize_path)
+    
     # Update manager active index BEFORE emitting, to ensure correct index in signal
-    try:
+    if hasattr(manager, '_active_index'):
         manager._active_index = new_active_index
-    except Exception:
-        pass
     save_state_callback()
     watch_and_emit_callback(folder_path)
     return True, tabs, new_active_index
@@ -249,7 +322,12 @@ def get_files_from_active_tab(
     return get_files(active_folder, ext_set, use_stacks=use_stacks)
 
 
-def activate_tab(manager, index: int, get_tabs_callback, select_tab_callback) -> None:
+def activate_tab(
+    manager: "TabManager",
+    index: int,
+    get_tabs_callback: Callable[[], List[str]],
+    select_tab_callback: Callable[[int], None]
+) -> None:
     """Activate tab by index with validation."""
     tabs = get_tabs_callback()
     if not (0 <= index < len(tabs)):

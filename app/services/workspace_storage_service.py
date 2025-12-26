@@ -15,7 +15,7 @@ from app.models.workspace import Workspace
 
 def get_storage_dir() -> Path:
     """Get storage directory path."""
-    storage_dir = Path(__file__).resolve().parents[2] / 'storage'
+    storage_dir = Path(__file__).parent.parent.parent / 'storage'
     storage_dir.mkdir(parents=True, exist_ok=True)
     return storage_dir
 
@@ -38,11 +38,12 @@ def load_workspaces() -> List[Workspace]:
         List of Workspace instances.
     """
     workspaces_file = get_workspaces_file()
-    if not workspaces_file.exists():
+    workspaces_file_str = str(workspaces_file)
+    if not os.path.exists(workspaces_file_str):
         return []
     
     try:
-        with open(workspaces_file, 'r', encoding='utf-8') as f:
+        with open(workspaces_file_str, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         workspaces_list = data.get('workspaces', [])
@@ -82,6 +83,7 @@ def save_workspaces(workspaces: List[Workspace], active_workspace_id: Optional[s
         active_workspace_id: ID of currently active workspace.
     """
     workspaces_file = get_workspaces_file()
+    workspaces_file_str = str(workspaces_file)
     
     workspaces_data = []
     for workspace in workspaces:
@@ -97,10 +99,10 @@ def save_workspaces(workspaces: List[Workspace], active_workspace_id: Optional[s
     }
     
     try:
-        temp_path = workspaces_file.with_suffix('.tmp')
+        temp_path = workspaces_file_str + '.tmp'
         with open(temp_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(temp_path, workspaces_file)
+        os.replace(temp_path, workspaces_file_str)
     except (IOError, OSError):
         pass
 
@@ -117,11 +119,12 @@ def load_workspace_state(workspace_id: str) -> Optional[dict]:
         or None if file doesn't exist or is invalid.
     """
     state_file = get_workspace_state_file(workspace_id)
-    if not state_file.exists():
+    state_file_str = str(state_file)
+    if not os.path.exists(state_file_str):
         return None
     
     try:
-        with open(state_file, 'r', encoding='utf-8') as f:
+        with open(state_file_str, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         return {
@@ -145,6 +148,7 @@ def save_workspace_state(workspace_id: str, state: dict) -> None:
         state: State dict with keys: tabs, active_tab, focus_tree_paths, expanded_nodes, root_folders_order, view_mode
     """
     state_file = get_workspace_state_file(workspace_id)
+    state_file_str = str(state_file)
     
     data = {
         'tabs': state.get('tabs', []),
@@ -156,10 +160,10 @@ def save_workspace_state(workspace_id: str, state: dict) -> None:
     }
     
     try:
-        temp_path = state_file.with_suffix('.tmp')
+        temp_path = state_file_str + '.tmp'
         with open(temp_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        os.replace(temp_path, state_file)
+        os.replace(temp_path, state_file_str)
     except (IOError, OSError):
         pass
 
@@ -172,11 +176,12 @@ def get_active_workspace_id() -> Optional[str]:
         Workspace ID or None if not found.
     """
     workspaces_file = get_workspaces_file()
-    if not workspaces_file.exists():
+    workspaces_file_str = str(workspaces_file)
+    if not os.path.exists(workspaces_file_str):
         return None
     
     try:
-        with open(workspaces_file, 'r', encoding='utf-8') as f:
+        with open(workspaces_file_str, 'r', encoding='utf-8') as f:
             data = json.load(f)
         return data.get('active_workspace_id')
     except (json.JSONDecodeError, IOError, OSError):

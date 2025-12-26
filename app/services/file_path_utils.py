@@ -5,6 +5,7 @@ Pure utility functions for validating paths and resolving filename conflicts.
 No Qt dependencies.
 """
 
+import os
 from pathlib import Path
 from typing import Optional
 

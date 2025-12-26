@@ -34,6 +34,14 @@ def on_active_tab_changed(container, index: int, path: str) -> None:
         # Animación de transición suave (<300ms)
         if hasattr(container, "_animate_content_transition"):
             container._animate_content_transition()
+    
+    # Limpiar selección al navegar a estado (path es None pero hay estado activo)
+    # Esto evita que archivos seleccionados antes del cambio de estado aparezcan seleccionados
+    # en la nueva vista por estado, siguiendo comportamiento profesional (Finder/Explorer)
+    if not path and container._tab_manager.has_state_context():
+        from app.ui.widgets.file_view_sync import clear_selection
+        clear_selection(container)
+    
     container._update_nav_buttons_state()
 
 

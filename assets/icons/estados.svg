@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+
+  <!-- Etiqueta (azul) -->
+  <path d="M3.5 10.1V6.9C3.5 5.57 4.57 4.5 5.9 4.5H12.2C12.73 4.5 13.24 4.71 13.62 5.08L20.02 11.48C20.41 11.87 20.41 12.5 20.02 12.89L13.02 19.89C12.63 20.28 12 20.28 11.61 19.89L5.08 13.36C4.71 12.98 4.5 12.47 4.5 11.94V10.1"
+        stroke="#4A90E2" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Punto etiqueta (naranja) -->
+  <path d="M8.2 8.1H8.21"
+        stroke="#F2994A" stroke-width="2.4" stroke-linecap="round"/>
+
+  <!-- Línea estado 1 (amarillo) -->
+  <path d="M9.8 12.2H15.4"
+        stroke="#F2C94C" stroke-width="1.7" stroke-linecap="round"/>
+
+  <!-- Línea estado 2 (verde) -->
+  <path d="M9.8 14.9H14.6"
+        stroke="#27AE60" stroke-width="1.7" stroke-linecap="round"/>
+
+</svg>

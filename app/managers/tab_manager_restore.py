@@ -21,7 +21,21 @@ def restore_tab_manager_state(
     tabs_changed_signal,
     active_tab_changed_signal
 ) -> tuple[List[str], int]:
-    """Restore state from saved state without creating new history entries."""
+    """
+    Restore state from saved state without creating new history entries.
+    
+    REGLA OBLIGATORIA: Toda navegación a un path físico debe limpiar siempre el contexto de estado.
+    """
+    # REGLA OBLIGATORIA: Limpiar contexto de estado antes de restaurar paths físicos
+    if hasattr(manager, '_current_state_context') and manager._current_state_context:
+        manager.clear_state_context()
+        # Restaurar modo del workspace al volver a carpeta normal
+        if hasattr(manager, '_workspace_manager') and manager._workspace_manager:
+            workspace_mode = manager._workspace_manager.get_view_mode()
+            manager._current_view_mode = workspace_mode
+            if hasattr(manager, 'view_mode_changed'):
+                manager.view_mode_changed.emit(workspace_mode)
+    
     new_tabs, new_active_index = state_restore_state(
         tabs,
         active_tab_path,

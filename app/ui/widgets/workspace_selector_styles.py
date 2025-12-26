@@ -74,13 +74,28 @@ def get_base_stylesheet() -> str:
             font-size: 14px;
             font-weight: bold;
         }}
+        QPushButton#HeaderButton:checked {{
+            background-color: rgba(255, 255, 255, 0.2) !important;
+            border: 1px solid {BUTTON_BORDER_HEADER} !important;
+            color: {BUTTON_TEXT_HEADER_HOVER} !important;
+        }}
         QPushButton#HeaderButton:hover {{
             background-color: {BUTTON_BG_HEADER_HOVER};
             border-color: {BUTTON_BORDER_HEADER_HOVER};
             color: {BUTTON_TEXT_HEADER_HOVER};
         }}
+        QPushButton#HeaderButton:checked:hover {{
+            background-color: rgba(255, 255, 255, 0.25) !important;
+            border-color: {BUTTON_BORDER_HEADER} !important;
+            color: {BUTTON_TEXT_HEADER_HOVER} !important;
+        }}
         QPushButton#HeaderButton:pressed {{
             background-color: {BUTTON_BG_HEADER_PRESSED};
+        }}
+        QPushButton#HeaderButton:checked:pressed {{
+            background-color: rgba(255, 255, 255, 0.2) !important;
+            border-color: {BUTTON_BORDER_HEADER} !important;
+            color: {BUTTON_TEXT_HEADER_HOVER} !important;
         }}
         QPushButton#HeaderButton:disabled {{
             background-color: {BUTTON_BG_HEADER};
@@ -88,6 +103,50 @@ def get_base_stylesheet() -> str:
             color: {BUTTON_TEXT_HEADER_DISABLED};
         }}
     """
+
+
+def get_view_toggle_button_style(checked: bool) -> str:
+    """Get stylesheet for view toggle buttons (Grid/List) based on checked state."""
+    if checked:
+        return """
+            QPushButton#ViewToggleButton {
+                background-color: rgba(255, 255, 255, 0.2) !important;
+                border: 1px solid rgba(255, 255, 255, 0.08) !important;
+                border-radius: 6px !important;
+                color: rgba(255, 255, 255, 0.9) !important;
+                font-size: 14px !important;
+                font-weight: bold !important;
+            }
+            QPushButton#ViewToggleButton:hover {
+                background-color: rgba(255, 255, 255, 0.25) !important;
+                border-color: rgba(255, 255, 255, 0.08) !important;
+                color: rgba(255, 255, 255, 0.9) !important;
+            }
+            QPushButton#ViewToggleButton:pressed {
+                background-color: rgba(255, 255, 255, 0.2) !important;
+                border-color: rgba(255, 255, 255, 0.08) !important;
+                color: rgba(255, 255, 255, 0.9) !important;
+            }
+        """
+    else:
+        return """
+            QPushButton#ViewToggleButton {
+                background-color: rgba(255, 255, 255, 0.03) !important;
+                border: 1px solid rgba(255, 255, 255, 0.08) !important;
+                border-radius: 6px !important;
+                color: rgba(255, 255, 255, 0.7) !important;
+                font-size: 14px !important;
+                font-weight: bold !important;
+            }
+            QPushButton#ViewToggleButton:hover {
+                background-color: rgba(255, 255, 255, 0.08) !important;
+                border-color: rgba(255, 255, 255, 0.15) !important;
+                color: rgba(255, 255, 255, 0.9) !important;
+            }
+            QPushButton#ViewToggleButton:pressed {
+                background-color: rgba(255, 255, 255, 0.12) !important;
+            }
+        """
 
 
 def get_workspace_menu_stylesheet() -> str:

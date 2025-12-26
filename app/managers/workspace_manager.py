@@ -222,6 +222,9 @@ class WorkspaceManager(QObject):
         WorkspaceManager saves current state before switching.
         During switch, temporarily disables signal reactions to prevent multiple UI updates.
         
+        REGLA OBLIGATORIA: El contexto de estado solo puede existir cuando el origen activo es un estado.
+        Cambiar de workspace es un cambio de origen → debe limpiar siempre el contexto de estado.
+        
         Args:
             workspace_id: ID of workspace to switch to.
             tab_manager: TabManager instance to get/set state.
@@ -238,6 +241,17 @@ class WorkspaceManager(QObject):
         if not workspace:
             logger.error(f"Workspace not found: {workspace_id}")
             return False
+        
+        # REGLA OBLIGATORIA: Limpiar contexto de estado antes de cambiar de workspace
+        if tab_manager is not None:
+            if hasattr(tab_manager, '_current_state_context') and tab_manager._current_state_context:
+                tab_manager.clear_state_context()
+                # Restaurar modo del workspace al volver a carpeta normal
+                if hasattr(tab_manager, '_workspace_manager') and tab_manager._workspace_manager:
+                    workspace_mode = tab_manager._workspace_manager.get_view_mode()
+                    tab_manager._current_view_mode = workspace_mode
+                    if hasattr(tab_manager, 'view_mode_changed'):
+                        tab_manager.view_mode_changed.emit(workspace_mode)
         
         # Save current workspace state before switching
         if self._active_workspace_id and tab_manager is not None and sidebar is not None:

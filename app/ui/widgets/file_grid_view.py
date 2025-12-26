@@ -46,6 +46,21 @@ if TYPE_CHECKING:
     from app.ui.windows.desktop_window import DesktopWindow
 
 
+def _refresh_tile_badge_if_state_matches(tile, state_id: str) -> None:
+    """
+    Helper para refrescar badge de un tile si coincide el estado.
+    
+    Maneja RuntimeError silenciosamente (widget puede haber sido eliminado).
+    """
+    try:
+        if isinstance(tile, FileTile) and hasattr(tile, '_state_badge') and tile._state_badge:
+            current_state = getattr(tile, '_file_state', None)
+            if current_state == state_id:
+                tile._state_badge.update()
+    except RuntimeError:
+        pass
+
+
 class FileGridView(QWidget):
     """Grid view widget displaying files as tiles."""
 
@@ -155,6 +170,30 @@ class FileGridView(QWidget):
         """
         self._is_desktop_window = is_desktop
         self._use_stacks = is_desktop
+    
+    def refresh_state_labels(self, state_id: str) -> None:
+        """
+        Refrescar labels de estado en todos los tiles visibles.
+        
+        Cuando se renombra un label de estado, este método actualiza solo el texto
+        visible sin reconstruir los tiles.
+        
+        Args:
+            state_id: ID del estado cuyo label cambió.
+        """
+        # Refrescar tiles seleccionados
+        for tile in list(self._selected_tiles):
+            _refresh_tile_badge_if_state_matches(tile, state_id)
+        
+        # Refrescar tiles expandidos (stacks)
+        for tiles in self._expanded_file_tiles.values():
+            for tile in tiles:
+                _refresh_tile_badge_if_state_matches(tile, state_id)
+        
+        # Refrescar todos los tiles en el tile manager
+        if self._tile_manager:
+            for tile in self._tile_manager._tiles_by_id.values():
+                _refresh_tile_badge_if_state_matches(tile, state_id)
     
     def update_files(self, file_list: list) -> None:
         """Update displayed files or stacks with incremental updates when possible."""

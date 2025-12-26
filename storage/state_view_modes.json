@@ -1,0 +1,9 @@
+{
+  "view_modes": {
+    "delivered": "list",
+    "review": "list",
+    "corrected": "list",
+    "pending": "list"
+  },
+  "version": 1
+}

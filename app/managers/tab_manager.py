@@ -32,6 +32,7 @@ from app.managers.tab_manager_actions import (
 from app.managers.tab_manager_signals import on_folder_changed, watch_and_emit as signal_watch_and_emit
 from app.managers.tab_manager_init import initialize_tab_manager
 from app.managers.tab_manager_restore import restore_tab_manager_state
+from app.services.state_view_mode_storage import get_view_mode, set_view_mode
 
 if TYPE_CHECKING:
     from app.services.tab_state_manager import TabStateManager
@@ -45,14 +46,31 @@ class TabManager(QObject):
     activeTabChanged = Signal(int, str)  # Emitted when active tab changes (index, path)
     files_changed = Signal()  # Emitted when files in active folder change
     focus_cleared = Signal()  # Emitted when active focus is removed (no active tab)
+    view_mode_changed = Signal(str)  # Emitted when view mode changes (for state contexts)
 
     # Supported file extensions (from constants)
     SUPPORTED_EXTENSIONS = SUPPORTED_EXTENSIONS
 
-    def __init__(self, storage_path: Optional[str] = None):
-        """Initialize TabManager and load saved state."""
+    def __init__(self, storage_path: Optional[str] = None, file_state_manager=None):
+        """
+        Initialize TabManager and load saved state.
+        
+        Args:
+            storage_path: Optional path to storage file.
+            file_state_manager: Optional FileStateManager instance. If None, creates one.
+        """
         super().__init__()
         self._workspace_manager = None
+        self._current_state_context: Optional[str] = None
+        self._current_view_mode: Optional[str] = None  # Modo actual para guardar antes de cambiar estado
+        
+        # FileStateManager para consultar archivos por estado
+        if file_state_manager is None:
+            from app.managers.file_state_manager import FileStateManager
+            self._file_state_manager = FileStateManager()
+        else:
+            self._file_state_manager = file_state_manager
+        
         _, _, self._watcher = initialize_tab_manager(
             self, storage_path, self._load_state, self._watch_and_emit_internal
         )
@@ -128,7 +146,21 @@ class TabManager(QObject):
         return success
 
     def get_active_folder(self) -> Optional[str]:
-        """Get the path of the currently active folder."""
+        """
+        Get the path of the currently active folder.
+        
+        IMPORTANTE: Cuando hay contexto de estado activo, retorna None.
+        Esto significa que NO existe "carpeta activa" - existe "contexto de estado activo".
+        
+        Cualquier código que use este método debe:
+        - Tolerar None, O
+        - Preguntar primero por el tipo de contexto usando has_state_context()
+        
+        Returns:
+            Folder path si hay carpeta activa, None si hay contexto de estado activo.
+        """
+        if self._current_state_context:
+            return None  # Vista por estado activa - no hay carpeta activa
         if 0 <= self._active_index < len(self._tabs):
             return self._tabs[self._active_index]
         return None
@@ -144,9 +176,139 @@ class TabManager(QObject):
     def get_state_manager(self) -> 'TabStateManager':
         """Get TabStateManager instance."""
         return self._state_manager
+    
+    def has_state_context(self) -> bool:
+        """Verificar si hay contexto de estado activo."""
+        return self._current_state_context is not None
+    
+    def get_state_context(self) -> Optional[str]:
+        """Obtener el estado del contexto activo (si existe)."""
+        return self._current_state_context
+    
+    def _save_current_view_mode(self) -> None:
+        """
+        Guardar modo de visualización actual para el estado activo.
+        
+        Solo guarda si hay un contexto de estado activo.
+        """
+        if not self._current_state_context:
+            return
+        
+        if self._current_view_mode:
+            set_view_mode(self._current_state_context, self._current_view_mode)
+    
+    def _restore_state_view_mode(self, state: str) -> None:
+        """
+        Restaurar modo de visualización guardado para un estado.
+        
+        Emite señal view_mode_changed para que FileViewContainer actualice la vista.
+        
+        Args:
+            state: Estado constante.
+        """
+        saved_mode = get_view_mode(state)
+        self._current_view_mode = saved_mode
+        self.view_mode_changed.emit(saved_mode)
+    
+    def save_state_view_mode(self, view_mode: str) -> None:
+        """
+        Guardar modo de visualización para el estado activo.
+        
+        Llamado desde FileViewContainer cuando el usuario cambia el modo
+        en una vista por estado.
+        
+        Args:
+            view_mode: Modo de visualización ("grid" o "list").
+        """
+        if not self._current_state_context:
+            return
+        
+        if view_mode not in ("grid", "list"):
+            return
+        
+        self._current_view_mode = view_mode
+        set_view_mode(self._current_state_context, view_mode)
+    
+    def set_state_context(self, state: str) -> None:
+        """
+        Activar vista por estado.
+        
+        IMPORTANTE: Los contextos de estado NO son paths.
+        NO se normalizan, NO se validan, NO se observan.
+        Solo se setean y se emite señal de cambio.
+        
+        Guarda el modo de visualización actual antes de cambiar
+        y restaura el modo guardado para el estado.
+        
+        Args:
+            state: Estado constante (e.g., "pending", "delivered").
+        """
+        # Guardar modo actual antes de cambiar
+        if self._current_state_context:
+            # Si había un estado previo, guardar su modo
+            self._save_current_view_mode()
+        else:
+            # Si veníamos de carpeta normal, guardar modo del workspace
+            if self._workspace_manager:
+                workspace_mode = self._workspace_manager.get_view_mode()
+                self._current_view_mode = workspace_mode
+        
+        self._current_state_context = state
+        
+        # NO llamar a watch_and_emit() - contextos no se observan
+        # NO validar - contextos no son paths
+        # NO normalizar - contextos no son paths
+        
+        # Actualizar historial con identificador "@state://pending" (solo como string)
+        if self._history_manager:
+            # Usar función identidad para no normalizar contextos
+            self._history_manager.update_on_navigate(
+                f"@state://{state}", 
+                lambda p: p  # No normalizar contextos
+            )
+        
+        # Emitir signals igual que cambio de carpeta
+        self.activeTabChanged.emit(self._active_index, None)  # None porque no hay path
+        self.files_changed.emit()
+        
+        # Restaurar modo de visualización guardado para este estado
+        self._restore_state_view_mode(state)
+    
+    def clear_state_context(self) -> None:
+        """
+        Desactivar vista por estado.
+        
+        Guarda el modo de visualización actual antes de limpiar.
+        El modo del workspace se restaurará cuando se seleccione un tab normal.
+        """
+        # Guardar modo actual antes de limpiar
+        if self._current_state_context:
+            self._save_current_view_mode()
+        
+        self._current_state_context = None
+        self._current_view_mode = None  # Limpiar modo de estado
+        # NO llamar a watch_and_emit() - no hay path que observar
 
     def get_files(self, extensions: Optional[set] = None, use_stacks: bool = False) -> List:
-        """Get filtered file list from active folder."""
+        """
+        Get filtered file list from active folder or state context.
+        
+        Si hay contexto de estado activo, retorna archivos y carpetas con ese estado.
+        Si no, retorna archivos de la carpeta activa.
+        """
+        if self._current_state_context:
+            # Vista por estado: obtener archivos y carpetas con ese estado
+            items = self._file_state_manager.get_items_by_state(self._current_state_context)
+            # Filtrar por extensiones si se especifican
+            if extensions:
+                filtered = []
+                for item in items:
+                    if any(item.lower().endswith(ext.lower()) for ext in extensions):
+                        filtered.append(item)
+                return filtered
+            return items
+        
+        # Vista normal: obtener archivos de carpeta activa
         return get_files_from_active_tab(
             self.get_active_folder(), extensions or self.SUPPORTED_EXTENSIONS, use_stacks
         )
@@ -210,12 +372,24 @@ class TabManager(QObject):
         """
         Load workspace state (tabs and active_tab, without history).
         
+        REGLA OBLIGATORIA: Toda navegación a un path físico debe limpiar siempre el contexto de estado.
+        
         Args:
             state: Dict with keys: tabs, active_tab
             emit_signals: If True, emit signals after loading. If False, only update internal state.
         """
         tabs = state.get('tabs', [])
         active_tab = state.get('active_tab')
+        
+        # REGLA OBLIGATORIA: Limpiar contexto de estado antes de restaurar paths físicos
+        if self._current_state_context:
+            self.clear_state_context()
+            # Restaurar modo del workspace al volver a carpeta normal
+            if self._workspace_manager:
+                workspace_mode = self._workspace_manager.get_view_mode()
+                self._current_view_mode = workspace_mode
+                if emit_signals:
+                    self.view_mode_changed.emit(workspace_mode)
         
         # Detener watcher ANTES de cambiar estado (igual que en restore_state)
         if self._watcher:
@@ -266,14 +440,33 @@ class TabManager(QObject):
         return self._history_manager.can_go_forward()
 
     def go_back(self) -> bool:
-        """Move one step back in history, activate that folder."""
+        """
+        Move one step back in history, activate that folder.
+        
+        REGLA OBLIGATORIA: Si el path del historial es físico, limpia el contexto de estado.
+        Si es virtual (@state://), activa el contexto de estado correspondiente.
+        """
         if not self.can_go_back():
             return False
         
         # Obtener path del historial anterior
         folder_path = self._history_manager.get_back_path()
         
-        # Encontrar índice del tab correspondiente
+        # Si es un path virtual de estado, activar contexto de estado
+        from app.services.path_utils import is_state_context_path, extract_state_from_context
+        if is_state_context_path(folder_path):
+            state = extract_state_from_context(folder_path)
+            if state:
+                self._history_manager.set_navigating_flag(True)
+                try:
+                    self._history_manager.move_back()
+                    self.set_state_context(state)
+                    return True
+                finally:
+                    self._history_manager.set_navigating_flag(False)
+            return False
+        
+        # Path físico: encontrar índice del tab correspondiente
         tab_index = find_tab_index(self._tabs, folder_path)
         if tab_index is None:
             return False
@@ -284,20 +477,39 @@ class TabManager(QObject):
         try:
             # Mover índice del historial
             self._history_manager.move_back()
-            # Activar tab usando la función única responsable
+            # Activar tab usando la función única responsable (limpia contexto de estado)
             return self.select_tab(tab_index)
         finally:
             self._history_manager.set_navigating_flag(False)
 
     def go_forward(self) -> bool:
-        """Move one step forward in history, activate that folder."""
+        """
+        Move one step forward in history, activate that folder.
+        
+        REGLA OBLIGATORIA: Si el path del historial es físico, limpia el contexto de estado.
+        Si es virtual (@state://), activa el contexto de estado correspondiente.
+        """
         if not self.can_go_forward():
             return False
         
         # Obtener path del historial siguiente
         folder_path = self._history_manager.get_forward_path()
         
-        # Encontrar índice del tab correspondiente
+        # Si es un path virtual de estado, activar contexto de estado
+        from app.services.path_utils import is_state_context_path, extract_state_from_context
+        if is_state_context_path(folder_path):
+            state = extract_state_from_context(folder_path)
+            if state:
+                self._history_manager.set_navigating_flag(True)
+                try:
+                    self._history_manager.move_forward()
+                    self.set_state_context(state)
+                    return True
+                finally:
+                    self._history_manager.set_navigating_flag(False)
+            return False
+        
+        # Path físico: encontrar índice del tab correspondiente
         tab_index = find_tab_index(self._tabs, folder_path)
         if tab_index is None:
             return False
@@ -308,7 +520,7 @@ class TabManager(QObject):
         try:
             # Mover índice del historial
             self._history_manager.move_forward()
-            # Activar tab usando la función única responsable
+            # Activar tab usando la función única responsable (limpia contexto de estado)
             return self.select_tab(tab_index)
         finally:
             self._history_manager.set_navigating_flag(False)

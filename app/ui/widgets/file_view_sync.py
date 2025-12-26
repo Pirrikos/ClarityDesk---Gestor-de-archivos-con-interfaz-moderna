@@ -20,34 +20,34 @@ if TYPE_CHECKING:
 
 
 def update_files(container: 'FileViewContainer') -> None:
-    """Update both views with files from active tab."""
-    # Activate top-level detector during workspace switch
+    """Update both views with files from active tab or search results."""
+    if hasattr(container, '_is_search_mode') and container._is_search_mode:
+        file_paths = [result.file_path for result in container._search_results]
+        container._grid_view.update_files(file_paths)
+        container._list_view.update_files(file_paths)
+        return
+    
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QTimer
     detector = getattr(QApplication.instance(), '_top_level_detector', None)
     if detector:
         detector.set_workspace_switch_active(True)
-        # Deactivate after a delay to catch all events
         QTimer.singleShot(500, lambda: detector.set_workspace_switch_active(False) if detector else None)
     
-    # Cache result to avoid repeated checks
     if not hasattr(container, '_cached_is_desktop'):
         container._cached_is_desktop = _check_if_desktop_window(container)
     use_stacks = container._cached_is_desktop
-    active_folder = container._tab_manager.get_active_folder()
     
     items = container._tab_manager.get_files(use_stacks=use_stacks)
-    
     container._grid_view.update_files(items)
     container._list_view.update_files(items)
     
-    # Cleanup states for files that no longer exist
     if container._state_manager:
         file_paths = []
         for item in items:
-            if hasattr(item, 'files'):  # FileStack
+            if hasattr(item, 'files'):
                 file_paths.extend(item.files)
-            else:  # String path
+            else:
                 file_paths.append(item)
         container._state_manager.cleanup_missing_files(set(file_paths))
 
@@ -67,22 +67,21 @@ def switch_view(container: 'FileViewContainer', view_type: str) -> None:
     Switch between grid and list views.
     
     Saves current selection before switching and restores it when switching back.
+    
+    Si hay contexto de estado activo, guarda el modo para ese estado.
 
     Args:
         container: FileViewContainer instance.
         view_type: "grid" or "list".
     """
-    # Save current selection before switching
     current_selection = get_selected_files(container)
     if not hasattr(container, '_saved_selections'):
         container._saved_selections = {}
     container._saved_selections[container._current_view] = current_selection
     
-    # Switch view
     if view_type == "grid":
         container._stacked.setCurrentWidget(container._grid_view)
         container._current_view = "grid"
-        # Actualizar estilos en toolbar, según exista
         if hasattr(container, '_toolbar') and container._toolbar:
             container._toolbar.update_button_styles(True)
         _update_workspace_view_buttons(container, True)
@@ -92,11 +91,14 @@ def switch_view(container: 'FileViewContainer', view_type: str) -> None:
         if hasattr(container, '_toolbar') and container._toolbar:
             container._toolbar.update_button_styles(False)
         _update_workspace_view_buttons(container, False)
+    
+    # Solo guardar para contexto de estado. Para carpetas normales, el workspace ya fue actualizado.
+    # Llamar a set_view_mode aquí causaría recursión porque emite view_mode_changed que dispara switch_view.
+    if container._tab_manager and container._tab_manager.has_state_context():
+        container._tab_manager.save_state_view_mode(view_type)
 
-    # Update files first
     update_files(container)
     
-    # Restore selection after a short delay to ensure tiles/rows are created
     if hasattr(container, '_saved_selections') and view_type in container._saved_selections:
         saved_paths = container._saved_selections[view_type]
         if saved_paths:
@@ -125,6 +127,24 @@ def set_selected_states(container, state: str) -> None:
         container._list_view.set_selected_states(state)
 
 
+def clear_selection(container: 'FileViewContainer') -> None:
+    """
+    Limpiar selección en ambas vistas (grid y list).
+    
+    Se usa al navegar a un estado para evitar que archivos seleccionados
+    antes del cambio aparezcan seleccionados en la nueva vista.
+    """
+    from app.ui.widgets.grid_selection_logic import clear_selection as clear_grid_selection
+    
+    # Limpiar selección en grid view
+    clear_grid_selection(container._grid_view)
+    
+    # Limpiar selección en list view
+    container._list_view.clearSelection()
+    if hasattr(container._list_view, '_checked_paths'):
+        container._list_view._checked_paths.clear()
+
+
 def _restore_selection(container, view_type: str, paths: list[str]) -> None:
     """Restore selection in the specified view."""
     if view_type == "grid":
@@ -137,7 +157,6 @@ def _restore_grid_selection(view, paths: list[str]) -> None:
     """Restore selection in grid view by finding tiles matching paths."""
     path_set = {normalize_path(p) for p in paths}
     
-    # Find tiles matching saved paths
     for tile in view._selected_tiles.copy():
         try:
             tile_path = normalize_path(tile.get_file_path())
@@ -147,8 +166,6 @@ def _restore_grid_selection(view, paths: list[str]) -> None:
         except (RuntimeError, AttributeError):
             view._selected_tiles.discard(tile)
     
-    # Find and select tiles matching saved paths
-    # Iterate through all tiles in the grid layout
     for i in range(view._grid_layout.count()):
         item = view._grid_layout.itemAt(i)
         if item:
@@ -167,27 +184,22 @@ def _restore_list_selection(view, paths: list[str]) -> None:
     """Restore selection in list view by finding rows matching paths."""
     path_set = {normalize_path(p) for p in paths}
     
-    # Clear current selection
     view.clearSelection()
     view._checked_paths.clear()
     
-    # Find and select rows matching saved paths
     for row in range(view.rowCount()):
-        item = view.item(row, 1)  # Path is in column 1
+        item = view.item(row, 1)
         if item:
             path = item.data(Qt.ItemDataRole.UserRole)
             if path and normalize_path(path) in path_set:
-                # Select checkbox if available
                 checkbox_item = view.item(row, 0)
                 if checkbox_item:
                     checkbox_item.setCheckState(Qt.CheckState.Checked)
                     view._checked_paths.add(path)
-                # Also select the row
                 view.selectRow(row)
 
 
 def _check_if_desktop_window(container) -> bool:
     """Check if this container is inside a DesktopWindow."""
-    # Use explicit flag instead of inferring from hierarchy
     return getattr(container, '_is_desktop', False)
 
