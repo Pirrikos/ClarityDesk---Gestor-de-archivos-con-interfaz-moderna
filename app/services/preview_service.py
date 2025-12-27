@@ -48,6 +48,20 @@ def _get_file_preview_impl(path: str, size: QSize, icon_provider) -> QPixmap:
     if os.path.isdir(path):
         return _get_folder_preview_impl(path, size, icon_provider)
     
+    # Para accesos directos (.lnk), verificar si apuntan a una carpeta
+    ext = os.path.splitext(path)[1].lower()
+    if ext == '.lnk':
+        try:
+            import win32com.client
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(path)
+            target_path = shortcut.Targetpath
+            if target_path and os.path.exists(target_path) and os.path.isdir(target_path):
+                # Si el acceso directo apunta a una carpeta, usar el icono de carpeta
+                return _get_folder_preview_impl(target_path, size, icon_provider)
+        except Exception:
+            pass  # Si falla la resolución, continuar con la lógica normal
+    
     return _get_file_preview_impl_helper(path, size, icon_provider)
 
 
@@ -84,10 +98,21 @@ def _get_file_preview_impl_helper(path: str, size: QSize, icon_provider) -> QPix
     if ext in image_extensions:
         return render_image_preview(path, size)
     
+    # Ejecutables: siempre usar SVG exe.svg en lugar del icono de Windows
+    # Nota: .lnk NO está incluido aquí - los accesos directos usan iconos nativos de Windows
+    executable_extensions = {'.exe', '.msi', '.bat', '.cmd', '.ps1', '.sh'}
+    if ext in executable_extensions:
+        svg_name = get_svg_for_extension(ext)
+        svg_pixmap = render_svg_icon(svg_name, size, ext)
+        if validate_pixmap(svg_pixmap):
+            return svg_pixmap
+    
     pixmap = get_windows_shell_icon(path, size, icon_provider)
     
-    word_extensions = {'.doc', '.docx', '.rtf'}
-    skip_svg_fallback = ext in image_extensions or ext in word_extensions
+    # No usar fallback SVG para imágenes, documentos Word/PDF y accesos directos (.lnk)
+    # (usar iconos nativos de Windows)
+    document_extensions = {'.doc', '.docx', '.pdf'}
+    skip_svg_fallback = ext in image_extensions or ext in document_extensions or ext == '.lnk'
     
     if os.path.isdir(path):
         qfile_info = QFileInfo(path)

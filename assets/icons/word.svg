@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Fondo azul Word -->
+  <rect x="16" y="16" width="224" height="224" rx="36" fill="#185ABD"/>
+
+  <!-- Hoja documento -->
+  <path d="M104 48h96a16 16 0 0 1 16 16v128a16 16 0 0 1-16 16h-96a16 16 0 0 1-16-16V64a16 16 0 0 1 16-16z"
+        fill="#FFFFFF"/>
+
+  <!-- Esquina doblada -->
+  <path d="M184 48v40h40z" fill="#DCE6F5"/>
+
+  <!-- Panel izquierdo Word -->
+  <rect x="40" y="72" width="80" height="112" rx="16" fill="#0F4C92"/>
+
+  <!-- Letra W centrada -->
+  <!-- Caja del panel: x=40..120 (centro x=80), y=72..184 (centro y=128) -->
+  <path d="M56 104
+           l10 56
+           l14-44
+           l14 44
+           l10-56"
+        fill="none"
+        stroke="#FFFFFF"
+        stroke-width="14"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- Líneas de texto -->
+  <rect x="136" y="104" width="56" height="10" rx="5" fill="#C7D6F2"/>
+  <rect x="136" y="128" width="56" height="10" rx="5" fill="#C7D6F2"/>
+  <rect x="136" y="152" width="40" height="10" rx="5" fill="#C7D6F2"/>
+</svg>

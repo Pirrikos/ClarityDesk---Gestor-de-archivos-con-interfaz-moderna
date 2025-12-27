@@ -4,18 +4,22 @@ IconRendererConstants - Constants for icon rendering.
 SVG icon mapping and color definitions.
 """
 
-import os
-from pathlib import Path
-
 from PySide6.QtGui import QColor
 
 # Poppler path
-POPPLER_PATH = Path(__file__).parent.parent.parent / "assets" / "poppler" / "bin"
+from pathlib import Path
+POPPLER_PATH = (
+    Path(__file__).resolve()
+    .parent.parent.parent
+    / "assets"
+    / "poppler"
+    / "bin"
+)
 
 # SVG icon mapping
 SVG_ICON_MAP = {
     # Documentos
-    ".doc": "doc.svg", ".docx": "doc.svg", ".rtf": "doc.svg", ".odt": "doc.svg", ".pdf": "doc.svg",
+    ".doc": "doc.svg", ".docx": "doc.svg", ".rtf": "doc.svg", ".odt": "doc.svg", ".pdf": "doc.svg", ".txt": "doc.svg",
     # Hojas de cálculo
     ".xls": "sheet.svg", ".xlsx": "sheet.svg", ".csv": "sheet.svg", ".ods": "sheet.svg",
     # Presentaciones
@@ -38,16 +42,16 @@ SVG_ICON_MAP = {
     ".exe": "exe.svg", ".lnk": "exe.svg", ".msi": "exe.svg", 
     ".bat": "exe.svg", ".cmd": "exe.svg", ".ps1": "exe.svg", ".sh": "exe.svg",
     # Texto plano
-    ".txt": "text.svg", ".ini": "text.svg", ".log": "text.svg", ".md": "text.svg",
-    ".cfg": "text.svg", ".conf": "text.svg", ".nfo": "text.svg",
+    ".ini": "text.svg", ".log": "text.svg", ".md": "text.svg",
+    ".cfg": "text.svg", ".conf": "text.svg", ".nfo": "text.svg", ".json": "text.svg",
     # Configuración estructurada
-    ".json": "config.svg", ".xml": "config.svg", ".yaml": "config.svg", ".yml": "config.svg",
+    ".xml": "config.svg", ".yaml": "config.svg", ".yml": "config.svg",
     ".toml": "config.svg", ".env": "config.svg", ".properties": "config.svg",
 }
 
 # Color mapping for SVG types (colores saturados para buen contraste)
 SVG_COLOR_MAP = {
-    "doc.svg": QColor(41, 128, 185),      # Azul Word
+    "doc.svg": QColor(41, 128, 185),      # Azul documentos genéricos
     "sheet.svg": QColor(39, 174, 96),      # Verde Excel
     "slide.svg": QColor(211, 84, 0),       # Naranja PowerPoint
     "archive.svg": QColor(192, 57, 43),    # Rojo archivo

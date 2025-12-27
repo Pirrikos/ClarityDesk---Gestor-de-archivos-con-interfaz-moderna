@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Fondo verde imágenes -->
+  <rect x="16" y="16" width="224" height="224" rx="36" fill="#2E7D32"/>
+
+  <!-- Marco de imagen -->
+  <rect x="48" y="56" width="160" height="144" rx="20" fill="#FFFFFF"/>
+
+  <!-- Cielo -->
+  <rect x="64" y="72" width="128" height="72" rx="12" fill="#C8E6C9"/>
+
+  <!-- Montañas -->
+  <path d="M64 144
+           L104 104
+           L136 132
+           L168 96
+           L192 144
+           Z"
+        fill="#66BB6A"/>
+
+  <!-- Sol -->
+  <circle cx="168" cy="96" r="10" fill="#FFD54F"/>
+
+  <!-- Borde interior -->
+  <rect x="64" y="72" width="128" height="96" rx="12"
+        fill="none" stroke="#2E7D32" stroke-width="6"/>
+</svg>
+

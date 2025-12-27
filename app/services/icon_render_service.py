@@ -53,10 +53,30 @@ class IconRenderService:
         if os.path.isdir(path):
             return self._get_folder_preview(path, size)
         else:
-            raw_pixmap = get_file_preview(path, size, self._icon_provider)
-            normalized = apply_visual_normalization(raw_pixmap, size)
-            # Apply fallback SVG if pixmap is NULL
             _, ext = os.path.splitext(path)
+            ext = ext.lower() if ext else ""
+            
+            raw_pixmap = get_file_preview(path, size, self._icon_provider)
+            
+            # Para ejecutables: el SVG ya viene renderizado desde preview_service
+            # Nota: .lnk NO está incluido aquí - los accesos directos usan iconos nativos de Windows
+            # No aplicar normalización visual completa que puede hacerlo transparente
+            executable_extensions = {'.exe', '.msi', '.bat', '.cmd', '.ps1', '.sh'}
+            
+            if ext in executable_extensions:
+                # El SVG ya viene del tamaño correcto desde preview_service
+                # Solo aplicar escalado suave si es necesario
+                if raw_pixmap.width() != size.width() or raw_pixmap.height() != size.height():
+                    scaled = raw_pixmap.scaled(
+                        size.width(), size.height(),
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation
+                    )
+                    return scaled if not scaled.isNull() else raw_pixmap
+                return raw_pixmap
+            
+            # Para otros archivos: aplicar normalización visual completa
+            normalized = apply_visual_normalization(raw_pixmap, size)
             return safe_pixmap(normalized, size.width(), ext)
 
     def _is_valid_pixmap(self, pixmap: QPixmap) -> bool:

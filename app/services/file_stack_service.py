@@ -23,6 +23,7 @@ EXTENSION_TO_FAMILY = {
     '.odt': 'documents',
     '.rtf': 'documents',
     '.txt': 'documents',
+    '.json': 'documents',
     
     # Sheets
     '.xls': 'sheets',
@@ -99,6 +100,18 @@ def get_file_family(file_path: str, is_executable_func) -> str:
         return 'folder'
     
     ext = os.path.splitext(file_path)[1].lower()
+    
+    # Para accesos directos (.lnk), verificar si apuntan a una carpeta
+    if ext == '.lnk':
+        try:
+            import win32com.client
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(file_path)
+            target_path = shortcut.Targetpath
+            if target_path and os.path.exists(target_path) and os.path.isdir(target_path):
+                return 'folder'
+        except Exception:
+            pass  # Si falla la resolución, continuar con la lógica normal
     
     # Check if extension is in mapping
     if ext in EXTENSION_TO_FAMILY:
