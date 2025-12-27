@@ -6,7 +6,7 @@ Handles UI setup and table row creation.
 
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QCheckBox, QHeaderView, QTableWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from app.models.file_stack import FileStack
 from app.ui.utils.font_manager import FontManager
@@ -252,7 +252,6 @@ def create_row(view, row: int, file_path: str, icon_service, state_manager, chec
     state = state_manager.get_file_state(file_path) if state_manager else None
     state_widget = create_state_cell(state, font, view, get_label_callback)
     view.setCellWidget(row, 4, state_widget)
-    
     view.setRowHeight(row, 56)
 
 

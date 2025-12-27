@@ -25,6 +25,18 @@ from app.ui.widgets.file_view_container import FileViewContainer
 class DockBackgroundWidget(QWidget):
     """Widget with Apple Dock-style semi-transparent background."""
     
+    # Background styling constants
+    BG_COLOR_R = 20
+    BG_COLOR_G = 20
+    BG_COLOR_B = 20
+    BG_COLOR_ALPHA = 100  # rgba(20, 20, 20, ~0.39) - baja opacidad
+    BORDER_COLOR_R = 255
+    BORDER_COLOR_G = 255
+    BORDER_COLOR_B = 255
+    BORDER_COLOR_ALPHA = 15  # Borde casi imperceptible
+    SHADOW_MARGIN = 8  # Margin for shadow effect
+    CORNER_RADIUS = 18  # Apple uses ~16-20px radius
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -38,19 +50,18 @@ class DockBackgroundWidget(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Estilo Raycast: gris muy oscuro con baja opacidad para reducir ruido visual
-        bg_color = QColor(20, 20, 20, 100)  # rgba(20, 20, 20, ~0.39) - baja opacidad
+        bg_color = QColor(self.BG_COLOR_R, self.BG_COLOR_G, self.BG_COLOR_B, self.BG_COLOR_ALPHA)
         
         # Borde muy sutil
-        border_color = QColor(255, 255, 255, 15)  # Borde casi imperceptible
+        border_color = QColor(self.BORDER_COLOR_R, self.BORDER_COLOR_G, self.BORDER_COLOR_B, self.BORDER_COLOR_ALPHA)
         
         # Draw rounded rectangle
-        rect = self.rect().adjusted(8, 8, -8, -8)  # Margin for shadow effect
-        radius = 18  # Apple uses ~16-20px radius
+        rect = self.rect().adjusted(self.SHADOW_MARGIN, self.SHADOW_MARGIN, -self.SHADOW_MARGIN, -self.SHADOW_MARGIN)
         
         # Draw background
         painter.setBrush(QBrush(bg_color))
         painter.setPen(QPen(border_color, 1))
-        painter.drawRoundedRect(rect, radius, radius)
+        painter.drawRoundedRect(rect, self.CORNER_RADIUS, self.CORNER_RADIUS)
         
         painter.end()
     
@@ -146,8 +157,10 @@ class DesktopWindow(QWidget):
     SETTINGS_TILE_WIDTH = 70
     SEPARATOR_WIDTH = 1
     STACK_SPACING = 12
-    BASE_WINDOW_HEIGHT = 140
-    MIN_WINDOW_HEIGHT = 120
+    # Altura base: stack tile (85) + márgenes grid (32) + márgenes layout (56) = 173
+    # Añadimos un poco más para el background y bordes
+    BASE_WINDOW_HEIGHT = 150
+    MIN_WINDOW_HEIGHT = 140
     ANIMATION_DURATION_MS = 250
     DEFAULT_WINDOW_WIDTH = 400
     
@@ -158,9 +171,13 @@ class DesktopWindow(QWidget):
     GRID_LAYOUT_RIGHT_MARGIN = 12  # Simétrico con spacing después del separador
     
     # Screen positioning
-    WINDOW_BOTTOM_MARGIN = 10
+    WINDOW_TOP_MARGIN = 10  # Margen desde la parte superior de la pantalla
     WINDOW_MAX_HEIGHT_MARGIN = 20
     INITIAL_WINDOW_WIDTH_RATIO = 0.6
+    
+    # Layout vertical margins (reducidos para dar más espacio a los stacks)
+    MAIN_LAYOUT_VERTICAL_MARGIN = 8
+    CENTRAL_LAYOUT_VERTICAL_MARGIN = 8
     
     def __init__(self, parent=None):
         """Initialize DesktopWindow with Desktop and Trash Focus."""
@@ -176,6 +193,10 @@ class DesktopWindow(QWidget):
         self._desktop_placeholder: Optional[QWidget] = None
         self._height_animation: Optional[QPropertyAnimation] = None
         self._width_animation: Optional[QPropertyAnimation] = None
+        # Flag para prevenir relayouts durante animación de altura
+        self._height_animation_in_progress: bool = False
+        # Estado de expansión calculado antes de la animación (para usar al finalizar)
+        self._pending_expansion_state: Optional[dict] = None
         
         # Setup UI structure only (no heavy initialization)
         self._setup_ui()
@@ -200,12 +221,12 @@ class DesktopWindow(QWidget):
         # Habilitar drops en la ventana principal
         self.setAcceptDrops(True)
         
-        # Position window at BOTTOM of screen, centered horizontally
+        # Position window at TOP of screen, centered horizontally
         screen = self.screen().availableGeometry()
         window_height = self.BASE_WINDOW_HEIGHT
         window_width = int(screen.width() * self.INITIAL_WINDOW_WIDTH_RATIO)
         window_x = (screen.width() - window_width) // 2
-        window_y = screen.height() - window_height - self.WINDOW_BOTTOM_MARGIN
+        window_y = self.WINDOW_TOP_MARGIN
         self.setGeometry(window_x, window_y, window_width, window_height)
         # Minimum size will be set dynamically based on stacks count
         # Only set minimum height, width will be adjusted by _adjust_window_width
@@ -218,7 +239,12 @@ class DesktopWindow(QWidget):
         # Layout raíz directamente en la ventana
         main_layout = QVBoxLayout(self)
         # Margins match the rounded background (8px outer + some inner padding)
-        main_layout.setContentsMargins(self.MAIN_LAYOUT_MARGIN, 14, self.MAIN_LAYOUT_MARGIN, 14)
+        main_layout.setContentsMargins(
+            self.MAIN_LAYOUT_MARGIN, 
+            self.MAIN_LAYOUT_VERTICAL_MARGIN, 
+            self.MAIN_LAYOUT_MARGIN, 
+            self.MAIN_LAYOUT_VERTICAL_MARGIN
+        )
         main_layout.setSpacing(0)
         
         # Añadir central_widget al layout raíz
@@ -226,7 +252,12 @@ class DesktopWindow(QWidget):
         
         # Layout interno del central_widget (DockBackgroundWidget mantiene su layout interno)
         central_internal_layout = QVBoxLayout(self._central_widget)
-        central_internal_layout.setContentsMargins(self.CENTRAL_LAYOUT_MARGIN, 14, self.CENTRAL_LAYOUT_MARGIN, 14)
+        central_internal_layout.setContentsMargins(
+            self.CENTRAL_LAYOUT_MARGIN, 
+            self.CENTRAL_LAYOUT_VERTICAL_MARGIN, 
+            self.CENTRAL_LAYOUT_MARGIN, 
+            self.CENTRAL_LAYOUT_VERTICAL_MARGIN
+        )
         central_internal_layout.setSpacing(0)
         
         # Placeholder widget for Desktop Focus panel (will be replaced in initialize_after_show)
@@ -312,6 +343,38 @@ class DesktopWindow(QWidget):
             
             # Insert container at the same position
             layout.insertWidget(placeholder_index, self._desktop_container, 1)
+        
+        # Warmup: forzar un ciclo de layout para evitar flash en primera contracción
+        # Qt cachea información de layout después del primer ciclo
+        QTimer.singleShot(100, self._warmup_layout)
+    
+    def _warmup_layout(self) -> None:
+        """
+        Warmup del sistema de layouts para evitar flash en primera contracción.
+        
+        Qt cachea información de geometría y backbuffers después del primer ciclo.
+        Este warmup fuerza ese ciclo de manera invisible.
+        """
+        if not self._desktop_container or not hasattr(self._desktop_container, '_grid_view'):
+            return
+        
+        grid_view = self._desktop_container._grid_view
+        if not grid_view:
+            return
+        
+        # Obtener el ExpandedStacksWidget
+        expanded_widget = getattr(grid_view, '_expanded_stacks_widget', None)
+        if not expanded_widget:
+            return
+        
+        # Forzar un ciclo de altura: 0 → altura pequeña → 0
+        # Esto inicializa el cache de Qt sin que el usuario lo note
+        expanded_widget.setFixedHeight(1)  # Altura mínima (casi invisible)
+        expanded_widget.setFixedHeight(0)  # Volver a 0
+        
+        # Forzar un update del layout
+        if hasattr(grid_view, '_content_widget'):
+            grid_view._content_widget.updateGeometry()
     
     def _adjust_window_height(self, expansion_height: int) -> None:
         """Adjust window height based on stack expansion."""
@@ -319,6 +382,18 @@ class DesktopWindow(QWidget):
         current_geometry = self.geometry()
         
         if current_geometry.height() == target_height:
+            # Si no hay cambio de altura, ejecutar refresh inmediatamente si está pendiente
+            if self._desktop_container and hasattr(self._desktop_container, '_grid_view'):
+                grid_view = self._desktop_container._grid_view
+                if grid_view and hasattr(grid_view, '_pending_refresh_after_animation'):
+                    if grid_view._pending_refresh_after_animation:
+                        if self._pending_expansion_state:
+                            num_rows = self._pending_expansion_state.get('num_rows')
+                            if num_rows:
+                                grid_view._dock_rows_state = num_rows
+                            self._pending_expansion_state = None
+                        grid_view._pending_refresh_after_animation = False
+                        grid_view._refresh_tiles()
             return
         
         # Si es la primera expansión (altura base), aplicar inmediatamente
@@ -327,12 +402,55 @@ class DesktopWindow(QWidget):
         
         if is_first_expansion:
             # Aplicar altura inmediatamente sin animación
+            # Suprimir transiciones internas mientras se aplica el cambio
+            if self._desktop_container and hasattr(self._desktop_container, '_grid_view'):
+                try:
+                    self._desktop_container._grid_view._suppress_content_transitions = True
+                except Exception:
+                    pass
             self.setGeometry(
                 current_geometry.x(), target_y,
                 current_geometry.width(), target_height
             )
+            # Primera expansión: ejecutar refresh inmediatamente después de cambiar geometría
+            if self._desktop_container and hasattr(self._desktop_container, '_grid_view'):
+                grid_view = self._desktop_container._grid_view
+                if grid_view and hasattr(grid_view, '_pending_refresh_after_animation'):
+                    # Aplicar estado de expansión previamente calculado si existe
+                    if self._pending_expansion_state:
+                        # Bloquear filas al valor discreto calculado
+                        num_rows = self._pending_expansion_state.get('num_rows')
+                        if num_rows:
+                            grid_view._dock_rows_state = num_rows
+                        self._pending_expansion_state = None
+                    grid_view._pending_refresh_after_animation = False
+                    grid_view._refresh_tiles()
+                    try:
+                        grid_view._suppress_content_transitions = False
+                    except Exception:
+                        pass
         else:
             # Usar animación para cambios entre stacks
+            if self._desktop_container and hasattr(self._desktop_container, '_grid_view'):
+                grid_view = self._desktop_container._grid_view
+                
+                # Detectar si estamos colapsando (expansion_height = 0)
+                is_collapsing = expansion_height == 0
+                
+                # Solo bloquear updates cuando NO estamos colapsando
+                # El colapso no necesita bloquear - el contenido ya está oculto (altura 0)
+                if not is_collapsing:
+                    if grid_view and hasattr(grid_view, '_content_widget'):
+                        grid_view._content_widget.setUpdatesEnabled(False)
+                    try:
+                        grid_view._suppress_content_transitions = True
+                    except Exception:
+                        pass
+            
+            # Marcar que la animación está en progreso
+            self._height_animation_in_progress = True
+            
+            # El refresh se ejecutará al finalizar la animación en _force_grid_relayout()
             self._apply_height_animation(current_geometry, target_height, target_y)
     
     def _calculate_target_geometry(self, expansion_height: int) -> tuple[int, int]:
@@ -344,8 +462,62 @@ class DesktopWindow(QWidget):
         target_height = min(target_height, max_screen_height)
         target_height = max(target_height, self.MIN_WINDOW_HEIGHT)
         
-        target_y = screen.height() - target_height - self.WINDOW_BOTTOM_MARGIN
+        # Posición en la parte superior de la pantalla
+        target_y = self.WINDOW_TOP_MARGIN
         return target_height, target_y
+    
+    def _force_grid_relayout(self) -> None:
+        """Force grid layout recalculation after geometry animation finishes."""
+        # Marcar que la animación ha terminado
+        self._height_animation_in_progress = False
+        
+        if self._desktop_container and hasattr(self._desktop_container, '_grid_view'):
+            grid_view = self._desktop_container._grid_view
+            if grid_view:
+                # Si estamos colapsando a estado base, no hacer nada
+                # Los stacks ya están correctos, nunca se bloquearon updates
+                if getattr(grid_view, '_is_collapsing_to_base', False):
+                    grid_view._is_collapsing_to_base = False
+                    return  # Salir sin tocar nada
+                
+                # Rehabilitar actualizaciones del grid (solo si fueron desactivadas)
+                if hasattr(grid_view, '_content_widget'):
+                    grid_view._content_widget.setUpdatesEnabled(True)
+                
+                # Con QStackedWidget, el estado de expansión ya está aplicado en on_stack_clicked
+                # Solo necesitamos aplicar el número de filas discreto
+                if self._pending_expansion_state:
+                    num_rows = self._pending_expansion_state.get('num_rows')
+                    if num_rows:
+                        grid_view._dock_rows_state = num_rows
+                    self._pending_expansion_state = None
+                
+                # Ejecutar refresh completo del grid con la altura final real
+                if hasattr(grid_view, '_pending_refresh_after_animation'):
+                    grid_view._pending_refresh_after_animation = False
+                    grid_view._refresh_tiles()
+                    try:
+                        grid_view._suppress_content_transitions = False
+                    except Exception:
+                        pass
+                else:
+                    if hasattr(grid_view, '_grid_layout'):
+                        grid_view._grid_layout.activate()
+                        if hasattr(grid_view, '_content_widget'):
+                            grid_view._content_widget.updateGeometry()
+                            grid_view._content_widget.adjustSize()
+                
+                # Aplicar altura del QStackedWidget después de animación de REDUCCIÓN
+                if getattr(grid_view, '_show_expanded_after_animation', False):
+                    grid_view._show_expanded_after_animation = False
+                    if hasattr(grid_view, '_expanded_stacks_widget') and grid_view._expanded_stacks_widget:
+                        widget = grid_view._expanded_stacks_widget
+                        if grid_view._expanded_stacks:  # Solo si hay stacks expandidos
+                            # Calcular altura basada en el estado actual
+                            num_rows = getattr(grid_view, '_dock_rows_state', 1) or 1
+                            from app.ui.widgets.expanded_stacks_widget import ExpandedStacksWidget
+                            height = ExpandedStacksWidget.calculate_height_for_rows(num_rows)
+                            widget.setFixedHeight(height)
     
     def _apply_geometry_animation(
         self,
@@ -358,7 +530,21 @@ class DesktopWindow(QWidget):
         current_animation = getattr(self, animation_attr, None)
         if current_animation:
             current_animation.stop()
+            # Desconectar señal finished anterior si existe
+            try:
+                current_animation.finished.disconnect(self._force_grid_relayout)
+            except (TypeError, RuntimeError):
+                # TypeError: no hay conexiones, RuntimeError: objeto ya eliminado
+                pass
             setattr(self, animation_attr, None)
+            
+            # Si se detuvo una animación de altura, restaurar estado del grid
+            if animation_attr == '_height_animation':
+                self._height_animation_in_progress = False
+                if self._desktop_container and hasattr(self._desktop_container, '_grid_view'):
+                    grid_view = self._desktop_container._grid_view
+                    if grid_view and hasattr(grid_view, '_content_widget'):
+                        grid_view._content_widget.setUpdatesEnabled(True)
         
         # Crear nueva animación
         animation = QPropertyAnimation(self, b"geometry", self)
@@ -366,6 +552,12 @@ class DesktopWindow(QWidget):
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         animation.setStartValue(current_geometry)
         animation.setEndValue(target_geometry)
+        
+        # Conectar señal finished para forzar relayout al finalizar animación
+        # Solo para animaciones de altura (donde el grid puede quedar mal posicionado)
+        if animation_attr == '_height_animation':
+            animation.finished.connect(self._force_grid_relayout)
+        
         animation.start()
         
         setattr(self, animation_attr, animation)
@@ -426,14 +618,41 @@ class DesktopWindow(QWidget):
             url = QUrl.fromLocalFile(file_path)
             QDesktopServices.openUrl(url)
     
-    def _handle_drag_event(self, event: QDragEnterEvent | QDragMoveEvent | QDropEvent) -> bool:
-        """Handle common drag event logic and propagate to FileViewContainer."""
-        mime_data = event.mimeData()
-        if not mime_data.hasUrls():
-            event.ignore()
-            return False
+    def _handle_drag_event(
+        self, 
+        event: QDragEnterEvent | QDragMoveEvent | QDropEvent, 
+        is_strict: bool = False
+    ) -> bool:
+        """
+        Handle common drag event logic and propagate to FileViewContainer.
         
-        # Aceptar el evento primero para que Windows sepa que esta ventana acepta drops
+        Args:
+            event: Drag event (enter, move, or drop)
+            is_strict: If True, validate strictly (for drop). If False, be permissive (for enter/move).
+        
+        Returns:
+            True if event was handled, False otherwise.
+        """
+        mime_data = event.mimeData()
+        
+        # Opción A: dragEnter y dragMove permisivos (feedback positivo)
+        # Validación estricta solo en drop
+        if is_strict:
+            # Validación estricta para drop: debe tener URLs y container debe existir
+            if not mime_data.hasUrls():
+                event.ignore()
+                return False
+            
+            if not self._desktop_container:
+                event.ignore()
+                return False
+        else:
+            # Permisivo para enter/move: aceptar si tiene URLs (feedback positivo)
+            if not mime_data.hasUrls():
+                event.ignore()
+                return False
+        
+        # Aceptar el evento para que Windows sepa que esta ventana acepta drops
         event.setDropAction(Qt.DropAction.MoveAction)
         event.accept()
         
@@ -450,16 +669,16 @@ class DesktopWindow(QWidget):
         return False
     
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
-        """Capture drag enter events and propagate to FileViewContainer."""
-        self._handle_drag_event(event)
+        """Capture drag enter events and propagate to FileViewContainer (permissive)."""
+        self._handle_drag_event(event, is_strict=False)
     
     def dragMoveEvent(self, event: QDragMoveEvent) -> None:
-        """Capture drag move events and propagate to FileViewContainer."""
-        self._handle_drag_event(event)
+        """Capture drag move events and propagate to FileViewContainer (permissive)."""
+        self._handle_drag_event(event, is_strict=False)
     
     def dropEvent(self, event: QDropEvent) -> None:
-        """Capture drop events and propagate to FileViewContainer."""
-        if not self._handle_drag_event(event):
+        """Capture drop events and propagate to FileViewContainer (strict validation)."""
+        if not self._handle_drag_event(event, is_strict=True):
             event.ignore()
     
     

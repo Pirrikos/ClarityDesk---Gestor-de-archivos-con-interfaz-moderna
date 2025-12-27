@@ -48,7 +48,11 @@ def get_selected_paths(view) -> list[str]:
 
 def set_selected_states(view, state) -> None:
     """
-    Set state for all selected files and update badges.
+    Set state for all selected files.
+    
+    La actualización visual se maneja a través de las señales state_changed/states_changed
+    emitidas por FileStateManager, que son procesadas por FileViewContainer._on_state_changed
+    y _on_states_changed para decidir si refrescar la vista o solo actualizar badges.
     
     Args:
         view: FileGridView instance.
@@ -61,13 +65,8 @@ def set_selected_states(view, state) -> None:
     if not selected_paths:
         return
     
-    # Update states in manager
+    # Update states in manager - esto emitirá states_changed que será procesado por FileViewContainer
     view._state_manager.set_files_state(selected_paths, state)
     
-    # Update badges visually
-    for tile in list(view._selected_tiles):
-        try:
-            tile.set_file_state(state)
-        except RuntimeError:
-            pass
+    # NO actualizar badges visualmente aquí - dejar que las señales manejen la actualización
 

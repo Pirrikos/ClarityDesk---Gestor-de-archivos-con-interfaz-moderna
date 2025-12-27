@@ -3,43 +3,43 @@
     {
       "id": "226d2dd0-1c19-420f-a583-5a2e6b9e1a9b",
       "name": "CACHUCHES",
-      "created_at": "2025-12-26T23:12:23.427315"
+      "created_at": "2025-12-27T13:14:44.561310"
     },
     {
       "id": "12658626-5c6c-4559-9b32-a48bf75ba5d1",
       "name": "3 ESO",
-      "created_at": "2025-12-26T23:12:23.427323"
+      "created_at": "2025-12-27T13:14:44.561318"
     },
     {
       "id": "fac191e6-548e-4fd6-b763-97b3a3026901",
       "name": "1 ESO",
-      "created_at": "2025-12-26T23:12:23.427326"
+      "created_at": "2025-12-27T13:14:44.561319"
     },
     {
       "id": "2beb705f-ce5b-43e9-a134-59efeca3fb52",
       "name": "2 ESO",
-      "created_at": "2025-12-26T23:12:23.427328"
+      "created_at": "2025-12-27T13:14:44.561320"
     },
     {
       "id": "363b7ddf-469f-4675-9a70-b955518116cb",
       "name": "4 ESO",
-      "created_at": "2025-12-26T23:12:23.427329"
+      "created_at": "2025-12-27T13:14:44.561321"
     },
     {
       "id": "d7ed1861-b128-4d22-b6b5-e6637671c3ee",
       "name": "5 PRIMARIA",
-      "created_at": "2025-12-26T23:12:23.427331"
+      "created_at": "2025-12-27T13:14:44.561323"
     },
     {
       "id": "d3a12e80-74d3-436b-94b8-c788be1ad3d2",
       "name": "6 PRIMARIA",
-      "created_at": "2025-12-26T23:12:23.427333"
+      "created_at": "2025-12-27T13:14:44.561324"
     },
     {
       "id": "571f8f2a-8c8f-4d0f-b244-74a18127834a",
       "name": "PRUEBA",
-      "created_at": "2025-12-26T23:12:23.427334"
+      "created_at": "2025-12-27T13:14:44.561325"
     }
   ],
-  "active_workspace_id": "12658626-5c6c-4559-9b32-a48bf75ba5d1"
+  "active_workspace_id": "2beb705f-ce5b-43e9-a134-59efeca3fb52"
 }

@@ -21,6 +21,10 @@ def set_file_state(tile: 'FileTile', state: Optional[str]) -> None:
         icon_label = getattr(tile, '_icon_label', None)
         if icon_label:
             icon_label.update()
+        # Forzar repaint del tile completo para reflejar cambio de estado en el icono
+        tile.update()
     elif tile._state_badge:
         tile._state_badge.set_state(state)
+        # Forzar repaint del tile completo para reflejar cambio de badge
+        tile.update()
 

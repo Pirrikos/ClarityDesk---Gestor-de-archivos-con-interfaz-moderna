@@ -6,13 +6,9 @@ Emits signals to notify UI of state changes.
 """
 
 import os
-from typing import List, Optional
+from typing import Optional
 
 from PySide6.QtCore import QObject, Signal
-
-from app.core.logger import get_logger
-
-logger = get_logger(__name__)
 
 from app.services.file_state_storage import (
     get_file_id_from_path,
@@ -25,7 +21,6 @@ from app.services.file_state_storage import (
     set_state as storage_set_state,
     set_states_batch as storage_set_states_batch,
 )
-from app.services.file_state_storage_query import get_items_by_state as query_get_items_by_state
 
 
 class FileStateManager(QObject):
@@ -121,18 +116,28 @@ class FileStateManager(QObject):
         if not file_id:
             return
         
+        # Update cache
         if state is None:
             self._state_cache.pop(file_id, None)
-            storage_remove_state(file_id)
         else:
             self._state_cache[file_id] = state
+        
+        # Sync to database
+        if state is None:
+            storage_remove_state(file_id)
+        else:
+            # Get file metadata for storage
             try:
                 stat = os.stat(file_path)
-                storage_set_state(file_id, file_path, stat.st_size, int(stat.st_mtime), state)
-            except OSError:
+                size = stat.st_size
+                modified = int(stat.st_mtime)
+                storage_set_state(file_id, file_path, size, modified, state)
+            except (OSError, ValueError):
+                # File disappeared, just remove from cache
                 self._state_cache.pop(file_id, None)
                 return
         
+        # Emit signal for UI update
         self.state_changed.emit(file_path, state)
     
     def set_files_state(self, file_paths: list[str], state: Optional[str]) -> int:
@@ -148,37 +153,54 @@ class FileStateManager(QObject):
         """
         if not file_paths:
             return 0
+        
+        # Prepare batch data
         batch_states = []
         batch_remove_ids = []
         updated_paths = []
+        file_metadata = {}  # file_id -> (file_path, size, modified)
         
+        # Collect file metadata and filter unchanged states
         for file_path in file_paths:
             file_id = self._get_file_id(file_path)
             if not file_id:
                 continue
             
-            if self._state_cache.get(file_id) == state:
+            # Skip if already in desired state
+            current_state = self._state_cache.get(file_id)
+            if current_state == state:
                 continue
             
             try:
                 stat = os.stat(file_path)
+                size = stat.st_size
+                modified = int(stat.st_mtime)
+                file_metadata[file_id] = (file_path, size, modified)
+                
                 if state is None:
                     batch_remove_ids.append(file_id)
                 else:
-                    batch_states.append((file_id, file_path, stat.st_size, int(stat.st_mtime), state))
+                    batch_states.append((file_id, file_path, size, modified, state))
+                
                 updated_paths.append((file_path, state))
-            except OSError:
+            except (OSError, ValueError):
+                # File disappeared, skip it
                 continue
         
+        # Execute batch operations atomically
         count = 0
         if batch_remove_ids:
-            count += storage_remove_states_batch(batch_remove_ids)
+            removed = storage_remove_states_batch(batch_remove_ids)
+            count += removed
+            # Update cache
             for file_id in batch_remove_ids:
                 self._state_cache.pop(file_id, None)
         
         if batch_states:
-            count += storage_set_states_batch(batch_states)
-            for file_id, _, _, _, state_val in batch_states:
+            written = storage_set_states_batch(batch_states)
+            count += written
+            # Update cache
+            for file_id, path, size, modified, state_val in batch_states:
                 self._state_cache[file_id] = state_val
         
         # Emit batch signal if any changes
@@ -207,18 +229,4 @@ class FileStateManager(QObject):
             self._path_to_id_cache.clear()
         
         return removed_count
-    
-    def get_items_by_state(self, state: str) -> List[str]:
-        """
-        Obtener lista de archivos y carpetas con un estado específico.
-        
-        Incluye tanto archivos como carpetas (items).
-        
-        Args:
-            state: Estado constante (e.g., "pending", "delivered").
-            
-        Returns:
-            Lista de paths de archivos y carpetas con el estado especificado.
-        """
-        return query_get_items_by_state(state)
 

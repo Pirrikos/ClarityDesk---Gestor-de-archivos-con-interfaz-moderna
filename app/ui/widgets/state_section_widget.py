@@ -440,11 +440,12 @@ class StateSectionWidget(QWidget):
             clicked_index = self._get_index_at_position(pos)
             if clicked_index is not None and clicked_index < len(self._states):
                 state = self._states[clicked_index]
+                # Emitir señal antes de navegar para que MainWindow pueda cancelar búsqueda
+                self.state_selected.emit(state)
                 # NAVEGACIÓN: set_state_context dispara navegación en TabManager
                 self._tab_manager.set_state_context(state)
                 self._active_state = state
                 self.update()
-                self.state_selected.emit(state)
             
             # Iniciar drag para reordenar
             self._drag_start_pos = event.pos()

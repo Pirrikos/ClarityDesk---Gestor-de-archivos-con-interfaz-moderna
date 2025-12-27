@@ -108,6 +108,7 @@ class FileViewContainer(QWidget):
         self._is_search_mode = False
         self._search_results: List = []  # List[SearchResult]
         self._file_to_workspace: dict[str, str] = {}  # file_path -> workspace_id
+        self._is_navigating = False  # Flag para indicar si estamos en medio de una navegación
         
         self.setAcceptDrops(True)
         setup_ui(self)
@@ -181,14 +182,13 @@ class FileViewContainer(QWidget):
         if path is None:
             # Vista por estado activa - el modo se restaurará automáticamente
             on_active_tab_changed(self, index, path or "")
-            return
-        
-        # Actualizar estado de Desktop Focus basado en el path del tab activo
-        if index >= 0 and path:
-            is_desktop = is_desktop_focus(path)
-            self.set_desktop_mode(is_desktop)
-        
-        on_active_tab_changed(self, index, path)
+        else:
+            # Actualizar estado de Desktop Focus basado en el path del tab activo
+            if index >= 0 and path:
+                is_desktop = is_desktop_focus(path)
+                self.set_desktop_mode(is_desktop)
+            
+            on_active_tab_changed(self, index, path)
     
     def _on_files_changed(self) -> None:
         """Handle filesystem change event - only refresh if already in a tab."""
@@ -360,25 +360,72 @@ class FileViewContainer(QWidget):
         set_selected_states(self, state)
     
     def _on_state_changed(self, file_path: str, state: Optional[str]) -> None:
-        """
-        Manejar cambio de estado de un archivo.
+        """Manejar cambio de estado de un archivo."""
+        current_state_context = self._tab_manager.get_state_context() if self._tab_manager.has_state_context() else None
         
-        Si hay contexto de estado activo, refrescar la vista automáticamente
-        para que el archivo desaparezca/aparezca según corresponda.
-        """
-        if self._tab_manager and self._tab_manager.has_state_context():
-            # Refrescar vista para que el archivo desaparezca/aparezca según su nuevo estado
-            update_files(self)
+        if current_state_context:
+            item_exists = self._item_exists_in_current_view(file_path)
+            will_match_filter = state == current_state_context
+            
+            if item_exists != will_match_filter:
+                self._force_full_refresh()
+                QTimer.singleShot(0, lambda: update_files(self))
+            elif item_exists:
+                self._update_item_visual(file_path, state)
+        else:
+            self._update_item_visual(file_path, state)
+    
+    def _item_exists_in_current_view(self, file_path: str) -> bool:
+        """Verificar si un item existe en la vista actual."""
+        if self._current_view == "grid":
+            return self._grid_view._tile_manager and \
+                   self._grid_view._tile_manager.get_tile(file_path) is not None
+        return file_path in self._list_view._files
+    
+    def _force_full_refresh(self) -> None:
+        """Limpiar estado del diff incremental para forzar refresh completo."""
+        if self._current_view == "grid":
+            self._grid_view._grid_state = {}
+            self._grid_view._previous_files = None
+    
+    def _update_item_visual(self, file_path: str, state: Optional[str]) -> None:
+        """Actualizar badge visual en la vista actual."""
+        if self._current_view == "grid":
+            self._grid_view.update_tile_state_visual(file_path, state)
+        else:
+            self._list_view.update_item_state_visual(file_path, state)
     
     def _on_states_changed(self, changes: list) -> None:
-        """
-        Manejar cambio de estados de múltiples archivos.
+        """Manejar cambio de estados de múltiples archivos."""
+        if not self._tab_manager or not changes:
+            return
         
-        Si hay contexto de estado activo, refrescar la vista automáticamente.
-        """
-        if self._tab_manager and self._tab_manager.has_state_context():
-            # Refrescar vista para que los archivos desaparezcan/aparezcan según sus nuevos estados
-            update_files(self)
+        current_state_context = self._tab_manager.get_state_context() if self._tab_manager.has_state_context() else None
+        needs_full_refresh = False
+        
+        if current_state_context:
+            for file_path, new_state in changes:
+                item_exists = self._item_exists_in_current_view(file_path)
+                will_match_filter = new_state == current_state_context
+                
+                if item_exists != will_match_filter:
+                    self._force_full_refresh()
+                    needs_full_refresh = True
+                    break
+        
+        if needs_full_refresh:
+            QTimer.singleShot(0, lambda: update_files(self))
+        else:
+            for file_path, new_state in changes:
+                if self._item_exists_in_current_view(file_path):
+                    self._update_item_visual(file_path, new_state)
+            
+            if current_state_context:
+                self._list_view.refresh_state_labels(current_state_context)
+            else:
+                affected_states = {new_state for _, new_state in changes if new_state}
+                for state_id in affected_states:
+                    self._list_view.refresh_state_labels(state_id)
     
     def _on_state_view_mode_changed(self, view_mode: str) -> None:
         """
@@ -435,7 +482,9 @@ class FileViewContainer(QWidget):
             enabled: True para activar modo búsqueda, False para restaurar vista normal
             results: Lista de SearchResult cuando enabled=True, None cuando enabled=False
         """
+        was_search_mode = self._is_search_mode
         self._is_search_mode = enabled
+        
         if results is not None:
             self._search_results = results if enabled else []
             # Crear mapa file_path -> workspace_id para acceso rápido
@@ -452,9 +501,12 @@ class FileViewContainer(QWidget):
             file_paths = [result.file_path for result in self._search_results]
             self._grid_view.update_files(file_paths)
             self._list_view.update_files(file_paths)
-        else:
-            # Restaurar vista normal sin efectos secundarios
-            update_files(self)
+        elif not enabled and was_search_mode:
+            # Restaurar vista normal solo si estábamos en modo búsqueda
+            # Si estamos navegando, NO recargar aquí - la navegación lo hará
+            # Si NO estamos navegando (ej: borrar texto de búsqueda), restaurar la vista
+            if not getattr(self, '_is_navigating', False):
+                update_files(self)
     
     def get_workspace_id_for_file(self, file_path: str) -> Optional[str]:
         """

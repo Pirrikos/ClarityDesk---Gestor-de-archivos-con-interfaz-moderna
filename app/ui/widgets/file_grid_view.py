@@ -5,14 +5,14 @@ Shows files as tiles with icons and filenames.
 Emits signal on double-click to open file.
 """
 
+import os
 from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QPoint, QTimer, Signal
 from PySide6.QtGui import QContextMenuEvent, QMouseEvent
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget, QGridLayout, QSizePolicy
 
 from app.core.constants import CENTRAL_AREA_BG
-from app.core.logger import get_logger
 from app.managers.tab_manager import TabManager
 from app.models.file_stack import FileStack
 from app.services.file_category_service import get_categorized_files_with_labels
@@ -29,6 +29,7 @@ from app.ui.widgets.file_stack_tile import FileStackTile
 from app.ui.widgets.file_tile import FileTile
 from app.ui.widgets.grid_content_widget import GridContentWidget
 from app.ui.widgets.grid_layout_engine import build_dock_layout, build_normal_grid
+from app.ui.widgets.expanded_stacks_widget import ExpandedStacksWidget
 from app.ui.widgets.grid_selection_logic import (
     clear_selection, select_tile, get_selected_paths, set_selected_states
 )
@@ -113,6 +114,9 @@ class FileGridView(QWidget):
         self._desktop_window = desktop_window
         # Desktop files are always visible - stacks are always shown
         self._desktop_files_hidden = True  # Always True - stacks always visible
+        # Flag para suprimir transiciones de contenido durante animación de ventana
+        # Evita recalcular/animar internamente mientras la geometría cambia
+        self._suppress_content_transitions: bool = False
         # Cache para optimización de cálculo de columnas
         self._cached_columns: Optional[int] = None
         self._cached_width: int = 0
@@ -125,6 +129,15 @@ class FileGridView(QWidget):
         self._tile_manager: Optional[TileManager] = None
         # Estado anterior para actualización incremental
         self._previous_files: Optional[Union[List[str], List[Tuple[str, List[str]]]]] = None
+        # Flag para diferir refresh del grid hasta que termine la animación de altura
+        self._pending_refresh_after_animation: bool = False
+        # QStackedWidget para archivos expandidos (solo en modo desktop)
+        self._expanded_stacks_widget: Optional[ExpandedStacksWidget] = None
+        # Control de animación de reducción (ocultar durante animación, mostrar después)
+        self._previous_dock_rows_state: int = 0
+        self._show_expanded_after_animation: bool = False
+        # Flag para indicar colapso a estado base (sin expansión)
+        self._is_collapsing_to_base: bool = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -144,7 +157,38 @@ class FileGridView(QWidget):
         self._use_stacks = self._is_desktop_window
         
         configure_scroll_area(scroll, self._content_widget, self._is_desktop_window)
-        self._grid_layout = setup_grid_layout(self._content_widget)
+        
+        # Para modo desktop: usar QVBoxLayout con grid de stacks + ExpandedStacksWidget
+        if self._is_desktop_window:
+            content_layout = QVBoxLayout(self._content_widget)
+            content_layout.setContentsMargins(0, 0, 0, 0)
+            content_layout.setSpacing(0)
+            
+            # Widget para el grid de stacks (fila 0) - altura fija para evitar rebotes
+            self._stacks_container = QWidget()
+            self._stacks_container.setContentsMargins(0, 0, 0, 0)
+            # Fixed height evita que los stacks "reboten" cuando aparece/desaparece el expanded
+            self._stacks_container.setFixedHeight(105)  # 85 (tile) + 20 (nombre + margen)
+            self._stacks_container.setSizePolicy(
+                QSizePolicy.Policy.Expanding, 
+                QSizePolicy.Policy.Fixed
+            )
+            self._grid_layout = QGridLayout(self._stacks_container)
+            # Configurar márgenes del grid de stacks
+            # Margin bottom aumentado para dar espacio a los nombres de stacks
+            self._grid_layout.setSpacing(12)
+            self._grid_layout.setContentsMargins(20, 8, 12, 8)
+            self._grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+            content_layout.addWidget(self._stacks_container)
+            
+            # QStackedWidget para archivos expandidos
+            self._expanded_stacks_widget = ExpandedStacksWidget()
+            content_layout.addWidget(self._expanded_stacks_widget)
+            
+            # Stretch al final para empujar todo arriba
+            content_layout.addStretch()
+        else:
+            self._grid_layout = setup_grid_layout(self._content_widget)
         
         # Initialize tile manager
         self._tile_manager = TileManager(
@@ -195,8 +239,44 @@ class FileGridView(QWidget):
             for tile in self._tile_manager._tiles_by_id.values():
                 _refresh_tile_badge_if_state_matches(tile, state_id)
     
+    def update_tile_state_visual(self, file_path: str, new_state: Optional[str]) -> bool:
+        """
+        Actualizar estado visual de un tile específico sin reconstruir el grid.
+        
+        Args:
+            file_path: Ruta del archivo cuyo estado cambió.
+            new_state: Nuevo estado (o None para eliminar estado).
+            
+        Returns:
+            True si se encontró y actualizó el tile, False si no existe.
+        """
+        if not self._tile_manager:
+            return False
+        
+        tile = self._tile_manager.get_tile(file_path)
+        if tile and isinstance(tile, FileTile):
+            try:
+                tile.set_file_state(new_state)
+                tile.update()
+                return True
+            except RuntimeError:
+                return False
+        
+        for tiles in self._expanded_file_tiles.values():
+            for t in tiles:
+                try:
+                    if isinstance(t, FileTile) and t.get_file_path() == file_path:
+                        t.set_file_state(new_state)
+                        t.update()
+                        return True
+                except RuntimeError:
+                    continue
+        
+        return False
+    
     def update_files(self, file_list: list) -> None:
         """Update displayed files or stacks with incremental updates when possible."""
+        
         # Almacenar datos y renderizar inmediatamente (como Lista)
         if file_list and isinstance(file_list[0], FileStack):
             old_expanded = self._expanded_stacks.copy()
@@ -238,17 +318,20 @@ class FileGridView(QWidget):
 
     def _refresh_tiles(self) -> None:
         """Rebuild file tiles or stack tiles in grid layout."""
+        # Si estamos en DesktopWindow y la ventana está animando altura,
+        # mantener visible el grid anterior sin cambios y NO reconstruir.
+        if self._is_desktop_window and self._desktop_window:
+            if hasattr(self._desktop_window, '_height_animation_in_progress'):
+                if self._desktop_window._height_animation_in_progress:
+                    return
         items_to_render = self._stacks if self._stacks else self._files
         
         clear_selection(self)
         
-        # Handle expanded tiles animation for dock layout
-        old_expanded_tiles_to_animate = {}
-        if self._is_desktop_window and self._expanded_file_tiles:
-            old_expanded_tiles_to_animate = self._expanded_file_tiles.copy()
-        
         if self._is_desktop_window:
-            build_dock_layout(self, items_to_render, old_expanded_tiles_to_animate, self._grid_layout)
+            # build_dock_layout solo construye stacks
+            # Los archivos expandidos son manejados por ExpandedStacksWidget
+            build_dock_layout(self, items_to_render, {}, self._grid_layout)
             # Emit stacks count change to adjust window width
             stacks_count = len(self._stacks) if self._stacks else 0
             self.stacks_count_changed.emit(stacks_count)
@@ -256,10 +339,15 @@ class FileGridView(QWidget):
             build_normal_grid(self, items_to_render, self._grid_layout)
         
         # Force content widget to recalculate size after adding tiles
-        # This ensures vertical expansion and proper scrolling
+        if self._is_desktop_window and self._desktop_window:
+            if hasattr(self._desktop_window, '_height_animation_in_progress'):
+                if self._desktop_window._height_animation_in_progress:
+                    return
+        
         # Use QTimer to ensure layout has been processed
-        QTimer.singleShot(0, lambda: self._content_widget.adjustSize())
-        QTimer.singleShot(0, lambda: self._content_widget.updateGeometry())
+        container = getattr(self, '_stacks_container', self._content_widget)
+        QTimer.singleShot(0, lambda: container.adjustSize())
+        QTimer.singleShot(0, lambda: container.updateGeometry())
 
     def _on_stack_clicked(self, file_stack: FileStack) -> None:
         """Handle stack click - toggle expansion horizontally below stack."""

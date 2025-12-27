@@ -21,24 +21,24 @@ if TYPE_CHECKING:
 
 def update_files(container: 'FileViewContainer') -> None:
     """Update both views with files from active tab or search results."""
+    # Si estamos navegando, forzar salida del modo búsqueda para cargar contenido normal
+    if hasattr(container, '_is_navigating') and container._is_navigating:
+        container._is_search_mode = False
+        container._search_results = []
+        container._file_to_workspace = {}
+    
     if hasattr(container, '_is_search_mode') and container._is_search_mode:
         file_paths = [result.file_path for result in container._search_results]
         container._grid_view.update_files(file_paths)
         container._list_view.update_files(file_paths)
         return
     
-    from PySide6.QtWidgets import QApplication
-    from PySide6.QtCore import QTimer
-    detector = getattr(QApplication.instance(), '_top_level_detector', None)
-    if detector:
-        detector.set_workspace_switch_active(True)
-        QTimer.singleShot(500, lambda: detector.set_workspace_switch_active(False) if detector else None)
-    
     if not hasattr(container, '_cached_is_desktop'):
         container._cached_is_desktop = _check_if_desktop_window(container)
     use_stacks = container._cached_is_desktop
     
     items = container._tab_manager.get_files(use_stacks=use_stacks)
+    
     container._grid_view.update_files(items)
     container._list_view.update_files(items)
     

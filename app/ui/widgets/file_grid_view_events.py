@@ -19,78 +19,146 @@ def _deferred_first_layout(view) -> None:
 
 
 def resize_event(view, event) -> None:
-    """Handle resize to recalculate grid columns with debouncing."""
+    """Handle resize coalescing: calcular columnas/filas una sola vez por ciclo."""
     view.__class__.__bases__[0].resizeEvent(view, event)
     
-    # Dock no necesita recálculo de columnas (usa layout horizontal fijo)
+    # Dock no recalcula durante animaciones; ignora resize
     if view._is_desktop_window:
+        if view._desktop_window and hasattr(view._desktop_window, '_height_animation_in_progress'):
+            if view._desktop_window._height_animation_in_progress:
+                return
         return
     
-    # Verificar ancho válido antes de procesar
+    # Ancho válido
     new_width = event.size().width()
     if new_width <= 0:
         return
     
-    new_columns = calculate_columns_for_normal_grid(new_width)
-    cached_columns = getattr(view, '_cached_columns', None)
+    # Iniciar ciclo de resize: bloquear recalcular columnas dentro del ciclo
+    if not getattr(view, '_layout_locked_for_resize', False):
+        view._layout_locked_for_resize = True
+    view._pending_resize_width = new_width
     
-    # Si no hay cambio de columnas, actualizar solo el cache de width y retornar
-    # Esto evita reconstrucciones innecesarias cuando solo cambia el ancho pero no las columnas
-    if cached_columns is not None and new_columns == cached_columns:
-        view._cached_width = new_width
-        return
-    
-    # Primera vez con ancho válido: calcular columnas y diferir construcción
-    # Evita construcción inmediata cuando el ancho puede estar inestable
-    if cached_columns is None and (view._files or view._stacks):
-        # Calcular y cachear columnas inmediatamente
-        view._cached_columns = new_columns
-        view._cached_width = new_width
-        
-        # Programar construcción diferida en siguiente ciclo del event loop
-        # Protegido por flag para evitar múltiples encolamientos
-        if not hasattr(view, '_first_layout_pending'):
-            view._first_layout_pending = True
-            QTimer.singleShot(0, lambda: _deferred_first_layout(view))
-        return
-    
-    # Debounce: solo procesar después de 150ms de quietud
-    # Esto evita reconstrucciones excesivas durante resize continuo
-    if not hasattr(view, '_resize_timer'):
-        view._resize_timer = QTimer()
-        view._resize_timer.setSingleShot(True)
-        def on_timer_timeout():
-            # Verificar nuevamente que sigue habiendo cambio de columnas
-            current_width = view.width()
-            if current_width <= 0:
+    # Timer único para finalizar el ciclo y calcular columnas definitivas
+    if not hasattr(view, '_resize_finalize_timer'):
+        view._resize_finalize_timer = QTimer()
+        view._resize_finalize_timer.setSingleShot(True)
+        def finalize():
+            final_width = getattr(view, '_pending_resize_width', new_width)
+            if final_width <= 0:
+                view._layout_locked_for_resize = False
                 return
-            current_columns = calculate_columns_for_normal_grid(current_width)
+            final_columns = calculate_columns_for_normal_grid(final_width)
             current_cached = getattr(view, '_cached_columns', None)
-            
-            # Solo refrescar si hay cambio real de columnas y hay datos
-            if current_cached is not None and current_columns != current_cached:
-                if view._files or view._stacks:
-                    view._refresh_tiles()
-        
-        view._resize_timer.timeout.connect(on_timer_timeout)
+            # Actualizar cache y reconstruir solo si cambian columnas
+            if final_columns and final_columns > 0:
+                if current_cached is None or final_columns != current_cached:
+                    view._cached_columns = final_columns
+                    view._cached_width = final_width
+                    if view._files or view._stacks:
+                        view._refresh_tiles()
+                else:
+                    view._cached_width = final_width
+            # Desbloquear ciclo
+            view._layout_locked_for_resize = False
+        view._resize_finalize_timer.timeout.connect(finalize)
     
-    # Cancelar timer anterior y reiniciar con nuevo delay
-    view._resize_timer.stop()
-    view._resize_timer.start(150)
+    # Reiniciar el timer para coalescer múltiples eventos dentro de un único ciclo
+    view._resize_finalize_timer.stop()
+    view._resize_finalize_timer.start(180)
 
 
 def on_stack_clicked(view, file_stack: FileStack) -> None:
-    """Handle stack click - toggle expansion horizontally below stack."""
+    """Handle stack click - toggle expansion using QStackedWidget."""
     stack_type = file_stack.stack_type
     
+    # Toggle expansión
     if stack_type in view._expanded_stacks:
         del view._expanded_stacks[stack_type]
     else:
         view._expanded_stacks.clear()
         view._expanded_stacks[stack_type] = file_stack.files
     
+    # Calcular parámetros de layout
+    total_stacks = len(view._stacks) if view._stacks else 5
+    total_expanded_files = sum(len(files) for files in view._expanded_stacks.values())
+    
+    if view._is_desktop_window and view._desktop_window:
+        if total_expanded_files > 0:
+            # Calcular filas discretas (1-3)
+            from math import ceil
+            approx_rows = (total_expanded_files + total_stacks - 1) // total_stacks
+            num_rows = max(1, min(3, approx_rows))
+            files_per_row = ceil(total_expanded_files / num_rows)
+            files_per_row = max(1, min(files_per_row, total_stacks))
+            
+            view._dock_rows_state = num_rows
+            view._desktop_window._pending_expansion_state = {
+                'stack_type': stack_type,
+                'files': file_stack.files,
+                'files_per_row': files_per_row,
+                'num_rows': num_rows
+            }
+        else:
+            view._desktop_window._pending_expansion_state = None
+            view._dock_rows_state = None
+    
+    # Detectar si estamos REDUCIENDO filas (para ocultar durante animación)
+    old_num_rows = getattr(view, '_previous_dock_rows_state', 0) or 0
+    new_num_rows = getattr(view, '_dock_rows_state', 0) or 0
+    is_reducing = new_num_rows < old_num_rows
+    
+    # Guardar estado actual para la próxima comparación
+    view._previous_dock_rows_state = new_num_rows
+    
     emit_expansion_height(view)
-    view._refresh_tiles()
+    
+    # Usar ExpandedStacksWidget para cambio instantáneo
+    if view._is_desktop_window and view._expanded_stacks_widget:
+        if view._expanded_stacks:
+            # Calcular files_per_row
+            files_per_row = total_stacks
+            if view._dock_rows_state:
+                from math import ceil
+                files_per_row = ceil(total_expanded_files / view._dock_rows_state)
+                files_per_row = max(1, min(files_per_row, total_stacks))
+            
+            if is_reducing:
+                # REDUCIENDO: preparar página con altura 0, mostrar altura después de animación
+                view._expanded_stacks_widget.setFixedHeight(0)
+                view._expanded_stacks_widget.show_stack(
+                    stack_type,
+                    file_stack.files,
+                    view,
+                    files_per_row
+                )
+                view._expanded_stacks_widget.setFixedHeight(0)  # Mantener altura 0
+                # Guardar datos para aplicar altura después de la animación
+                view._show_expanded_after_animation = True
+            else:
+                # EXPANDIENDO o mismo tamaño: aplicar altura inmediatamente
+                view._show_expanded_after_animation = False
+                view._expanded_stacks_widget.show_stack(
+                    stack_type,
+                    file_stack.files,
+                    view,
+                    files_per_row
+                )
+            # NO necesitamos refresh de stacks - solo cambia el expanded widget
+            view._pending_refresh_after_animation = False
+            # NO estamos colapsando a base, estamos cambiando de expansión
+            view._is_collapsing_to_base = False
+        else:
+            # Ocultar (colapsar) - solo ocultar widget, NO refresh de stacks
+            view._expanded_stacks_widget.hide_stack()
+            view._show_expanded_after_animation = False
+            # NO marcar pending refresh cuando colapsamos - los stacks no cambian
+            view._pending_refresh_after_animation = False
+            # Marcar que estamos colapsando para que _force_grid_relayout no haga nada
+            view._is_collapsing_to_base = True
+    else:
+        # Para ventanas normales
+        view._refresh_tiles()
 
 
 def emit_expansion_height(view) -> None:
@@ -99,16 +167,22 @@ def emit_expansion_height(view) -> None:
         view.expansion_height_changed.emit(0)
         return
     
-    total_stacks = len(view._stacks) if view._stacks else 5
-    total_expanded_files = sum(len(files) for files in view._expanded_stacks.values())
-    num_rows = (total_expanded_files + total_stacks - 1) // total_stacks
+    # Usar el valor de filas clampeado si está disponible
+    num_rows = getattr(view, '_dock_rows_state', None)
+    
+    if not num_rows:
+        # Calcular si no hay valor clampeado
+        total_stacks = len(view._stacks) if view._stacks else 5
+        total_expanded_files = sum(len(files) for files in view._expanded_stacks.values())
+        num_rows = (total_expanded_files + total_stacks - 1) // total_stacks
     
     if num_rows == 0:
         view.expansion_height_changed.emit(0)
         return
     
-    height_per_row = 85 + 16
-    total_expansion_height = (num_rows * height_per_row) + 40
+    # Usar cálculo consistente con ExpandedStacksWidget
+    from app.ui.widgets.expanded_stacks_widget import ExpandedStacksWidget
+    total_expansion_height = ExpandedStacksWidget.calculate_height_for_rows(num_rows)
     view.expansion_height_changed.emit(total_expansion_height)
 
 
@@ -134,4 +208,3 @@ def animate_tile_exit(view, tile: FileTile, delay_ms: int = 0) -> None:
         QTimer.singleShot(delay_ms, do_animate)
     else:
         do_animate()
-

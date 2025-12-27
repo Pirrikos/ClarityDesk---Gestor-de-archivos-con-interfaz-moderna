@@ -89,7 +89,32 @@ class FileListView(QTableWidget):
             self._get_label_callback
         )
     
-    def refresh_state_labels(self, state_id: str) -> None:
+    def update_item_state_visual(self, file_path: str, new_state: Optional[str]) -> bool:
+        """
+        Actualizar estado visual de un item específico sin reconstruir la tabla.
+        
+        Args:
+            file_path: Ruta del archivo cuyo estado cambió.
+            new_state: Nuevo estado (o None para eliminar estado).
+            
+        Returns:
+            True si se encontró la fila y se actualizó, False si no existe.
+        """
+        for row in range(self.rowCount()):
+            name_item = self.item(row, 1)
+            if name_item and name_item.data(Qt.ItemDataRole.UserRole) == file_path:
+                container = self.cellWidget(row, 4)
+                if container and container.layout():
+                    item = container.layout().itemAt(0)
+                    if item:
+                        from app.ui.widgets.list_state_cell import ListStateCell
+                        cell = item.widget()
+                        if isinstance(cell, ListStateCell):
+                            cell.set_state(new_state)
+                            return True
+        return False
+    
+    def refresh_state_labels(self, state_id: Optional[str]) -> None:
         """
         Refrescar labels de estado en todas las filas visibles.
         
@@ -97,7 +122,7 @@ class FileListView(QTableWidget):
         visible sin reconstruir la tabla.
         
         Args:
-            state_id: ID del estado cuyo label cambió.
+            state_id: ID del estado cuyo label cambió (o None para refrescar todos).
         """
         from app.ui.widgets.list_state_cell import ListStateCell
         
@@ -106,7 +131,7 @@ class FileListView(QTableWidget):
             state_widget = self.cellWidget(row, 4)
             if isinstance(state_widget, ListStateCell):
                 current_state = getattr(state_widget, '_state', None)
-                if current_state == state_id:
+                if state_id is None or current_state == state_id:
                     state_widget.update()
 
     def startDrag(self, supported_actions) -> None:
@@ -176,7 +201,7 @@ class FileListView(QTableWidget):
                 if last_index.isValid():
                     last_rect = self.visualRect(last_index)
                     rect.setRight(last_rect.right())
-            self.update(rect)
+            self.viewport().update(rect)
 
     def _on_item_double_clicked(self, item: QTableWidgetItem) -> None:
         """Handle double-click on table row."""
@@ -279,7 +304,11 @@ class FileListView(QTableWidget):
 
     def set_selected_states(self, state) -> None:
         """
-        Set state for all selected files and update display.
+        Set state for all selected files.
+        
+        La actualización visual se maneja a través de las señales state_changed/states_changed
+        emitidas por FileStateManager, que son procesadas por FileViewContainer._on_state_changed
+        y _on_states_changed para decidir si refrescar la vista o solo actualizar badges.
         
         Args:
             state: State constant or None to remove state.
@@ -291,8 +320,10 @@ class FileListView(QTableWidget):
         if not selected_paths:
             return
         
+        # Update states in manager - esto emitirá states_changed que será procesado por FileViewContainer
         self._state_manager.set_files_state(selected_paths, state)
-        self._refresh_table()
+        
+        # NO refrescar tabla aquí - dejar que las señales manejen la actualización
     
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         """Show context menu - background menu or item menu depending on click location."""

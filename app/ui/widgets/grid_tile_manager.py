@@ -67,7 +67,7 @@ class TileManager:
             tile = self._tiles_by_id[tile_id]
             try:
                 # Verify C++ object still exists
-                _ = tile.parent()
+                tile.parent()
                 # Reset visual state before reuse
                 if hasattr(tile, 'set_selected'):
                     tile.set_selected(False)
@@ -108,7 +108,11 @@ class TileManager:
         
         # Set parent if needed
         if tile.parent() != self._content_widget:
-            tile.setParent(self._content_widget)
+            try:
+                tile.setParent(self._content_widget)
+            except RuntimeError:
+                # Widget ya fue eliminado, no hacer nada
+                return
         
         # Add to layout
         self._grid_layout.addWidget(tile, row, col)
@@ -143,7 +147,10 @@ class TileManager:
         
         # Cleanup badge if exists
         if hasattr(tile, '_cleanup_badge'):
-            tile._cleanup_badge()
+            try:
+                tile._cleanup_badge()
+            except (RuntimeError, AttributeError):
+                pass
         
         # Remove parent and schedule deletion
         tile.setParent(None)

@@ -11,15 +11,11 @@ def soft_reveal(tile) -> None:
     """
     Soft reveal profesional: muestra tile con micro-fade ≤120ms o en siguiente ciclo de evento.
     
-    Los tiles se crean ocultos y se revelan suavemente sin delays artificiales.
     Prioriza rapidez percibida y elegancia visual.
     """
     if tile._dock_style:
         # Dock style usa animate_enter con animación completa
         return
-    
-    # Crear tiles ocultos inicialmente
-    tile.setVisible(False)
     
     # Revelar en siguiente ciclo de evento con micro-fade
     QTimer.singleShot(0, lambda: _reveal_with_fade(tile))

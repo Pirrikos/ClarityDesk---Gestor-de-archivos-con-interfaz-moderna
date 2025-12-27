@@ -49,6 +49,7 @@ def calculate_expansion_height(
     if num_rows == 0:
         return 0
     
-    height_per_row = 85 + 16
-    return (num_rows * height_per_row) + 40
+    # Usar cálculo consistente con ExpandedStacksWidget
+    from app.ui.widgets.expanded_stacks_widget import ExpandedStacksWidget
+    return ExpandedStacksWidget.calculate_height_for_rows(num_rows)
 

@@ -57,20 +57,29 @@ def build_dock_layout(
     old_expanded_tiles_to_animate: dict,
     grid_layout: QGridLayout
 ) -> None:
-    """Build Dock-style layout with stacks and expanded files."""
-    _emit_expansion_height(view)
+    """
+    Build Dock-style layout with stacks only.
+    
+    Los archivos expandidos son manejados por ExpandedStacksWidget (QStackedWidget),
+    no se crean en este grid. Esto permite cambios instantáneos sin recrear widgets.
+    """
     setup_dock_layout_config(grid_layout)
     
-    # Deshabilitar updates durante construcción masiva para evitar repaints redundantes
-    content_widget = view._content_widget
-    updates_enabled = content_widget.updatesEnabled()
+    # Obtener contenedor de stacks (puede ser _content_widget o _stacks_container)
+    stacks_container = getattr(view, '_stacks_container', view._content_widget)
+    
+    updates_enabled = stacks_container.updatesEnabled()
     try:
-        content_widget.setUpdatesEnabled(False)
-        animate_old_tiles_exit(view, old_expanded_tiles_to_animate)
-        stack_col_map = _build_stack_tiles(view, items_to_render, grid_layout)
-        _build_expanded_files(view, stack_col_map, grid_layout)
+        stacks_container.setUpdatesEnabled(False)
+        
+        # Construir solo los stack tiles (fila 0)
+        _build_stack_tiles(view, items_to_render, grid_layout)
+        
+        # Forzar cálculo del layout
+        grid_layout.activate()
+        stacks_container.updateGeometry()
     finally:
-        content_widget.setUpdatesEnabled(updates_enabled)
+        stacks_container.setUpdatesEnabled(updates_enabled)
 
 
 def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: QGridLayout) -> None:
@@ -87,17 +96,19 @@ def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: 
         # Ancho inválido: no construir layout, se construirá en resizeEvent
         return
     
-    _emit_expansion_height(view)
     setup_normal_grid_config(grid_layout)
     
     col_offset = get_col_offset_for_desktop_window(view._is_desktop_window)
     
-    # Cache de cálculo de columnas: solo recalcular si cambio significativo (>10px)
-    if (view._cached_columns is None or 
-        view._cached_width is None or 
-        abs(current_width - view._cached_width) > 10):
-        view._cached_columns = calculate_columns_for_normal_grid(current_width)
-        view._cached_width = current_width
+    # Política: durante un ciclo de resize, NO recalcular columnas aquí.
+    # Se calcularán al finalizar el ciclo en resizeEvent (coalescido).
+    if not getattr(view, '_layout_locked_for_resize', False):
+        # Cache de cálculo de columnas: solo recalcular si cambio significativo (>10px)
+        if (view._cached_columns is None or 
+            view._cached_width is None or 
+            abs(current_width - view._cached_width) > 10):
+            view._cached_columns = calculate_columns_for_normal_grid(current_width)
+            view._cached_width = current_width
     
     columns = view._cached_columns
     
@@ -175,13 +186,13 @@ def build_normal_grid(view: 'FileGridView', items_to_render: list, grid_layout: 
             _add_category_headers_at_rows(view, items_to_render, grid_layout, header_rows, columns, col_offset)
         
         # Apply changes incrementally
-        # 1. Detach removed + moved
+        # 1. Detach removed and moved tiles
         for tile_id in diff.removed + list(diff.moved.keys()):
             tile = tile_manager.get_tile(tile_id)
             if tile:
                 tile_manager.detach(tile)
         
-        # 2. Destroy removed
+        # 2. Destroy removed (ya están ocultos)
         for tile_id in diff.removed:
             tile_manager.destroy(tile_id)
         
@@ -392,29 +403,81 @@ def _build_stack_tiles(view, items_to_render: list, grid_layout: QGridLayout) ->
     stack_row = 0
     col_offset = get_col_offset_for_desktop_window(view._is_desktop_window)
     
+    # Reutilizar tiles de sistema existentes (Desktop, Settings, Separator)
     if view._is_desktop_window:
-        desktop_tile = DesktopStackTile(view)
-        _connect_desktop_tile_signals(desktop_tile, view)
-        grid_layout.addWidget(desktop_tile, stack_row, 0)
+        # Buscar tiles existentes en el layout antes de crear nuevos
+        desktop_tile = None
+        settings_tile = None
+        separator = None
         
-        settings_tile = SettingsStackTile(view)
-        grid_layout.addWidget(settings_tile, stack_row, 1)
+        # Buscar tiles existentes en sus posiciones conocidas
+        desktop_item = grid_layout.itemAtPosition(stack_row, 0)
+        if desktop_item and desktop_item.widget():
+            widget = desktop_item.widget()
+            if isinstance(widget, DesktopStackTile):
+                desktop_tile = widget
         
-        separator = DockSeparator(view)
-        grid_layout.addWidget(separator, stack_row, 2)
+        settings_item = grid_layout.itemAtPosition(stack_row, 1)
+        if settings_item and settings_item.widget():
+            widget = settings_item.widget()
+            if isinstance(widget, SettingsStackTile):
+                settings_tile = widget
+        
+        separator_item = grid_layout.itemAtPosition(stack_row, 2)
+        if separator_item and separator_item.widget():
+            widget = separator_item.widget()
+            if isinstance(widget, DockSeparator):
+                separator = widget
+        
+        # Crear solo si no existen
+        if not desktop_tile:
+            desktop_tile = DesktopStackTile(view)
+            _connect_desktop_tile_signals(desktop_tile, view)
+            grid_layout.addWidget(desktop_tile, stack_row, 0)
+        
+        if not settings_tile:
+            settings_tile = SettingsStackTile(view)
+            grid_layout.addWidget(settings_tile, stack_row, 1)
+        
+        if not separator:
+            separator = DockSeparator(view)
+            grid_layout.addWidget(separator, stack_row, 2)
         
         col_offset = 3
     
+    # Reutilizar stack tiles existentes en lugar de recrearlos
     for idx, item in enumerate(items_to_render):
         col = idx + col_offset
         if view._stacks:
             stack = item
-            tile = create_stack_tile(stack, view, view._icon_service)
-            tile.stack_clicked.connect(view._on_stack_clicked)
-            tile.open_file.connect(view.open_file.emit)
-            grid_layout.addWidget(tile, stack_row, col)
-            stack_col_map[stack.stack_type] = col
-            QTimer.singleShot(0, tile.update_badge_count)
+            stack_type = stack.stack_type
+            
+            # Buscar tile existente en esta posición
+            existing_item = grid_layout.itemAtPosition(stack_row, col)
+            existing_tile = None
+            if existing_item and existing_item.widget():
+                widget = existing_item.widget()
+                # Verificar si es un FileStackTile y corresponde al mismo stack_type
+                from app.ui.widgets.file_stack_tile import FileStackTile
+                if isinstance(widget, FileStackTile):
+                    # Verificar que corresponde al mismo stack_type
+                    if hasattr(widget, '_file_stack') and widget._file_stack.stack_type == stack_type:
+                        existing_tile = widget
+            
+            if existing_tile:
+                # Reutilizar tile existente - solo actualizar badge si es necesario
+                tile = existing_tile
+                # No repintar ni animar - solo actualizar badge
+                QTimer.singleShot(0, tile.update_badge_count)
+            else:
+                # Crear nuevo tile solo si no existe
+                tile = create_stack_tile(stack, view, view._icon_service)
+                tile.stack_clicked.connect(view._on_stack_clicked)
+                tile.open_file.connect(view.open_file.emit)
+                grid_layout.addWidget(tile, stack_row, col)
+                QTimer.singleShot(0, tile.update_badge_count)
+            
+            stack_col_map[stack_type] = col
         else:
             tile = create_file_tile(
                 item, view, view._icon_service, view._state_manager,
@@ -425,61 +488,6 @@ def _build_stack_tiles(view, items_to_render: list, grid_layout: QGridLayout) ->
     return stack_col_map
 
 
-def _build_expanded_files(view, stack_col_map: dict, grid_layout: QGridLayout) -> None:
-    """Build expanded files grid below stacks."""
-    if not (view._stacks and view._expanded_stacks):
-        return
-    
-    total_stacks = len(view._stacks)
-    old_expanded_tiles = view._expanded_file_tiles.copy()
-    view._expanded_file_tiles = {}
-    
-    col_offset = get_col_offset_for_desktop_window(view._is_desktop_window)
-    
-    for stack_type, expanded_files in view._expanded_stacks.items():
-        if stack_type in stack_col_map:
-            stack_tiles = _create_expanded_file_tiles(
-                view, expanded_files, total_stacks, stack_col_map[stack_type],
-                col_offset, grid_layout
-            )
-            view._expanded_file_tiles[stack_type] = stack_tiles
-            animate_tiles_entrance(stack_tiles)
 
-
-def _create_expanded_file_tiles(
-    view,
-    expanded_files: list,
-    total_stacks: int,
-    stack_col: int,
-    col_offset: int,
-    grid_layout: QGridLayout
-) -> list:
-    """Create file tiles for expanded stack and add to layout."""
-    total_files = len(expanded_files)
-    files_per_row = min(total_files, total_stacks)
-    stack_tiles = []
-    stack_row = 0
-    
-    for file_idx, file_path in enumerate(expanded_files):
-        file_tile = create_file_tile(
-            file_path, view, view._icon_service, view._state_manager,
-            dock_style=view._is_desktop_window
-        )
-        file_row, file_col = calculate_expanded_file_position(
-            file_idx, files_per_row, total_files, total_stacks, col_offset
-        )
-        
-        grid_layout.addWidget(file_tile, stack_row + 1 + file_row, file_col)
-        stack_tiles.append(file_tile)
-    
-    return stack_tiles
-
-
-def _emit_expansion_height(view) -> None:
-    """Calculate and emit the height needed for expanded stacks."""
-    height = calculate_expansion_height(
-        view._is_desktop_window,
-        view._stacks,
-        view._expanded_stacks
-    )
-    view.expansion_height_changed.emit(height)
+# NOTA: Los archivos expandidos ahora son manejados por ExpandedStacksWidget (QStackedWidget)
+# Las funciones _build_expanded_files y _create_expanded_file_tiles han sido eliminadas.

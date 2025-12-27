@@ -154,6 +154,14 @@ class SecondaryHeader(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         return layout
 
+    def clear_search_text(self) -> None:
+        """Limpiar el texto del campo de búsqueda sin disparar señales."""
+        if self._search:
+            # Desconectar temporalmente la señal para evitar que se reactive la búsqueda
+            self._search.blockSignals(True)
+            self._search.clear()
+            self._search.blockSignals(False)
+    
     def _setup_search_field(self, layout: QHBoxLayout) -> None:
         search_container = QWidget(self)
         search_container.setObjectName("SearchContainer")

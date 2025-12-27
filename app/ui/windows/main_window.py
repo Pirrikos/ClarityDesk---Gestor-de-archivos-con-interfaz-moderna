@@ -152,6 +152,7 @@ class MainWindow(QWidget):
         self._workspace_selector.new_focus_requested.connect(self._on_sidebar_new_focus)
         self._sidebar.folder_selected.connect(self._on_sidebar_folder_selected)
         self._sidebar.focus_remove_requested.connect(self._on_sidebar_remove_focus)
+        self._sidebar.state_selected.connect(self._on_state_selected)
         
         watcher = self._tab_manager.get_watcher()
         if watcher:
@@ -203,6 +204,24 @@ class MainWindow(QWidget):
         
         # Setup footer update timer
         self._setup_footer_timer()
+
+    def _cancel_search_if_active(self) -> None:
+        """Cancelar búsqueda si está activa antes de navegar."""
+        if self._search_manager and self._search_manager.is_search_mode():
+            # Marcar que estamos navegando para que set_search_mode no recargue archivos
+            # La navegación normal se encargará de recargar los archivos
+            self._file_view_container._is_navigating = True
+            # Limpiar texto del campo de búsqueda PRIMERO (sin disparar señales)
+            if self._secondary_header:
+                self._secondary_header.clear_search_text()
+            # Luego cancelar la búsqueda (esto ya no disparará búsqueda porque el texto está vacío)
+            self._search_manager.clear_search()
+            # Procesar eventos para asegurar que las señales se procesen antes de continuar
+            from PySide6.QtWidgets import QApplication
+            QApplication.processEvents()
+            # Resetear flag después de que la navegación haya procesado las señales
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(200, lambda: setattr(self._file_view_container, '_is_navigating', False))
 
     def _setup_footer_timer(self) -> None:
         """Setup timer to periodically update footer with selected file path."""
@@ -372,6 +391,9 @@ class MainWindow(QWidget):
     
     def _on_workspace_selected(self, workspace_id: str) -> None:
         """Handle workspace selection - delegar a WorkspaceManager."""
+        # Cancelar búsqueda si está activa antes de cambiar workspace
+        self._cancel_search_if_active()
+        
         if self._workspace_manager:
             self._workspace_manager.switch_workspace(
                 workspace_id,
@@ -780,6 +802,9 @@ class MainWindow(QWidget):
         self._tab_manager.add_tab(path)
     
     def _navigate_to_folder(self, folder_path: str) -> None:
+        # Cancelar búsqueda si está activa antes de navegar
+        self._cancel_search_if_active()
+        
         if not os.access(folder_path, os.R_OK):
             QMessageBox.warning(
                 self,
@@ -818,6 +843,10 @@ class MainWindow(QWidget):
     def _on_sidebar_folder_selected(self, path: str) -> None:
         """Handle folder selection from sidebar - delega en método central."""
         self._navigate_to_folder(path)
+    
+    def _on_state_selected(self, state: str) -> None:
+        """Handle state selection from sidebar - cancelar búsqueda si está activa."""
+        self._cancel_search_if_active()
     
     def _on_sidebar_remove_focus(self, path: str) -> None:
         """Handle focus removal request from sidebar - solo permite eliminar carpetas raíz."""
