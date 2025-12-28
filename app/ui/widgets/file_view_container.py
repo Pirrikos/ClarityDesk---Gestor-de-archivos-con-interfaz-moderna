@@ -10,10 +10,10 @@ from time import perf_counter
 from typing import TYPE_CHECKING, Optional, List
 
 from PySide6.QtCore import QPropertyAnimation, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QPainter, QPaintEvent
 from PySide6.QtWidgets import (
     QApplication,
     QGraphicsOpacityEffect,
-    QMessageBox,
     QProgressDialog,
     QStackedWidget,
     QVBoxLayout,
@@ -23,9 +23,13 @@ from PySide6.QtWidgets import (
 from app.core.constants import (
     ANIMATION_CLEANUP_DELAY_MS,
     ANIMATION_DURATION_MS,
+    CENTRAL_AREA_BG,
+    CENTRAL_AREA_BG_LIGHT,
     CURSOR_BUSY_TIMEOUT_MS,
     DOUBLE_CLICK_THRESHOLD_MS,
     PROGRESS_DIALOG_THRESHOLD,
+    ROUNDED_BG_RADIUS,
+    ROUNDED_BG_TOP_OFFSET,
     SELECTION_RESTORE_DELAY_MS,
     SELECTION_UPDATE_INTERVAL_MS,
     UPDATE_DELAY_MS,
@@ -53,6 +57,7 @@ from app.ui.widgets.file_view_tabs import (
 )
 from app.ui.widgets.focus_header_panel import FocusHeaderPanel
 from app.ui.widgets.view_toolbar import ViewToolbar
+from app.ui.utils.rounded_background_painter import paint_rounded_background
 from app.ui.windows.bulk_rename_dialog import BulkRenameDialog
 
 if TYPE_CHECKING:
@@ -111,8 +116,25 @@ class FileViewContainer(QWidget):
         self._is_navigating = False  # Flag para indicar si estamos en medio de una navegación
         
         self.setAcceptDrops(True)
+        if not self._is_desktop:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+            self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setAutoFillBackground(False)
+        
+        # Inicializar color del tema desde AppSettings
+        from app.managers import app_settings as app_settings_module
+        if app_settings_module.app_settings is not None:
+            color_theme = app_settings_module.app_settings.central_area_color
+            self._theme_color = CENTRAL_AREA_BG_LIGHT if color_theme == "light" else CENTRAL_AREA_BG
+        else:
+            self._theme_color = CENTRAL_AREA_BG
+        
         setup_ui(self)
         connect_tab_signals(self, tab_manager)
+        
+        # Conectar señal de cambio de tema después de que el objeto esté completamente inicializado
+        if app_settings_module.app_settings is not None:
+            app_settings_module.app_settings.central_area_color_changed.connect(self._on_theme_changed)
         
         # Conectar señal de cambio de estado para refrescar vista si hay contexto de estado activo
         self._state_manager.state_changed.connect(self._on_state_changed)
@@ -350,7 +372,13 @@ class FileViewContainer(QWidget):
             f"No se pudieron renombrar todos los archivos:\n\n{error_msg}\n\n"
             "Por favor, verifica los nombres e intenta nuevamente."
         )
-        QMessageBox.critical(self, "Error al renombrar", user_friendly_msg)
+        error_dialog = ErrorDialog(
+            parent=self,
+            title="Error al renombrar",
+            message=user_friendly_msg,
+            is_warning=False
+        )
+        error_dialog.exec()
 
     def _on_state_button_clicked(self, state: str) -> None:
         """Handle state button click from toolbar."""
@@ -550,6 +578,32 @@ class FileViewContainer(QWidget):
             self._grid_view.refresh_state_labels(state_id)
         if self._list_view:
             self._list_view.refresh_state_labels(state_id)
+    
+    def paintEvent(self, event: QPaintEvent) -> None:
+        """Pintar fondo redondeado estilo sidebar cuando no es desktop window."""
+        if self._is_desktop:
+            super().paintEvent(event)
+            return
+        
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        widget_rect = self.rect().adjusted(0, 0, -1, -1)
+        bg_color = QColor(self._theme_color)  # Usar color del tema (claro u oscuro)
+        
+        # Pintar fondo redondeado sin offset superior para cubrir completamente el área
+        painter.setBrush(bg_color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRoundedRect(widget_rect, ROUNDED_BG_RADIUS, ROUNDED_BG_RADIUS)
+        
+        painter.end()
+        super().paintEvent(event)
+    
+    def _on_theme_changed(self, color_theme: str) -> None:
+        """Actualizar color del tema cuando cambia."""
+        from app.core.constants import CENTRAL_AREA_BG, CENTRAL_AREA_BG_LIGHT
+        self._theme_color = CENTRAL_AREA_BG_LIGHT if color_theme == "light" else CENTRAL_AREA_BG
+        self.update()  # Forzar repintado
     
     def closeEvent(self, event) -> None:
         """Cleanup timers before closing."""

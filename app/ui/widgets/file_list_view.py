@@ -56,6 +56,7 @@ class FileListView(QTableWidget):
             get_label_callback: Optional callback to get state labels.
         """
         super().__init__(parent)
+        self.setAutoFillBackground(False)
         self._files: list[str] = []
         self._icon_service = icon_service or IconService()
         self._tab_manager = tab_manager

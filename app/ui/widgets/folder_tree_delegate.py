@@ -1,9 +1,7 @@
-from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, QSize, Qt, QEasingCurve, QTimer, QVariantAnimation
-from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QMouseEvent, QPainter, QPen, QPolygon, QTransform
+from PySide6.QtCore import QModelIndex, QPoint, QRect, QSize, Qt, QEasingCurve, QTimer, QVariantAnimation
+from PySide6.QtGui import QBrush, QColor, QFont, QIcon, QMouseEvent, QPainter, QPen, QTransform
 from PySide6.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem, QTreeView, QStyle
 
-from app.ui.widgets.folder_tree_menu_utils import calculate_menu_rect_viewport
-from app.ui.widgets.folder_tree_widget_utils import find_sidebar
 from app.ui.widgets.folder_tree_constants import (
     CONTROLS_AREA_PAD_X_RIGHT,
     CONTROLS_AREA_PADDING,
@@ -11,24 +9,16 @@ from app.ui.widgets.folder_tree_constants import (
     CONTROLS_AREA_BUTTON_SIZE,
     CONTROLS_AREA_SEPARATOR_MARGIN,
     CONTROLS_AREA_TOTAL_OFFSET,
-    MENU_BUTTON_SIZE,
-    MENU_BUTTON_PADDING,
-    MENU_BUTTON_VERTICAL_OFFSET,
-    MENU_BUTTON_MIN_TOP_MARGIN,
-    ARROW_SIZE,
-    ARROW_BODY_RATIO,
     CHEVRON_CLICKABLE_WIDTH,
     CHEVRON_CLICKABLE_HEIGHT,
-    CHEVRON_VERTICAL_SPACING,
     CHEVRON_VERTICAL_OFFSET,
     SEPARATOR_VERTICAL_COLOR,
     SEPARATOR_VERTICAL_MARGIN_TOP,
     SEPARATOR_VERTICAL_MARGIN_BOTTOM,
     SEPARATOR_VERTICAL_TEXT_MARGIN,
-    SEPARATOR_HORIZONTAL_COLOR,
     ROOT_ITEM_TOP_SPACING,
 )
-from app.core.constants import CHEVRON_COLOR, TEXT_SUBFOLDER
+from app.core.constants import TEXT_SUBFOLDER
 from app.ui.widgets.folder_tree_styles import TEXT_PRIMARY
 
 
@@ -385,83 +375,17 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                 rotation = 90.0 if is_expanded else 0.0  # 0° = derecha, 90° = abajo
                 self._paint_chevron_right(painter, option, index, rotation, chevron_opacity)
             
-            # Pintar tres puntitos solo en carpetas raíz (sin padre)
-            if is_root:
-                self._paint_menu_button(painter, option, index)
-            
             # Restaurar estado del icono si se aplicó rotación
             if abs(icon_rotation) > 0.01:
                 painter.restore()
         finally:
             painter.restore()
     
-    def _paint_menu_button(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:
-        """Pintar botón de tres puntitos solo en carpetas raíz."""
-        menu_rect = self._get_menu_button_rect(option, index)
-        if not menu_rect.isValid():
-            return
-        
-        menu_rect_abs = calculate_menu_rect_viewport(menu_rect, option.rect)
-        
-        painter.save()
-        try:
-            sidebar = find_sidebar(self._view)
-            hovered_index = None
-            if sidebar and hasattr(sidebar, '_event_handler') and sidebar._event_handler:
-                hovered_index = sidebar._event_handler.hovered_menu_index
-            is_hovered = hovered_index == index if hovered_index else False
-            
-            dot_color = QColor(255, 255, 255)  # Color blanco
-            dot_color.setAlpha(255 if is_hovered else 200)  # Ligeramente más transparente cuando no está hover
-            
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QBrush(dot_color))
-            
-            dot_radius = 2.0
-            dot_spacing = 4
-            center_y = menu_rect_abs.center().y() - 4
-            start_x = menu_rect_abs.center().x() - dot_spacing
-            
-            for i in range(3):
-                x = start_x + (i * dot_spacing)
-                painter.drawEllipse(QPoint(int(x), int(center_y)), int(dot_radius), int(dot_radius))
-        finally:
-            painter.restore()
-    
-    def _get_menu_button_rect(self, option: QStyleOptionViewItem, index) -> QRect:
-        button_size = MENU_BUTTON_SIZE
-        viewport_width = self._view.viewport().width()
-        right_abs = viewport_width - CONTROLS_AREA_PAD_X_RIGHT - CONTROLS_AREA_PADDING - CONTROLS_AREA_OFFSET
-        
-        left_rel = right_abs - button_size - option.rect.left()
-        left_rel = max(0, left_rel)
-        
-        item_height = option.rect.height()
-        center_y_rel = (item_height // 2) - MENU_BUTTON_VERTICAL_OFFSET
-        top_rel = center_y_rel - button_size // 2
-        top_rel = max(MENU_BUTTON_MIN_TOP_MARGIN, top_rel)
-        bottom_rel = min(item_height, top_rel + button_size)
-        
-        height = bottom_rel - top_rel
-        return QRect(left_rel, top_rel, button_size, height)
-    
     def _calculate_chevron_center(self, option: QStyleOptionViewItem, index: QModelIndex) -> tuple[int, int]:
-        menu_rect = self._get_menu_button_rect(option, index)
-        if not menu_rect.isValid():
-            style = self._view.style()
-            text_rect = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, self._view)
-            if text_rect.isValid():
-                center_x = text_rect.right() - CONTROLS_AREA_OFFSET
-            else:
-                center_x = option.rect.right() - CONTROLS_AREA_BUTTON_SIZE
-            item_height = option.rect.height()
-            center_y = (item_height // 2) + CHEVRON_VERTICAL_OFFSET
-        else:
-            menu_rect_abs = calculate_menu_rect_viewport(menu_rect, option.rect)
-            center_x = menu_rect_abs.center().x()
-            dot_radius = 2.0
-            center_y = menu_rect_abs.center().y() - 4 + dot_radius + CHEVRON_VERTICAL_SPACING + CHEVRON_VERTICAL_OFFSET
+        viewport_width = self._view.viewport().width()
+        center_x = viewport_width - CONTROLS_AREA_PAD_X_RIGHT - CONTROLS_AREA_PADDING - CONTROLS_AREA_OFFSET - (CONTROLS_AREA_BUTTON_SIZE // 2)
+        # Centro vertical absoluto del item
+        center_y = option.rect.top() + (option.rect.height() // 2) + CHEVRON_VERTICAL_OFFSET
         
         return center_x, center_y
     
@@ -492,7 +416,7 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         return QRect(chevron_x_rel, chevron_y_rel, clickable_width, clickable_height)
     
     def _paint_chevron_right(self, painter: QPainter, option: QStyleOptionViewItem, index, rotation: float, opacity: float) -> None:
-        """Pintar chevron minimalista estilo macOS que rota según el estado expandido/colapsado."""
+        """Pintar tres puntos violetas centrados que indican que el item tiene hijos."""
         center_x, center_y = self._calculate_chevron_center(option, index)
         
         painter.save()
@@ -500,31 +424,27 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
             if opacity < 1.0:
                 painter.setOpacity(opacity)
             
-            chevron_color = QColor(CHEVRON_COLOR)
-            chevron_color.setAlpha(int(255 * opacity))
+            dot_color = QColor(138, 43, 226)
+            dot_color.setAlpha(int(255 * opacity))
             
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(dot_color))
             
-            # Aplicar rotación desde el centro
-            chevron_transform = QTransform()
-            chevron_transform.translate(center_x, center_y)
-            chevron_transform.rotate(rotation)
-            chevron_transform.translate(-center_x, -center_y)
-            painter.setTransform(chevron_transform, combine=True)
+            dot_radius = 2.0
+            dot_spacing = 5
             
-            size = 4.0
-            chevron_pen = QPen(chevron_color, 1.8)
-            chevron_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-            chevron_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(chevron_pen)
-            
-            painter.drawLine(
-                int(center_x - size * 0.5), int(center_y - size),
-                int(center_x + size * 0.5), int(center_y)
+            painter.drawEllipse(
+                QPoint(int(center_x), int(center_y - dot_spacing)),
+                int(dot_radius), int(dot_radius)
             )
-            painter.drawLine(
-                int(center_x + size * 0.5), int(center_y),
-                int(center_x - size * 0.5), int(center_y + size)
+            painter.drawEllipse(
+                QPoint(int(center_x), int(center_y)),
+                int(dot_radius), int(dot_radius)
+            )
+            painter.drawEllipse(
+                QPoint(int(center_x), int(center_y + dot_spacing)),
+                int(dot_radius), int(dot_radius)
             )
         finally:
             painter.restore()
@@ -539,23 +459,3 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
         if is_root:
             return QSize(base_size.width(), base_size.height() + ROOT_ITEM_TOP_SPACING)
         return base_size
-    
-    def editorEvent(self, event: QEvent, model, option: QStyleOptionViewItem, index) -> bool:
-        """Interceptar eventos de mouse para detectar clic en botón de menú (tres puntitos)."""
-        if event.type() == QEvent.Type.MouseButtonPress:
-            mouse_event = event
-            if isinstance(mouse_event, QMouseEvent) and mouse_event.button() == Qt.MouseButton.LeftButton:
-                if not index.parent().isValid():
-                    menu_rect = self._get_menu_button_rect(option, index)
-                    if menu_rect.isValid():
-                        menu_rect_viewport = calculate_menu_rect_viewport(menu_rect, option.rect)
-                        
-                        if menu_rect_viewport.contains(mouse_event.pos()):
-                            sidebar = find_sidebar(self._view)
-                            if sidebar:
-                                folder_path = index.data(Qt.ItemDataRole.UserRole)
-                                if folder_path:
-                                    sidebar._show_root_menu(folder_path, mouse_event.globalPos())
-                            return True
-        
-        return super().editorEvent(event, model, option, index)

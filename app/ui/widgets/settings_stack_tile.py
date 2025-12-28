@@ -7,7 +7,7 @@ Displays ajustes.svg icon as a stack tile, always positioned at the rightmost po
 from typing import Optional
 
 from PySide6.QtCore import QPoint, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QEnterEvent, QFont, QFontMetrics, QMouseEvent, QPainter, QPen, QPixmap
+from PySide6.QtGui import QBrush, QColor, QEnterEvent, QFont, QFontMetrics, QMouseEvent, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QLabel,
@@ -17,10 +17,12 @@ from PySide6.QtWidgets import (
 
 from app.services.icon_renderer import render_svg_icon
 from app.ui.utils.font_manager import FontManager
+from app.ui.widgets.hover_animation_mixin import HoverAnimationMixin
 from app.ui.widgets.text_elision import elide_middle_manual
+from app.ui.widgets.window_focus_utils import activate_parent_window
 
 
-class SettingsStackTile(QWidget):
+class SettingsStackTile(QWidget, HoverAnimationMixin):
     """Tile widget for the settings icon."""
     
     clicked = Signal()  # Emitted when tile is clicked
@@ -37,6 +39,7 @@ class SettingsStackTile(QWidget):
         self._icon_label: Optional[QLabel] = None
         self._icon_shadow: Optional[QGraphicsDropShadowEffect] = None
         self._drag_start_position: Optional[QPoint] = None
+        self._init_hover_animation()
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -89,6 +92,13 @@ class SettingsStackTile(QWidget):
         painter.setBrush(bg_color)
         painter.setPen(QPen(border_color, 1))
         painter.drawRoundedRect(rect, 14, 14)
+        
+        # Pintar overlay de hover con opacidad animada
+        if self._hover_opacity > 0.0:
+            hover_color = QColor(255, 255, 255, int(40 * self._hover_opacity))
+            painter.setBrush(QBrush(hover_color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(rect, 14, 14)
         
         painter.end()
     
@@ -164,19 +174,20 @@ class SettingsStackTile(QWidget):
     def enterEvent(self, event: QEnterEvent) -> None:
         """Handle mouse enter - enhance dock app container on hover."""
         self._is_hovered = True
-        self.update()
+        self._start_hover_animation(1.0)
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
         """Handle mouse leave - restore dock app container style."""
         self._is_hovered = False
-        self.update()
+        self._start_hover_animation(0.0)
         super().leaveEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Handle mouse press."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start_position = event.pos()
+            activate_parent_window(self)
         event.accept()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:

@@ -57,13 +57,13 @@ def configure_scroll_area(scroll: QScrollArea, content_widget: GridContentWidget
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setStyleSheet(f"""
             QScrollArea {{
-                background-color: {CENTRAL_AREA_BG};
+                background-color: transparent;
                 border: none;
                 padding: 0;
                 margin: 0;
             }}
             QScrollArea > QWidget > QWidget {{
-                background-color: {CENTRAL_AREA_BG};
+                background-color: transparent;
                 padding: 0;
                 margin: 0;
             }}
@@ -122,5 +122,5 @@ def configure_scroll_area(scroll: QScrollArea, content_widget: GridContentWidget
                 background: transparent;
             }}
         """)
-        content_widget.setStyleSheet(f"QWidget {{ background-color: {CENTRAL_AREA_BG}; }}")
+        content_widget.setStyleSheet("QWidget { background-color: transparent; }")
 

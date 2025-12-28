@@ -54,7 +54,8 @@ def _connect_desktop_tile_signals(desktop_tile: DesktopStackTile, view) -> None:
 def _connect_settings_tile_signals(settings_tile: SettingsStackTile, view) -> None:
     """Connect settings tile click to open SettingsWindow."""
     from app.ui.windows.settings_window import get_settings_window
-    settings_tile.clicked.connect(lambda: get_settings_window().show())
+    # Usar la misma función que AppHeader para consistencia
+    settings_tile.clicked.connect(lambda: get_settings_window())
 
 
 def build_dock_layout(

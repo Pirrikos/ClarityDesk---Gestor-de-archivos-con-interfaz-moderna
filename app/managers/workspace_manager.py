@@ -407,6 +407,44 @@ class WorkspaceManager(QObject):
         """
         return self._active_workspace_id
     
+    def reorder_workspaces(self, workspace_ids: List[str]) -> bool:
+        """
+        Reorder workspaces according to provided list of IDs.
+        
+        Args:
+            workspace_ids: List of workspace IDs in desired order.
+            
+        Returns:
+            True if reordered successfully, False if any ID is invalid.
+        """
+        if len(workspace_ids) != len(self._workspaces):
+            logger.error("Cannot reorder: workspace IDs count mismatch")
+            return False
+        
+        # Verificar que todos los IDs existen
+        existing_ids = {ws.id for ws in self._workspaces}
+        if set(workspace_ids) != existing_ids:
+            logger.error("Cannot reorder: invalid workspace IDs")
+            return False
+        
+        # Crear diccionario para acceso rápido
+        workspace_dict = {ws.id: ws for ws in self._workspaces}
+        
+        # Reordenar según la lista proporcionada
+        reordered_workspaces = []
+        for workspace_id in workspace_ids:
+            if workspace_id in workspace_dict:
+                reordered_workspaces.append(workspace_dict[workspace_id])
+            else:
+                logger.error(f"Workspace ID not found: {workspace_id}")
+                return False
+        
+        self._workspaces = reordered_workspaces
+        self._save_workspaces_metadata()
+        
+        logger.info("Workspaces reordered successfully")
+        return True
+    
     def get_workspace_state(self, workspace_id: str) -> Optional[dict]:
         """
         Get state of a workspace.

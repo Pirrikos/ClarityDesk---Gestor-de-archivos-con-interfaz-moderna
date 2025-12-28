@@ -132,7 +132,6 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager, state_label_m
         main_splitter = QSplitter(Qt.Orientation.Horizontal, central_widget)
         main_splitter.setChildrenCollapsible(False)
         main_splitter.setHandleWidth(4)
-        main_splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         main_splitter.setStyleSheet("""
             QSplitter {
                 background-color: transparent;
@@ -155,7 +154,6 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager, state_label_m
         content_splitter = QSplitter(Qt.Orientation.Horizontal, main_splitter)
         content_splitter.setChildrenCollapsible(False)
         content_splitter.setHandleWidth(4)
-        content_splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         content_splitter.setStyleSheet(main_splitter.styleSheet())
         
         sidebar = FolderTreeSidebar(
@@ -163,15 +161,12 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager, state_label_m
             state_label_manager=state_label_manager,
             tab_manager=tab_manager
         )
-        sidebar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        
         file_view_container = FileViewContainer(
             tab_manager,
             icon_service,
             None,
             content_splitter
         )
-        file_view_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         from app.ui.widgets.file_box_panel import FileBoxPanel
         from app.ui.widgets.file_box_history_panel import FileBoxHistoryPanel
@@ -207,10 +202,6 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager, state_label_m
         main_splitter.addWidget(content_splitter)
         main_splitter.setStretchFactor(0, 1)
         main_splitter.setSizes([1100])
-        
-        # Asegurar que los paneles también tengan políticas de tamaño correctas
-        file_box_panel.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        history_panel.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         
         central_layout.addWidget(main_splitter, 1)
         

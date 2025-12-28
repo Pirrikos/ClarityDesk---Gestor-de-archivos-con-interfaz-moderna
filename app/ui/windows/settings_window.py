@@ -1,7 +1,7 @@
 """
 SettingsWindow - Settings window for Dock transparency adjustment.
 
-Simple non-modal window with a slider to adjust dock background opacity.
+Frameless dialog following official visual contract.
 """
 
 from typing import Optional
@@ -9,14 +9,21 @@ from typing import Optional
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
+    QHBoxLayout,
     QLabel,
     QRadioButton,
     QSlider,
     QVBoxLayout,
-    QWidget,
 )
 
+from app.core.constants import (
+    CENTRAL_AREA_BG,
+    CENTRAL_AREA_BG_LIGHT,
+    FILE_BOX_TEXT,
+)
 from app.managers import app_settings as app_settings_module
+from app.ui.windows.base_frameless_dialog import BaseFramelessDialog
 
 
 # Singleton instance
@@ -30,6 +37,10 @@ def get_settings_window() -> 'SettingsWindow':
     if _settings_window_instance is None:
         _settings_window_instance = SettingsWindow()
     
+    # Mostrar la ventana si no está visible
+    if not _settings_window_instance.isVisible():
+        _settings_window_instance.show()
+    
     # Bring window to front
     _settings_window_instance.raise_()
     _settings_window_instance.activateWindow()
@@ -37,17 +48,12 @@ def get_settings_window() -> 'SettingsWindow':
     return _settings_window_instance
 
 
-class SettingsWindow(QWidget):
+class SettingsWindow(BaseFramelessDialog):
     """Settings window for adjusting dock background opacity."""
     
     def __init__(self, parent=None):
         """Initialize settings window."""
-        super().__init__(parent)
-        self.setWindowTitle("Ajustes - ClarityDesk")
-        self.setWindowFlags(
-            Qt.WindowType.Window |
-            Qt.WindowType.WindowStaysOnTopHint
-        )
+        super().__init__("Ajustes", parent, modal=False)
         self._setup_ui()
         
         # Load initial values from AppSettings
@@ -63,135 +69,249 @@ class SettingsWindow(QWidget):
                 self._anchor_top_radio.setChecked(True)
             else:
                 self._anchor_bottom_radio.setChecked(True)
+            
+            # Central area color
+            initial_color = app_settings_module.app_settings.central_area_color
+            if initial_color == "light":
+                self._color_light_radio.setChecked(True)
+            else:
+                self._color_dark_radio.setChecked(True)
+        
+        # Set window size (aumentado para incluir nueva sección de color)
+        self.setFixedSize(360, 360)
     
     def _setup_ui(self) -> None:
         """Build window UI."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
+        content_layout = self.get_content_layout()
+        content_layout.setSpacing(10)
+        content_layout.setContentsMargins(20, 20, 20, 20)
         
-        # Title label
-        title_label = QLabel("Transparencia del fondo del Dock", self)
-        title_label.setStyleSheet("""
-            font-family: 'Segoe UI', sans-serif;
-            font-size: 14px;
-            font-weight: 600;
-            color: #ffffff;
+        # Obtener el panel de contenido y aplicar estilos para eliminar líneas blancas
+        content_panel = self._content_panel
+        if content_panel:
+            # Obtener el estilo base y añadir estilos adicionales
+            base_style = content_panel.styleSheet()
+            additional_style = f"""
+                QWidget {{
+                    border: none;
+                }}
+                QLabel {{
+                    background-color: transparent;
+                    border: none;
+                    padding: 0;
+                    margin: 0;
+                }}
+                QSlider {{
+                    background-color: transparent;
+                    border: none;
+                }}
+                QRadioButton {{
+                    background-color: transparent;
+                    border: none;
+                    padding: 0;
+                    margin: 0;
+                }}
+            """
+            content_panel.setStyleSheet(base_style + additional_style)
+        
+        # Title label for opacity section
+        opacity_title_label = QLabel("Transparencia del fondo del Dock")
+        opacity_title_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: 14px;
+                font-weight: 600;
+                color: {FILE_BOX_TEXT};
+                background-color: transparent;
+                border: none;
+                padding: 0;
+                margin: 0;
+            }}
         """)
-        layout.addWidget(title_label)
+        content_layout.addWidget(opacity_title_label)
         
         # Slider container with labels
-        slider_container = QWidget(self)
-        slider_layout = QVBoxLayout(slider_container)
-        slider_layout.setContentsMargins(0, 0, 0, 0)
-        slider_layout.setSpacing(5)
+        slider_container_layout = QVBoxLayout()
+        slider_container_layout.setContentsMargins(0, 0, 0, 0)
+        slider_container_layout.setSpacing(5)
         
         # Slider
-        self._opacity_slider = QSlider(Qt.Orientation.Horizontal, self)
+        self._opacity_slider = QSlider(Qt.Orientation.Horizontal)
         self._opacity_slider.setMinimum(0)
         self._opacity_slider.setMaximum(100)
-        self._opacity_slider.setValue(100)  # Default: fully opaque
+        self._opacity_slider.setValue(100)
+        self._opacity_slider.setStyleSheet(f"""
+            QSlider {{
+                background-color: transparent;
+                border: none;
+            }}
+            QSlider::groove:horizontal {{
+                height: 4px;
+                background: rgba(255, 255, 255, 0.1);
+                border: none;
+                border-radius: 2px;
+            }}
+            QSlider::handle:horizontal {{
+                width: 16px;
+                height: 16px;
+                background: {FILE_BOX_TEXT};
+                border: none;
+                border-radius: 8px;
+                margin: -6px 0;
+            }}
+            QSlider::handle:horizontal:hover {{
+                background: #ffffff;
+            }}
+            QSlider::sub-page:horizontal {{
+                background: {FILE_BOX_TEXT};
+                border: none;
+                border-radius: 2px;
+            }}
+            QSlider::add-page:horizontal {{
+                background: transparent;
+                border: none;
+            }}
+        """)
         self._opacity_slider.valueChanged.connect(self._on_slider_changed)
-        slider_layout.addWidget(self._opacity_slider)
+        slider_container_layout.addWidget(self._opacity_slider)
         
         # Labels for min/max
-        labels_container = QWidget(self)
-        labels_layout = QVBoxLayout(labels_container)
-        labels_layout.setContentsMargins(0, 0, 0, 0)
-        labels_layout.setSpacing(0)
+        labels_row = QHBoxLayout()
+        labels_row.setContentsMargins(0, 0, 0, 0)
+        labels_row.setSpacing(0)
         
-        min_max_layout = QVBoxLayout()
-        min_max_layout.setContentsMargins(0, 0, 0, 0)
-        min_max_layout.setSpacing(0)
-        
-        min_label = QLabel("0%", self)
-        min_label.setStyleSheet("""
-            font-family: 'Segoe UI', sans-serif;
-            font-size: 11px;
-            color: #aaaaaa;
+        min_label = QLabel("0%")
+        min_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: 11px;
+                color: #9AA0A6;
+                background-color: transparent;
+                border: none;
+                padding: 0;
+                margin: 0;
+            }}
         """)
         
-        max_label = QLabel("100%", self)
-        max_label.setStyleSheet("""
-            font-family: 'Segoe UI', sans-serif;
-            font-size: 11px;
-            color: #aaaaaa;
+        max_label = QLabel("100%")
+        max_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: 11px;
+                color: #9AA0A6;
+                background-color: transparent;
+                border: none;
+                padding: 0;
+                margin: 0;
+            }}
         """)
         max_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         
-        from PySide6.QtWidgets import QHBoxLayout
-        labels_row = QHBoxLayout()
-        labels_row.setContentsMargins(0, 0, 0, 0)
         labels_row.addWidget(min_label)
         labels_row.addStretch()
         labels_row.addWidget(max_label)
-        labels_layout.addLayout(labels_row)
+        slider_container_layout.addLayout(labels_row)
         
-        slider_layout.addWidget(labels_container)
-        layout.addWidget(slider_container)
+        content_layout.addLayout(slider_container_layout)
         
         # Anchor position section
-        anchor_label = QLabel("Posición del Dock", self)
-        anchor_label.setStyleSheet("""
-            font-family: 'Segoe UI', sans-serif;
-            font-size: 14px;
-            font-weight: 600;
-            color: #ffffff;
+        anchor_title_label = QLabel("Posición del Dock")
+        anchor_title_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: 14px;
+                font-weight: 600;
+                color: {FILE_BOX_TEXT};
+                background-color: transparent;
+                border: none;
+                padding: 0;
+                margin: 0;
+            }}
         """)
-        layout.addWidget(anchor_label)
+        content_layout.addWidget(anchor_title_label)
         
-        # Radio buttons for anchor
-        anchor_container = QWidget(self)
-        anchor_layout = QVBoxLayout(anchor_container)
-        anchor_layout.setContentsMargins(0, 0, 0, 0)
-        anchor_layout.setSpacing(8)
+        # Checkboxes for anchor (mutually exclusive) - en dos columnas
+        anchor_container_layout = QHBoxLayout()
+        anchor_container_layout.setContentsMargins(0, 4, 0, 0)
+        anchor_container_layout.setSpacing(16)
         
-        self._anchor_top_radio = QRadioButton("Dock arriba", self)
-        self._anchor_bottom_radio = QRadioButton("Dock abajo", self)
+        self._anchor_top_radio = QCheckBox("Dock arriba")
+        self._anchor_bottom_radio = QCheckBox("Dock abajo")
         
-        self._anchor_top_radio.setStyleSheet("""
-            QRadioButton {
-                font-family: 'Segoe UI', sans-serif;
-                font-size: 12px;
-                color: #ffffff;
-            }
-            QRadioButton::indicator {
-                width: 16px;
-                height: 16px;
-            }
+        checkbox_style = f"""
+            QCheckBox {{
+                font-size: 13px;
+                color: {FILE_BOX_TEXT};
+                background-color: transparent;
+                border: none;
+                padding: 6px 0px;
+                margin: 0;
+                spacing: 10px;
+                min-width: 140px;
+                min-height: 24px;
+            }}
+            QCheckBox::indicator {{
+                width: 14px;
+                height: 14px;
+                border: 1.5px solid rgba(255, 255, 255, 0.5);
+                border-radius: 3px;
+                background-color: #808080;
+            }}
+            QCheckBox::indicator:hover {{
+                border-color: rgba(255, 255, 255, 0.7);
+                background-color: #909090;
+            }}
+            QCheckBox::indicator:checked {{
+                border-color: rgba(255, 255, 255, 0.5);
+                background-color: #D0D0D0;
+            }}
+            QCheckBox::indicator:checked:hover {{
+                border-color: rgba(255, 255, 255, 0.7);
+                background-color: #E0E0E0;
+            }}
+        """
+        self._anchor_top_radio.setStyleSheet(checkbox_style)
+        self._anchor_bottom_radio.setStyleSheet(checkbox_style)
+        
+        # Hacer que sean mutuamente exclusivos
+        self._anchor_top_radio.toggled.connect(lambda checked: self._on_anchor_toggled("top", checked))
+        self._anchor_bottom_radio.toggled.connect(lambda checked: self._on_anchor_toggled("bottom", checked))
+        
+        anchor_container_layout.addWidget(self._anchor_top_radio)
+        anchor_container_layout.addWidget(self._anchor_bottom_radio)
+        content_layout.addLayout(anchor_container_layout)
+        
+        # Central area color section
+        color_title_label = QLabel("Tema")
+        color_title_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: 14px;
+                font-weight: 600;
+                color: {FILE_BOX_TEXT};
+                background-color: transparent;
+                border: none;
+                padding: 0;
+                margin: 0;
+            }}
         """)
-        self._anchor_bottom_radio.setStyleSheet("""
-            QRadioButton {
-                font-family: 'Segoe UI', sans-serif;
-                font-size: 12px;
-                color: #ffffff;
-            }
-            QRadioButton::indicator {
-                width: 16px;
-                height: 16px;
-            }
-        """)
+        content_layout.addWidget(color_title_label)
         
-        self._anchor_group = QButtonGroup(self)
-        self._anchor_group.addButton(self._anchor_top_radio, 0)
-        self._anchor_group.addButton(self._anchor_bottom_radio, 1)
+        # Radio buttons for color (mutually exclusive) - en dos columnas
+        color_container_layout = QHBoxLayout()
+        color_container_layout.setContentsMargins(0, 4, 0, 0)
+        color_container_layout.setSpacing(16)
         
-        self._anchor_top_radio.toggled.connect(self._on_anchor_changed)
-        self._anchor_bottom_radio.toggled.connect(self._on_anchor_changed)
+        self._color_dark_radio = QCheckBox("Oscuro")
+        self._color_light_radio = QCheckBox("Claro")
         
-        anchor_layout.addWidget(self._anchor_top_radio)
-        anchor_layout.addWidget(self._anchor_bottom_radio)
-        layout.addWidget(anchor_container)
+        self._color_dark_radio.setStyleSheet(checkbox_style)
+        self._color_light_radio.setStyleSheet(checkbox_style)
         
-        # Set window size (increased for new controls)
-        self.setFixedSize(300, 200)
+        # Hacer que sean mutuamente exclusivos
+        self._color_dark_radio.toggled.connect(lambda checked: self._on_color_toggled("dark", checked))
+        self._color_light_radio.toggled.connect(lambda checked: self._on_color_toggled("light", checked))
         
-        # Set window style (dark theme)
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #1e1e1e;
-            }
-        """)
+        color_container_layout.addWidget(self._color_dark_radio)
+        color_container_layout.addWidget(self._color_light_radio)
+        content_layout.addLayout(color_container_layout)
+        
+        content_layout.addStretch()
     
     def _on_slider_changed(self, value: int) -> None:
         """Handle slider value change."""
@@ -200,13 +320,28 @@ class SettingsWindow(QWidget):
             opacity = value / 100.0
             app_settings_module.app_settings.set_dock_background_opacity(opacity)
     
-    def _on_anchor_changed(self, checked: bool) -> None:
-        """Handle anchor radio button change."""
+    def _on_anchor_toggled(self, anchor: str, checked: bool) -> None:
+        """Handle anchor checkbox toggle (mutually exclusive)."""
         if not checked or app_settings_module.app_settings is None:
             return
         
-        if self._anchor_top_radio.isChecked():
+        # Desmarcar el otro checkbox
+        if anchor == "top":
+            self._anchor_bottom_radio.setChecked(False)
             app_settings_module.app_settings.set_dock_anchor("top")
-        elif self._anchor_bottom_radio.isChecked():
+        elif anchor == "bottom":
+            self._anchor_top_radio.setChecked(False)
             app_settings_module.app_settings.set_dock_anchor("bottom")
-
+    
+    def _on_color_toggled(self, color: str, checked: bool) -> None:
+        """Handle color checkbox toggle (mutually exclusive)."""
+        if not checked or app_settings_module.app_settings is None:
+            return
+        
+        # Desmarcar el otro checkbox
+        if color == "dark":
+            self._color_light_radio.setChecked(False)
+            app_settings_module.app_settings.set_central_area_color("dark")
+        elif color == "light":
+            self._color_dark_radio.setChecked(False)
+            app_settings_module.app_settings.set_central_area_color("light")

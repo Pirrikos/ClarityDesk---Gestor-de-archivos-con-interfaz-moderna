@@ -65,7 +65,12 @@ def _paint_hover_overlay(tile: 'FileTile', event: QPaintEvent) -> None:
     # Pintar hover encima de TODO (incluyendo widgets hijos)
     hover_painter = QPainter(tile)
     hover_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    hover_color = QColor(0, 0, 0, 34)  # Negro semitransparente - visible sobre fondo gris claro
+    
+    # Usar opacidad animada si está disponible (tanto dock como grid), sino usar opacidad fija
+    hover_opacity = getattr(tile, '_hover_opacity', 1.0 if is_hovered else 0.0)
+    hover_alpha = int(34 * hover_opacity)  # 34 es la opacidad máxima del hover
+    
+    hover_color = QColor(0, 0, 0, hover_alpha)  # Negro semitransparente - visible sobre fondo gris claro
     hover_painter.setBrush(QBrush(hover_color))
     hover_painter.setPen(Qt.PenStyle.NoPen)
     hover_painter.drawRoundedRect(base_rect, 14, 14)

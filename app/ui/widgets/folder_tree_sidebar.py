@@ -147,12 +147,12 @@ class FolderTreeSidebar(QWidget):
     
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
-        # CAUSA REAL: El fondo redondeado empieza en ROUNDED_BG_TOP_OFFSET (8px).
-        # Para que el primer estado NO esté pegado al borde del fondo,
-        # el margen del layout debe ser MAYOR que ROUNDED_BG_TOP_OFFSET.
-        # Fórmula: ROUNDED_BG_TOP_OFFSET (8px donde empieza el fondo) + padding interno deseado (8px)
-        layout.setContentsMargins(0, ROUNDED_BG_TOP_OFFSET + 8, 0, 0)
+        # Sin padding superior para alineación perfecta con FileViewContainer
+        layout.setContentsMargins(0, ROUNDED_BG_TOP_OFFSET, 0, 0)
         layout.setSpacing(0)
+        
+        # Padding superior para la sección ESTADOS
+        layout.addSpacing(8)
         
         # Sección ESTADOS en la parte superior (siempre visible)
         if self._state_label_manager and self._tab_manager:
@@ -907,9 +907,15 @@ class FolderTreeSidebar(QWidget):
         """Filtrar eventos del viewport del árbol."""
         if obj == self._tree_view.viewport() and self._event_handler:
             if event.type() == QMouseEvent.Type.MouseButtonPress:
-                handled = self._event_handler.handle_mouse_press(event)
-                if handled:
-                    return True
+                # Manejar clic derecho para menú contextual
+                if event.button() == Qt.MouseButton.RightButton:
+                    handled = self._event_handler.handle_context_menu(event)
+                    if handled:
+                        return True
+                else:
+                    handled = self._event_handler.handle_mouse_press(event)
+                    if handled:
+                        return True
             elif event.type() == QMouseEvent.Type.MouseButtonRelease:
                 handled = self._event_handler.handle_mouse_release(event)
                 if handled:

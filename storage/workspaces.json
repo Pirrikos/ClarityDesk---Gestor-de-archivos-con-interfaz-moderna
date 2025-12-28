@@ -1,45 +1,15 @@
 {
   "workspaces": [
     {
-      "id": "226d2dd0-1c19-420f-a583-5a2e6b9e1a9b",
-      "name": "CACHUCHES",
-      "created_at": "2025-12-28T13:52:21.838872"
+      "id": "18df7e51-cb6c-473b-8c26-4f9a6bc95b9d",
+      "name": "Default",
+      "created_at": "2025-12-28T22:20:42.834255"
     },
     {
-      "id": "12658626-5c6c-4559-9b32-a48bf75ba5d1",
-      "name": "3 ESO",
-      "created_at": "2025-12-28T13:52:21.838880"
-    },
-    {
-      "id": "fac191e6-548e-4fd6-b763-97b3a3026901",
-      "name": "1 ESO",
-      "created_at": "2025-12-28T13:52:21.838882"
-    },
-    {
-      "id": "2beb705f-ce5b-43e9-a134-59efeca3fb52",
-      "name": "2 ESO",
-      "created_at": "2025-12-28T13:52:21.838883"
-    },
-    {
-      "id": "363b7ddf-469f-4675-9a70-b955518116cb",
-      "name": "4 ESO",
-      "created_at": "2025-12-28T13:52:21.838884"
-    },
-    {
-      "id": "d7ed1861-b128-4d22-b6b5-e6637671c3ee",
-      "name": "5 PRIMARIA",
-      "created_at": "2025-12-28T13:52:21.838886"
-    },
-    {
-      "id": "d3a12e80-74d3-436b-94b8-c788be1ad3d2",
-      "name": "6 PRIMARIA",
-      "created_at": "2025-12-28T13:52:21.838887"
-    },
-    {
-      "id": "571f8f2a-8c8f-4d0f-b244-74a18127834a",
-      "name": "PRUEBA",
-      "created_at": "2025-12-28T13:52:21.838888"
+      "id": "2a1a9c1c-ee68-4461-bb45-81b8570042a1",
+      "name": "escritorio",
+      "created_at": "2025-12-28T22:20:42.834262"
     }
   ],
-  "active_workspace_id": "d7ed1861-b128-4d22-b6b5-e6637671c3ee"
+  "active_workspace_id": "2a1a9c1c-ee68-4461-bb45-81b8570042a1"
 }

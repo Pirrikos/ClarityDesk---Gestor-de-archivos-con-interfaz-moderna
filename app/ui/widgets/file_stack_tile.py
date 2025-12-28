@@ -22,11 +22,13 @@ from app.services.icon_render_service import IconRenderService
 from app.services.icon_fallback_helper import get_default_icon, safe_pixmap
 from app.ui.utils.font_manager import FontManager
 from app.ui.widgets.badge_overlay_widget import BadgeOverlayWidget
+from app.ui.widgets.hover_animation_mixin import HoverAnimationMixin
 from app.ui.widgets.text_elision import elide_middle_manual
 from app.ui.widgets.tile_drag_handler import handle_tile_drag
+from app.ui.widgets.window_focus_utils import activate_parent_window
 
 
-class FileStackTile(QWidget):
+class FileStackTile(QWidget, HoverAnimationMixin):
     """Tile widget for a file stack."""
 
     stack_clicked = Signal(FileStack)
@@ -51,6 +53,7 @@ class FileStackTile(QWidget):
         self._icon_shadow: Optional[QGraphicsDropShadowEffect] = None
         self._badge_overlay: Optional[BadgeOverlayWidget] = None
         self._last_count = file_stack.get_count()  # Track count to detect changes
+        self._init_hover_animation()
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -104,6 +107,13 @@ class FileStackTile(QWidget):
         painter.setBrush(QBrush(bg_color))
         painter.setPen(QPen(border_color, 1))
         painter.drawRoundedRect(rect, 14, 14)
+        
+        # Pintar overlay de hover con opacidad animada
+        if self._hover_opacity > 0.0:
+            hover_color = QColor(255, 255, 255, int(40 * self._hover_opacity))
+            painter.setBrush(QBrush(hover_color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(rect, 14, 14)
         
         painter.end()
     
@@ -286,13 +296,13 @@ class FileStackTile(QWidget):
     def enterEvent(self, event: QEnterEvent) -> None:
         """Handle mouse enter - enhance dock app container on hover."""
         self._is_hovered = True
-        self.update()  # Trigger repaint with hover state
+        self._start_hover_animation(1.0)
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
         """Handle mouse leave - restore dock app container style."""
         self._is_hovered = False
-        self.update()  # Trigger repaint without hover state
+        self._start_hover_animation(0.0)
         super().leaveEvent(event)
 
     def moveEvent(self, event) -> None:
@@ -318,6 +328,7 @@ class FileStackTile(QWidget):
         """Handle mouse press."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start_position = event.pos()
+            activate_parent_window(self)
         event.accept()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:

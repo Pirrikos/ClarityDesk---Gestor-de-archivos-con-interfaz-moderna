@@ -5,7 +5,7 @@ Handles UI setup and table row creation.
 """
 
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QPalette, QColor
 from PySide6.QtWidgets import QCheckBox, QHeaderView, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from app.models.file_stack import FileStack
@@ -172,6 +172,8 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     
     view.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
     
+    # La paleta ya no se usa, el delegate obtiene el color directamente desde AppSettings
+    
     view.setStyleSheet(LIST_VIEW_STYLESHEET)
     
     FontManager.safe_set_font(
@@ -188,9 +190,9 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
         QFont.Weight.DemiBold
     )
     
-    view.viewport().setStyleSheet(f"""
-        QWidget {{
-            background-color: {CENTRAL_AREA_BG};
+    view.viewport().setStyleSheet("""
+        QWidget {
+            background-color: transparent;
             border: none;
             border-left: none;
             border-right: none;

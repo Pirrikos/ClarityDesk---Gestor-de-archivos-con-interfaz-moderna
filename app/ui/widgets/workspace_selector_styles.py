@@ -13,8 +13,13 @@ from app.core.constants import (
     BUTTON_BG_LIGHT_HOVER, BUTTON_BORDER_LIGHT_HOVER, BUTTON_BG_LIGHT_PRESSED,
     BUTTON_BG_HEADER, BUTTON_BORDER_HEADER, BUTTON_TEXT_HEADER,
     BUTTON_BG_HEADER_HOVER, BUTTON_BORDER_HEADER_HOVER, BUTTON_TEXT_HEADER_HOVER,
-    BUTTON_BG_HEADER_PRESSED, BUTTON_TEXT_HEADER_DISABLED
+    BUTTON_BG_HEADER_PRESSED, BUTTON_TEXT_HEADER_DISABLED,
+    BUTTON_BG_DARK, BUTTON_BORDER_DARK, BUTTON_BG_DARK_HOVER, BUTTON_BORDER_DARK_HOVER
 )
+
+# File box button colors (local constants)
+FILE_BOX_BUTTON_ACTIVE_BG = "#007AFF"
+FILE_BOX_BUTTON_ACTIVE_HOVER = "#0056CC"
 
 
 def get_base_stylesheet() -> str:
@@ -207,6 +212,42 @@ def get_state_menu_stylesheet() -> str:
         QMenu::item:selected {{
             background-color: {MENU_ITEM_HOVER_BG};
             color: {MENU_ITEM_TEXT_HOVER};
+        }}
+    """
+
+
+def get_workspace_button_dark_stylesheet() -> str:
+    """Get dark stylesheet for workspace button (used when moved to SecondaryHeader)."""
+    return f"""
+        QPushButton {{
+            background-color: {BUTTON_BG_DARK};
+            border: 1px solid {BUTTON_BORDER_DARK};
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.88);
+            padding: 6px 12px;
+        }}
+        QPushButton:hover {{
+            background-color: {BUTTON_BG_DARK_HOVER};
+            border-color: {BUTTON_BORDER_DARK_HOVER};
+        }}
+        QPushButton:pressed {{
+            background-color: {BUTTON_BG_DARK_HOVER};
+            border-color: {BUTTON_BORDER_DARK_HOVER};
+        }}
+    """
+
+
+def get_file_box_button_active_stylesheet() -> str:
+    """Get stylesheet for active file box button."""
+    return f"""
+        QPushButton#HeaderButton {{
+            background-color: {FILE_BOX_BUTTON_ACTIVE_BG};
+            color: white;
+            border: none;
+            border-radius: 6px;
+        }}
+        QPushButton#HeaderButton:hover {{
+            background-color: {FILE_BOX_BUTTON_ACTIVE_HOVER};
         }}
     """
 

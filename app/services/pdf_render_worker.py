@@ -23,7 +23,7 @@ class PdfRenderWorker(QThread):
     finished = Signal(object, object)  # (QImage, request_id) - Prioridad 1: QImage es thread-safe
     error = Signal(str, object)  # (error_msg, request_id)
     
-    def __init__(self, pdf_path: str, max_size: QSize, page_num: int = 0, request_id: str = None):
+    def __init__(self, pdf_path: str, max_size: QSize, page_num: int = 0, request_id: str = None, device_pixel_ratio: float = 1.0):
         """
         Initialize PDF render worker.
         
@@ -32,12 +32,14 @@ class PdfRenderWorker(QThread):
             max_size: Maximum size for rendered pixmap.
             page_num: Page number to render (0-indexed).
             request_id: Unique identifier for this request (R1).
+            device_pixel_ratio: Device pixel ratio for high-DPI displays (default: 1.0).
         """
         super().__init__()
         self.pdf_path = pdf_path
         self.max_size = max_size
         self.page_num = page_num
         self.request_id = request_id
+        self.device_pixel_ratio = device_pixel_ratio
         self._cancel_requested = False
     
     def cancel(self) -> None:
@@ -69,8 +71,8 @@ class PdfRenderWorker(QThread):
             if self._cancel_requested:
                 return
             
-            logger.debug(f"PdfRenderWorker.run: Calling PdfRenderer.render_page, request_id={self.request_id}")
-            result = PdfRenderer.render_page(self.pdf_path, self.max_size, self.page_num)
+            logger.debug(f"PdfRenderWorker.run: Calling PdfRenderer.render_page, request_id={self.request_id}, device_pixel_ratio={self.device_pixel_ratio}")
+            result = PdfRenderer.render_page(self.pdf_path, self.max_size, self.page_num, self.device_pixel_ratio)
             logger.debug(f"PdfRenderWorker.run: PdfRenderer.render_page returned, null={result.isNull() if result else 'None'}, size={result.width()}x{result.height() if result and not result.isNull() else 'N/A'}, request_id={self.request_id}")
             
             if self._cancel_requested:

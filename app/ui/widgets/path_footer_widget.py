@@ -5,7 +5,7 @@ Shows the full path of the selected file and a button to open the containing fol
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 from app.services.file_open_service import open_containing_folder
 
@@ -25,7 +25,6 @@ class PathFooterWidget(QWidget):
         layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(8)
         
-        # Botón para abrir carpeta contenedora
         self._open_folder_button = QPushButton("Abrir carpeta contenedora", self)
         self._open_folder_button.setStyleSheet("""
             QPushButton {
@@ -46,12 +45,14 @@ class PathFooterWidget(QWidget):
         """)
         self._open_folder_button.clicked.connect(self._on_open_folder_clicked)
         self._open_folder_button.setVisible(False)
-        layout.addWidget(self._open_folder_button)
+        self._open_folder_button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self._open_folder_button, 0, Qt.AlignmentFlag.AlignTop)
         
-        # Etiqueta con la ruta del archivo
         self._label = QLabel(self)
-        self._label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self._label.setWordWrap(True)
         self._label.setText("")
+        self._label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self._label.setStyleSheet("""
             QLabel {
                 color: rgba(150, 150, 150, 1.0);
@@ -61,7 +62,7 @@ class PathFooterWidget(QWidget):
             }
         """)
         
-        layout.addWidget(self._label, 1)  # Stretch=1 para que ocupe el espacio restante
+        layout.addWidget(self._label, 1)
     
     def _on_open_folder_clicked(self) -> None:
         """Handle click on open folder button."""
@@ -69,12 +70,7 @@ class PathFooterWidget(QWidget):
             open_containing_folder(self._current_path)
     
     def set_text(self, text: str) -> None:
-        """
-        Set the text to display in the footer.
-        
-        Args:
-            text: Text to display (file path). Empty string to clear.
-        """
+        """Set the text to display in the footer (file path). Empty string to clear."""
         self._current_path = text
         if text:
             self._label.setText(text)

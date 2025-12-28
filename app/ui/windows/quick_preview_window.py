@@ -8,7 +8,7 @@ Supports navigation, PDF multi-page viewing, and animations.
 import uuid
 from typing import Optional
 
-from PySide6.QtCore import QSize, Qt, QTimer, QPoint
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, QPoint, Signal
 from PySide6.QtGui import QMouseEvent, QPixmap, QKeyEvent
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget, QStackedLayout, QProgressBar, QApplication
 
@@ -40,6 +40,9 @@ logger = get_logger(__name__)
 
 class QuickPreviewWindow(QWidget):
     """Immersive fullscreen overlay for quick preview."""
+    
+    # Signal emitido cuando el preview se cierra
+    closed = Signal()
     
     # Border styling constants
     OUTER_BORDER_WIDTH = OUTER_BORDER_WIDTH
@@ -87,6 +90,7 @@ class QuickPreviewWindow(QWidget):
         self._current_request_id: Optional[str] = None  # R1: Track current request
         self._is_closing = False  # Flag para indicar que se está cerrando
         self._content_rendered = False  # Flag para saber si el contenido principal ya se renderizó
+        self._retry_count = 0  # Contador de reintentos para validación de max_size
         
         # Variables para arrastrar la ventana
         self._drag_position: Optional[QPoint] = None
@@ -98,8 +102,22 @@ class QuickPreviewWindow(QWidget):
         self._header.set_zoom_percent(int(self._zoom * 100))
         self._initial_load_started = False
         
+        # Instalar filtro de eventos en todos los widgets hijos para capturar espacio/escape
+        from app.ui.widgets.event_filter_utils import install_event_filter_recursive
+        install_event_filter_recursive(self, self)
+        
         # Evitar animación de entrada que provoca un parpadeo/negro inicial
         # La UI muestra overlay de carga inmediatamente con fondo blanco
+    
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Capturar espacio y escape desde cualquier widget hijo para cerrar el preview."""
+        if event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            if key == Qt.Key.Key_Space or key == Qt.Key.Key_Escape:
+                event.accept()
+                self.close()
+                return True
+        return False
     
     def _setup_ui(self) -> None:
         """Build the UI layout."""
@@ -312,6 +330,30 @@ class QuickPreviewWindow(QWidget):
                         finished_cb=self._on_thumbnails_finished
                     )
                 max_size = self._effective_content_max_size()
+                
+                # GUARDA OBLIGATORIA: Validar tamaño mínimo antes de renderizar
+                if max_size.width() < 50 or max_size.height() < 50:
+                    # Evitar renders duplicados: no reintentar si ya hay request activo
+                    if self._current_request_id is not None:
+                        logger.debug(f"max_size too small but request active, skipping retry")
+                        return
+                    
+                    # Incrementar contador de reintentos
+                    self._retry_count += 1
+                    
+                    if self._retry_count < 10:
+                        logger.debug(f"max_size too small: {max_size.width()}x{max_size.height()}, retry {self._retry_count}/10")
+                        QTimer.singleShot(50, lambda: self._start_initial_load())
+                    else:
+                        logger.warning(f"max_size validation failed after 10 retries, showing error")
+                        self._show_loading(False)
+                        # Mostrar error al usuario
+                        if hasattr(self, '_image_label') and self._image_label:
+                            self._image_label.setText("Error: Layout not ready")
+                    return
+                
+                # Resetear contador si el tamaño es válido
+                self._retry_count = 0
                 
                 def on_page_finished(pixmap: QPixmap) -> None:
                     if self._is_closing:
@@ -550,6 +592,30 @@ class QuickPreviewWindow(QWidget):
             self._show_loading(True, LOADING_DOCUMENT)
             self._load_pdf_info(current_path)
             max_size = self._effective_content_max_size()
+            
+            # GUARDA OBLIGATORIA: Validar tamaño mínimo antes de renderizar
+            if max_size.width() < 50 or max_size.height() < 50:
+                # Evitar renders duplicados: no reintentar si ya hay request activo
+                if self._current_request_id is not None:
+                    logger.debug(f"max_size too small but request active, skipping retry")
+                    return
+                
+                # Incrementar contador de reintentos
+                self._retry_count += 1
+                
+                if self._retry_count < 10:
+                    logger.debug(f"max_size too small: {max_size.width()}x{max_size.height()}, retry {self._retry_count}/10")
+                    QTimer.singleShot(50, lambda: self._load_preview(use_crossfade=use_crossfade))
+                else:
+                    logger.warning(f"max_size validation failed after 10 retries, showing error")
+                    self._show_loading(False)
+                    # Mostrar error al usuario
+                    if hasattr(self, '_image_label') and self._image_label:
+                        self._image_label.setText("Error: Layout not ready")
+                return
+            
+            # Resetear contador si el tamaño es válido
+            self._retry_count = 0
             
             def on_page_finished(pixmap: QPixmap) -> None:
                 if self._is_closing:
@@ -799,9 +865,14 @@ class QuickPreviewWindow(QWidget):
         self._initial_load_started = False
         self._content_rendered = False
         self._thumbs_loading = False
+        self._retry_count = 0
         self.hide()
         QTimer.singleShot(0, self._cancel_all_operations)
-        return super().close()
+        # Emitir señal closed para que el padre pueda rehabilitar shortcuts
+        self.closed.emit()
+        result = super().close()
+        self.deleteLater()
+        return result
     
     def closeEvent(self, event) -> None:
         """Handle window close event, canceling all ongoing operations."""
@@ -809,5 +880,6 @@ class QuickPreviewWindow(QWidget):
         self._initial_load_started = False
         self._content_rendered = False
         self._thumbs_loading = False
+        self._retry_count = 0
         event.accept()
         super().closeEvent(event)

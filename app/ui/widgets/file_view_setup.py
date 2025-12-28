@@ -7,7 +7,7 @@ Handles initial UI construction and widget connections.
 from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QStackedWidget, QVBoxLayout
+from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QStackedWidget, QVBoxLayout
 
 from app.core.constants import CENTRAL_AREA_BG, FILE_VIEW_LEFT_MARGIN
 
@@ -29,11 +29,7 @@ def setup_ui(container: "FileViewContainer") -> None:
         container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
     else:
         container.setObjectName("FileViewContainer")
-        container.setStyleSheet(f"""
-            QWidget#FileViewContainer {{
-                background-color: {CENTRAL_AREA_BG};
-            }}
-        """)
+        container.setStyleSheet("QWidget#FileViewContainer { background-color: transparent; }")
     
     layout = QVBoxLayout(container)
     left_margin = FILE_VIEW_LEFT_MARGIN if not is_desktop_window else 0
@@ -74,7 +70,9 @@ def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
             parent = parent.parent()
     
     container._stacked = QStackedWidget()
+    container._stacked.setAutoFillBackground(False)
     if container._is_desktop:
+        container._stacked.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         container._stacked.setStyleSheet("""
             QStackedWidget { 
                 background-color: transparent;
@@ -86,15 +84,17 @@ def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
             }
         """)
     else:
-        container._stacked.setStyleSheet(f"""
-            QStackedWidget {{ 
-                background-color: {CENTRAL_AREA_BG};
+        container._stacked.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        container._stacked.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        container._stacked.setStyleSheet("""
+            QStackedWidget { 
+                background-color: transparent;
                 border: none;
                 border-left: none;
                 border-right: none;
                 border-top: none;
                 border-bottom: none;
-            }}
+            }
         """)
     container._grid_view = FileGridView(
         container._icon_service,
@@ -123,27 +123,24 @@ def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
     
     views_layout.addWidget(container._stacked, 1)
     
-    layout.addLayout(views_layout, 1)  # Stretch=1 para que ocupe espacio disponible
+    layout.addLayout(views_layout, 1)
 
 
 def _setup_footer(container: "FileViewContainer", layout: QVBoxLayout, is_desktop_window: bool) -> None:
     """Setup footer widget for displaying selected file path."""
     if is_desktop_window:
-        # No footer en desktop mode
         container._path_footer = None
         return
     
-    from PySide6.QtWidgets import QSizePolicy
-    
     container._path_footer = PathFooterWidget(container)
-    container._path_footer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    container._path_footer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
     container._path_footer.setStyleSheet("""
         QWidget {
             background-color: #F5F5F7;
             border-top: 1px solid rgba(0, 0, 0, 0.1);
         }
     """)
-    layout.addWidget(container._path_footer, 0)  # Stretch=0 para altura fija
+    layout.addWidget(container._path_footer, 0)
 
 
 def _connect_view_signals(container: "FileViewContainer") -> None:

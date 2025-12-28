@@ -5,7 +5,7 @@ Contains CSS styles for FileListView table and checkboxes.
 """
 
 from app.core.constants import (
-    CENTRAL_AREA_BG, TEXT_LIST,
+    CENTRAL_AREA_BG, LIST_CELL_BG, TEXT_LIST,
     CHECKBOX_BORDER, CHECKBOX_BORDER_HOVER, CHECKBOX_BG_CHECKED, CHECKBOX_BG_CHECKED_HOVER,
     HEADER_BG, HEADER_TEXT_COLOR, HEADER_BORDER_RIGHT, HEADER_BORDER_BOTTOM,
     HEADER_TEXT_HOVER, HEADER_BORDER_CORNER
@@ -13,7 +13,7 @@ from app.core.constants import (
 
 LIST_VIEW_STYLESHEET = f"""
     QTableWidget {{
-        background-color: {CENTRAL_AREA_BG};
+        background-color: transparent;
         border: none;
         border-left: none;
         border-right: none;
@@ -29,7 +29,7 @@ LIST_VIEW_STYLESHEET = f"""
         show-decoration-selected: 0;
     }}
     QTableView {{
-        background-color: {CENTRAL_AREA_BG};
+        background-color: transparent;
         border: none;
         gridline-color: rgba(0, 0, 0, 0) !important;
         outline: none;
@@ -40,11 +40,11 @@ LIST_VIEW_STYLESHEET = f"""
         border-right: none;
         border-top: none;
         border-bottom: none;
-        background-color: {CENTRAL_AREA_BG};
+        background-color: transparent;
     }}
     QTableView::viewport {{
         border: none;
-        background-color: {CENTRAL_AREA_BG};
+        background-color: transparent;
     }}
     QTableWidget::item,
     QTableView::item {{
@@ -116,11 +116,11 @@ LIST_VIEW_STYLESHEET = f"""
     QHeaderView {{
         border: none;
         outline: none;
-        background-color: {CENTRAL_AREA_BG};
+        background-color: transparent;
         margin-top: 4px;
     }}
     QHeaderView::section {{
-        background-color: {HEADER_BG};
+        background-color: transparent;
         color: {HEADER_TEXT_COLOR};
         border: none !important;
         border-right: none !important;

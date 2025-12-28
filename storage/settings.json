@@ -1,5 +1,5 @@
 {
-  "ui.theme": "light",
+  "ui.theme": "dark",
   "ui.icon_size": 96,
   "preview.default_zoom": 1.0,
   "trash.max_age_days": 30,

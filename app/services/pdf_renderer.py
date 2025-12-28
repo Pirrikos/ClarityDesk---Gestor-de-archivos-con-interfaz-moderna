@@ -79,51 +79,32 @@ class PdfRenderer:
             logger.error(f"R5: Exception in _render_page_to_pixmap: {e}", exc_info=True)
             return QPixmap()
     
-    @staticmethod
-    def _ensure_minimum_size(pixmap: QPixmap, max_size: QSize) -> QPixmap:
-        """Ensure pixmap fits within max_size, respecting orientation."""
-        if pixmap.isNull():
-            return pixmap
-        
-        is_landscape = pixmap.width() > pixmap.height()
-        
-        if is_landscape:
-            scale_factor = min(max_size.width() / pixmap.width(), max_size.height() / pixmap.height())
-            scaled_width = int(pixmap.width() * scale_factor)
-            scaled_height = int(pixmap.height() * scale_factor)
-            
-            if scaled_height > max_size.height() * 0.95:
-                scale_factor = max_size.height() / pixmap.height()
-                scaled_width = int(pixmap.width() * scale_factor)
-                scaled_height = int(pixmap.height() * scale_factor)
-        else:
-            scale_factor = min(max_size.width() / pixmap.width(), max_size.height() / pixmap.height())
-            scaled_width = int(pixmap.width() * scale_factor)
-            scaled_height = int(pixmap.height() * scale_factor)
-            
-            min_width = int(max_size.width() * 0.8)
-            min_height = int(max_size.height() * 0.8)
-            if scaled_width < min_width or scaled_height < min_height:
-                scale_factor = max(min_width / pixmap.width(), min_height / pixmap.height())
-                scaled_width = int(pixmap.width() * scale_factor)
-                scaled_height = int(pixmap.height() * scale_factor)
-        
-        return pixmap.scaled(
-            scaled_width, scaled_height,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
     
     @staticmethod
-    def render_page(pdf_path: str, max_size: QSize, page_num: int = 0) -> QPixmap:
+    def render_page(pdf_path: str, max_size: QSize, page_num: int = 0, device_pixel_ratio: float = 1.0) -> QPixmap:
         """Render specific page of PDF as pixmap using PyMuPDF.
         
         R12: Hard file size limits prevent preview of oversized files.
         R13: Early existence validation before rendering.
         R14: Pixmap validation before returning.
+        
+        Args:
+            pdf_path: Path to PDF file.
+            max_size: Maximum size for rendered pixmap (in pixels).
+            page_num: Page number to render (0-indexed).
+            device_pixel_ratio: Device pixel ratio for high-DPI displays (default: 1.0).
+        
+        Returns:
+            QPixmap with rendered page, or empty QPixmap on error.
         """
         if not FITZ_AVAILABLE:
             logger.error("PyMuPDF (fitz) not available - module not imported")
+            return QPixmap()
+        
+        # Guarda B: El renderer asume que recibe max_size válido (validado por el caller)
+        # Si max_size es inválido, devolver QPixmap() vacío (error controlado)
+        if max_size.width() < 50 or max_size.height() < 50:
+            logger.warning(f"PdfRenderer.render_page: Invalid max_size {max_size.width()}x{max_size.height()}, returning empty pixmap")
             return QPixmap()
         
         # R13: Early existence validation
@@ -144,18 +125,41 @@ class PdfRenderer:
                 return QPixmap()
             
             logger.debug(f"render_page: PDF has {len(doc)} pages, rendering page {page_num}")
-            qpixmap = PdfRenderer._render_page_to_pixmap(doc, page_num, 2.5)
             
-            # R14: Validate pixmap before scaling
+            # Obtener tamaño de página PDF (en puntos, 72 DPI)
+            page = doc[page_num]
+            page_rect = page.rect
+            page_width_pt = page_rect.width
+            page_height_pt = page_rect.height
+            
+            # Calcular zoom considerando DPI del dispositivo
+            target_width_px = max_size.width() * device_pixel_ratio
+            target_height_px = max_size.height() * device_pixel_ratio
+            
+            # Regla 1: Zoom base (fit)
+            zoom_x = target_width_px / page_width_pt
+            zoom_y = target_height_px / page_height_pt
+            zoom_fit = min(zoom_x, zoom_y)  # Mantener aspect ratio (fit completo)
+            
+            # Regla 2: Zoom mínimo de legibilidad (fill-ish)
+            ZOOM_MIN_FACTOR = 0.8
+            min_width_px = max_size.width() * ZOOM_MIN_FACTOR * device_pixel_ratio
+            min_height_px = max_size.height() * ZOOM_MIN_FACTOR * device_pixel_ratio
+            min_zoom_x = min_width_px / page_width_pt
+            min_zoom_y = min_height_px / page_height_pt
+            zoom_min = max(min_zoom_x, min_zoom_y)
+            
+            # Regla 3: Zoom final
+            zoom = max(zoom_fit, zoom_min)
+            
+            logger.debug(f"render_page: Calculated zoom - fit={zoom_fit:.3f}, min={zoom_min:.3f}, final={zoom:.3f}, dpr={device_pixel_ratio}")
+            
+            qpixmap = PdfRenderer._render_page_to_pixmap(doc, page_num, zoom)
+            
+            # R14: Validate pixmap before returning
             if validate_pixmap(qpixmap):
                 logger.debug(f"render_page: Page rendered, size: {qpixmap.width()}x{qpixmap.height()}")
-                result = PdfRenderer._ensure_minimum_size(qpixmap, max_size)
-                # R14: Validate scaled result
-                if validate_pixmap(result):
-                    logger.debug(f"render_page: After scaling, size: {result.width()}x{result.height()}")
-                    return result
-                else:
-                    logger.warning(f"R14: Scaled pixmap is invalid (size: {result.width()}x{result.height()}, null: {result.isNull()})")
+                return qpixmap
             else:
                 logger.warning(f"R14: _render_page_to_pixmap returned invalid pixmap (size: {qpixmap.width()}x{qpixmap.height()}, null: {qpixmap.isNull()})")
             

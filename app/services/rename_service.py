@@ -27,7 +27,8 @@ class RenameService:
         replace_text: str = "",
         use_uppercase: bool = False,
         use_lowercase: bool = False,
-        use_title_case: bool = False
+        use_title_case: bool = False,
+        number_position: str = "suffix"
     ) -> list[str]:
         """
         Generate preview of new filenames based on pattern.
@@ -40,15 +41,19 @@ class RenameService:
             use_uppercase: Convert to uppercase.
             use_lowercase: Convert to lowercase.
             use_title_case: Capitalize words.
+            number_position: "prefix" or "suffix" - where to place {n} if not in pattern.
         
         Returns:
             List of new filenames (without paths).
         """
         is_single_file = len(paths) == 1
         
-        # Solo agregar {n} automáticamente si hay múltiples archivos
+        # Solo agregar {n} automáticamente si hay múltiples archivos y no está en el patrón
         if not is_single_file and "{n}" not in pattern:
-            pattern = pattern + " {n}"
+            if number_position == "prefix":
+                pattern = "{n} " + pattern
+            else:  # suffix
+                pattern = pattern + " {n}"
         
         preview = []
         for i, path in enumerate(paths):
@@ -56,7 +61,7 @@ class RenameService:
             _, original_ext = os.path.splitext(path)
             
             # Aplicar patrón (devuelve nombre sin extensión)
-            new_name = self._apply_pattern(path, pattern, i + 1, len(paths), is_single_file)
+            new_name = self._apply_pattern(path, pattern, i + 1, len(paths), is_single_file, number_position)
             
             # Aplicar búsqueda/reemplazo si está configurado
             if search_text:
@@ -75,7 +80,15 @@ class RenameService:
         
         return preview
     
-    def _apply_pattern(self, path: str, pattern: str, index: int, total: int, is_single_file: bool = False) -> str:
+    def _apply_pattern(
+        self, 
+        path: str, 
+        pattern: str, 
+        index: int, 
+        total: int, 
+        is_single_file: bool = False,
+        number_position: str = "suffix"
+    ) -> str:
         """
         Apply pattern to single file path.
         
@@ -85,6 +98,7 @@ class RenameService:
             index: Current file index (1-based).
             total: Total number of files.
             is_single_file: If True, ignore {n} placeholder.
+            number_position: "prefix" or "suffix" - where {n} should be placed.
         
         Returns:
             New filename WITHOUT extension (la extensión se preserva en generate_preview).

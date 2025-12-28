@@ -27,13 +27,14 @@ from app.ui.widgets.file_tile_events import (
 from app.ui.widgets.file_tile_paint import paint_dock_style, _paint_hover_overlay
 from app.ui.widgets.file_tile_setup import setup_ui
 from app.ui.widgets.file_tile_states import set_file_state
+from app.ui.widgets.hover_animation_mixin import HoverAnimationMixin
 from app.ui.widgets.state_badge_widget import StateBadgeWidget
 
 if TYPE_CHECKING:
     from app.ui.widgets.file_grid_view import FileGridView
 
 
-class FileTile(QWidget):
+class FileTile(QWidget, HoverAnimationMixin):
     """Internal tile widget for a single file."""
 
     def __init__(
@@ -70,6 +71,7 @@ class FileTile(QWidget):
         self._dock_style = dock_style
         self._is_hovered: bool = False  # Estado de hover para efecto tipo Finder
         self._get_label_callback = get_label_callback
+        self._init_hover_animation()
         setup_ui(self)
 
     def paintEvent(self, event) -> None:
@@ -104,13 +106,13 @@ class FileTile(QWidget):
     def enterEvent(self, event: QEnterEvent) -> None:
         """Handle mouse enter - activate hover effect."""
         self._is_hovered = True
-        self.update()
+        self._start_hover_animation(1.0)
         super().enterEvent(event)
     
     def leaveEvent(self, event) -> None:
         """Handle mouse leave - deactivate hover effect."""
         self._is_hovered = False
-        self.update()
+        self._start_hover_animation(0.0)
         super().leaveEvent(event)
 
     def get_file_path(self) -> str:

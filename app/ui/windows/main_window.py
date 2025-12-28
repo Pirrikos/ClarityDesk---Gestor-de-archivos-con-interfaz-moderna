@@ -7,10 +7,10 @@ Focus Dock replaces the old sidebar navigation system.
 import os
 from typing import Optional
 from PySide6.QtCore import Qt, QTimer, QEvent, QPoint, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QObject
-from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut, QPainter, QColor, QCursor
-from PySide6.QtWidgets import QWidget, QMessageBox, QApplication, QToolTip, QDialog, QGraphicsOpacityEffect
+from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut, QPainter, QColor, QCursor, QMouseEvent, QPainterPath
+from PySide6.QtWidgets import QWidget, QApplication, QToolTip, QDialog, QGraphicsOpacityEffect
 
-from app.core.constants import DEBUG_LAYOUT, FILE_SYSTEM_DEBOUNCE_MS, CENTRAL_AREA_BG, RESIZE_EDGE_DETECTION_MARGIN
+from app.core.constants import DEBUG_LAYOUT, FILE_SYSTEM_DEBOUNCE_MS, CENTRAL_AREA_BG, CENTRAL_AREA_BG_LIGHT, RESIZE_EDGE_DETECTION_MARGIN, SIDEBAR_BG
 from app.core.logger import get_logger
 from app.managers.tab_manager import TabManager
 from app.managers.workspace_manager import WorkspaceManager
@@ -29,8 +29,11 @@ from app.ui.windows.desktop_window import DesktopWindow
 from app.ui.windows.main_window_file_handler import filter_previewable_files
 from app.ui.windows.main_window_setup import setup_ui
 from app.ui.windows.main_window_state import load_app_state, save_app_state
+from app.ui.windows.preview_coordination import close_other_window_preview
 from app.ui.windows.quick_preview_window import QuickPreviewWindow
 from app.ui.widgets.file_view_sync import get_selected_files, switch_view
+from app.ui.windows.error_dialog import ErrorDialog
+from app.ui.windows.confirmation_dialog import ConfirmationDialog
 
 logger = get_logger(__name__)
 
@@ -49,12 +52,14 @@ class MainWindow(QWidget):
             )
             
             self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
             self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
             
             self.setWindowTitle("ClarityDesk Pro")
             self.setMinimumSize(1050, 675)
             self.setMouseTracking(True)
             self._is_resizing = False
+            self._resize_cursor_active = False
             
             self._tab_manager = tab_manager
             self._workspace_manager = workspace_manager
@@ -71,7 +76,17 @@ class MainWindow(QWidget):
             
             self.setObjectName("MainWindow")
             self.setAutoFillBackground(False)
-            self.setStyleSheet(f"QWidget#MainWindow {{ background-color: {CENTRAL_AREA_BG}; }}")
+            
+            # Inicializar color del área central desde AppSettings (solo para FileViewContainer)
+            from app.managers import app_settings as app_settings_module
+            if app_settings_module.app_settings is not None:
+                color_theme = app_settings_module.app_settings.central_area_color
+                self._central_area_color = CENTRAL_AREA_BG_LIGHT if color_theme == "light" else CENTRAL_AREA_BG
+            else:
+                self._central_area_color = CENTRAL_AREA_BG
+            
+            # MainWindow siempre usa el color del sidebar (no pinta el tema)
+            self._main_window_bg_color = SIDEBAR_BG
             
             self._tab_manager.set_workspace_manager(workspace_manager)
             self._setup_ui()
@@ -86,22 +101,31 @@ class MainWindow(QWidget):
 
     def paintEvent(self, event):
         """
-        Pintar el fondo de la ventana raíz.
+        Pintar el fondo de la ventana raíz con esquinas redondeadas.
         
-        Cubre toda el área incluyendo el margen invisible de 3px alrededor
-        para mantener apariencia uniforme mientras permite detección de bordes.
+        Usa QPainterPath para crear un rectángulo redondeado (radio 12px)
+        que define el área visible de la ventana. El fondo fuera del path
+        queda transparente para lograr esquinas redondeadas reales tipo Finder/macOS.
         """
         if DEBUG_LAYOUT:
             super().paintEvent(event)
             return
         
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         p.setClipping(False)
         
         rect = self.rect()
-        bg_color = QColor(CENTRAL_AREA_BG)
-        p.fillRect(rect, bg_color)
+        corner_radius = 12
+        
+        # Crear path con esquinas redondeadas
+        path = QPainterPath()
+        path.addRoundedRect(rect, corner_radius, corner_radius)
+        
+        # Rellenar solo el área del path con el color del sidebar (el tema solo afecta a FileViewContainer)
+        bg_color = QColor(self._main_window_bg_color)
+        p.fillPath(path, bg_color)
+        
         p.end()
         
         super().paintEvent(event)
@@ -132,6 +156,14 @@ class MainWindow(QWidget):
         
         # Conectar señal del AppHeader para mostrar dock de escritorio
         self._app_header.show_desktop_requested.connect(self._on_show_desktop_requested)
+        
+        # Conectar señal del AppHeader para mostrar ventana de ajustes
+        self._app_header.show_settings_requested.connect(self._on_show_settings_requested)
+        
+        # Conectar señal de cambio de color del área central
+        from app.managers import app_settings as app_settings_module
+        if app_settings_module.app_settings is not None:
+            app_settings_module.app_settings.central_area_color_changed.connect(self._on_central_area_color_changed)
         
         self._tab_manager_connections = [
             (self._tab_manager.tabsChanged, self._on_tabs_changed),
@@ -245,6 +277,18 @@ class MainWindow(QWidget):
                 self._last_selected_path = ""
                 self._path_footer.set_text("")
 
+    def _on_show_settings_requested(self) -> None:
+        """Abrir ventana de ajustes cuando se hace clic en el icono de ajustes."""
+        from app.ui.windows.settings_window import get_settings_window
+        # Usar la misma función que SettingsStackTile para consistencia
+        get_settings_window()
+    
+    def _on_central_area_color_changed(self, color_theme: str) -> None:
+        """Actualizar color del área central cuando cambia el tema."""
+        # El MainWindow no cambia de color, solo el FileViewContainer
+        # FileViewContainer se actualiza automáticamente mediante su señal conectada
+        pass
+    
     def _on_show_desktop_requested(self) -> None:
         """Ocultar MainWindow y mostrar DesktopWindow con animación elegante tipo macOS."""
         # Usar DesktopWindow inyectado o buscar como fallback
@@ -587,44 +631,46 @@ class MainWindow(QWidget):
         """Restaurar cursor cuando se suelta el botón del ratón."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._is_resizing = False
-            self.unsetCursor()
+            self._clear_resize_cursor()
         super().mouseReleaseEvent(event)
     
-    def mouseMoveEvent(self, event) -> None:
-        """Cambiar cursor según posición para indicar zonas de resize."""
-        if self._is_resizing:
-            super().mouseMoveEvent(event)
-            return
-        
-        global_pos = self.mapToGlobal(event.pos())
-        self._update_cursor_for_position(global_pos)
-        super().mouseMoveEvent(event)
+    def showEvent(self, event) -> None:
+        """Instalar filtro de eventos global cuando la ventana se muestra."""
+        super().showEvent(event)
+        QApplication.instance().installEventFilter(self)
+    
+    def hideEvent(self, event) -> None:
+        """Desinstalar filtro de eventos global cuando la ventana se oculta."""
+        QApplication.instance().removeEventFilter(self)
+        self._clear_resize_cursor()
+        super().hideEvent(event)
     
     def leaveEvent(self, event) -> None:
         """Restaurar cursor cuando el ratón sale de la ventana."""
-        if not self._is_resizing:
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+        self._clear_resize_cursor()
         super().leaveEvent(event)
     
-    def eventFilter(self, obj, event) -> bool:
-        """Filtrar eventos de mouse para restaurar cursor cuando está fuera del área de resize."""
-        if event.type() == QEvent.Type.MouseMove and not self._is_resizing:
-            if isinstance(obj, QWidget) and obj.window() == self:
-                try:
-                    global_pos = event.globalPos() if hasattr(event, 'globalPos') else obj.mapToGlobal(event.pos())
-                    self._update_cursor_for_position(global_pos)
-                except Exception:
-                    self.setCursor(Qt.CursorShape.ArrowCursor)
-        
-        return super().eventFilter(obj, event)
-    
-    def _update_cursor_for_position(self, global_pos) -> None:
-        """Actualizar cursor según posición global."""
-        if self._is_resizing:
-            return
+    def _update_resize_cursor(self) -> None:
+        """Actualizar cursor según si el mouse está cerca de los bordes."""
+        global_pos = QCursor.pos()
         edges = self._detect_resize_edges(global_pos)
-        cursor = self._get_resize_cursor(edges)
-        self.setCursor(cursor if cursor else Qt.CursorShape.ArrowCursor)
+        
+        if edges:
+            cursor = self._get_resize_cursor(edges)
+            if cursor:
+                if not self._resize_cursor_active:
+                    QApplication.setOverrideCursor(cursor)
+                    self._resize_cursor_active = True
+                else:
+                    QApplication.changeOverrideCursor(cursor)
+        else:
+            self._clear_resize_cursor()
+    
+    def _clear_resize_cursor(self) -> None:
+        """Limpiar cursor de redimensionamiento si está activo."""
+        if self._resize_cursor_active:
+            QApplication.restoreOverrideCursor()
+            self._resize_cursor_active = False
     
     def _detect_resize_edges(self, global_pos: QPoint) -> Qt.Edges:
         """Detectar bordes de ventana para resize nativo."""
@@ -698,12 +744,14 @@ class MainWindow(QWidget):
         QTimer.singleShot(180, QApplication.restoreOverrideCursor)
         success = open_file_with_system(file_path)
         if not success:
-            QMessageBox.warning(
-                self,
-                "No se puede abrir",
-                "No hay aplicación asociada o el archivo no es reconocible.\n"
-                "Intenta abrirlo manualmente desde el sistema."
+            error_dialog = ErrorDialog(
+                parent=self,
+                title="No se puede abrir",
+                message="No hay aplicación asociada o el archivo no es reconocible.\n"
+                        "Intenta abrirlo manualmente desde el sistema.",
+                is_warning=True
             )
+            error_dialog.exec()
 
     def _setup_shortcuts(self) -> None:
         """Setup keyboard shortcuts."""
@@ -713,41 +761,41 @@ class MainWindow(QWidget):
         self._forward_shortcut = QShortcut(QKeySequence("Alt+Right"), self)
         self._forward_shortcut.activated.connect(self._on_nav_forward_shortcut)
         
-        # Instalar filtro de eventos en file_view_container y sus hijos
-        self._install_space_filter_recursive(self._file_view_container)
-        logger.debug("_setup_shortcuts: Space key filter installed on file_view_container")
-        
-        # Instalar filtro también en file_box_panel si está disponible
-        if self._current_file_box_panel:
-            self._install_space_filter_recursive(self._current_file_box_panel)
-            logger.debug("_setup_shortcuts: Space key filter installed on file_box_panel")
-    
-    def _install_space_filter_recursive(self, widget: QWidget) -> None:
-        """Instala el filtro de eventos de espacio en un widget y todos sus hijos."""
-        if widget is None:
-            return
-        widget.installEventFilter(self)
-        for child in widget.findChildren(QWidget):
-            child.installEventFilter(self)
+        # Instalar filtro de eventos en toda la ventana para capturar espacio
+        from app.ui.widgets.event_filter_utils import install_event_filter_recursive
+        install_event_filter_recursive(self, self)
     
     def eventFilter(self, watched: QObject, event) -> bool:
-        """Filtrar eventos para capturar barra espaciadora antes que widgets hijos."""
+        """Filtrar eventos globales: cursor de bordes y barra espaciadora."""
+        # Cursor de bordes: actualizar en cada movimiento de mouse
+        if event.type() == QEvent.Type.MouseMove:
+            if not self._is_resizing and not self.isMaximized():
+                self._update_resize_cursor()
+        
         if event.type() == QEvent.Type.KeyPress:
             key_event = event
             key = key_event.key()
             
             if key == Qt.Key.Key_Space and not key_event.modifiers():
-                # Evitar si hay un campo de texto con foco
+                # Solo procesar si MainWindow está visible y es la ventana activa
+                if not self.isVisible():
+                    return False
+                
+                # Verificar que el foco está en MainWindow o sus hijos
                 focus_widget = QApplication.focusWidget()
                 if focus_widget:
+                    # Verificar si el widget con foco pertenece a MainWindow
+                    if not self.isAncestorOf(focus_widget) and focus_widget != self:
+                        return False
+                    
                     focus_class = focus_widget.__class__.__name__
                     if focus_class in ('QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'SearchLineEdit'):
                         return False
                 
                 self._open_quick_preview()
-                return True  # Consumir el evento
+                return True
         
-        return False  # No consumir otros eventos
+        return False
 
     def _open_quick_preview(self) -> None:
         """Toggle quick preview window (open/close)."""
@@ -760,7 +808,7 @@ class MainWindow(QWidget):
         except RuntimeError:
             self._current_preview_window = None
 
-        # Limpiar referencia stale (existe pero no visible)
+        # Limpiar referencia si existe pero no está visible
         if self._current_preview_window:
             self._current_preview_window = None
 
@@ -778,6 +826,9 @@ class MainWindow(QWidget):
         if not allowed_files:
             return
 
+        # Cerrar cualquier preview abierto en DesktopWindow para evitar conflictos
+        close_other_window_preview(self, DesktopWindow, self._desktop_window)
+
         preview_window = QuickPreviewWindow(
             self._preview_service,
             file_paths=allowed_files,
@@ -786,8 +837,14 @@ class MainWindow(QWidget):
         )
 
         self._current_preview_window = preview_window
+        # Conectar señal closed para limpiar referencia cuando se cierra
+        preview_window.closed.connect(self._on_preview_closed)
         preview_window.show()
         preview_window.setFocus()
+    
+    def _on_preview_closed(self) -> None:
+        """Limpiar referencia cuando preview se cierra."""
+        self._current_preview_window = None
     
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Handle drag enter - let FileViewContainer handle it."""
@@ -849,11 +906,13 @@ class MainWindow(QWidget):
         self._cancel_search_if_active()
         
         if not os.access(folder_path, os.R_OK):
-            QMessageBox.warning(
-                self,
-                "Permiso requerido",
-                "No se puede acceder a esta carpeta. Verifica permisos."
+            error_dialog = ErrorDialog(
+                parent=self,
+                title="Permiso requerido",
+                message="No se puede acceder a esta carpeta. Verifica permisos.",
+                is_warning=True
             )
+            error_dialog.exec()
             return
         
         is_desktop = is_desktop_focus(folder_path)
@@ -959,11 +1018,13 @@ class MainWindow(QWidget):
         selected_files = get_selected_files(self._file_view_container)
         
         if not selected_files:
-            QMessageBox.information(
-                self,
-                "Sin archivos seleccionados",
-                "Por favor, selecciona los archivos que deseas usar."
+            error_dialog = ErrorDialog(
+                parent=self,
+                title="Sin archivos seleccionados",
+                message="Por favor, selecciona los archivos que deseas usar.",
+                is_warning=True
             )
+            error_dialog.exec()
             return
         
         try:
@@ -977,11 +1038,13 @@ class MainWindow(QWidget):
                     added_count = file_box_service.add_files_to_existing_folder(selected_files, temp_folder)
                     
                     if added_count == 0:
-                        QMessageBox.warning(
-                            self,
-                            "Error",
-                            "No se pudieron añadir los archivos a la sesión actual."
+                        error_dialog = ErrorDialog(
+                            parent=self,
+                            title="Error",
+                            message="No se pudieron añadir los archivos a la sesión actual.",
+                            is_warning=False
                         )
+                        error_dialog.exec()
                         return
                     
                     self._current_file_box_panel.add_files_to_session(selected_files)
@@ -997,11 +1060,13 @@ class MainWindow(QWidget):
             
             temp_folder = file_box_service.prepare_files(selected_files)
             if not temp_folder:
-                QMessageBox.warning(
-                    self,
-                    "Error",
-                    "No se pudieron preparar los archivos."
+                error_dialog = ErrorDialog(
+                    parent=self,
+                    title="Error",
+                    message="No se pudieron preparar los archivos.",
+                    is_warning=False
                 )
+                error_dialog.exec()
                 return
             
             session = file_box_service.create_file_box_session(selected_files, temp_folder)
@@ -1012,8 +1077,8 @@ class MainWindow(QWidget):
             self._current_file_box_panel.set_session(session)
             self._current_file_box_panel.setVisible(True)
             # Instalar filtro de eventos para capturar barra espaciadora
-            self._install_space_filter_recursive(self._current_file_box_panel)
-            logger.debug("_on_file_box_button_clicked: Space key filter installed on file_box_panel")
+            from app.ui.widgets.event_filter_utils import install_event_filter_recursive
+            install_event_filter_recursive(self._current_file_box_panel, self)
             self._update_right_panel_layout("FILE_BOX")
             self._file_box_panel_minimized = False
             self._update_file_box_button_state()
@@ -1023,11 +1088,13 @@ class MainWindow(QWidget):
             
         except Exception as e:
             logger.error(f"Failed to prepare file box: {e}", exc_info=True)
-            QMessageBox.warning(
-                self,
-                "Error",
-                f"Error al preparar la caja de archivos:\n{str(e)}"
+            error_dialog = ErrorDialog(
+                parent=self,
+                title="Error",
+                message=f"Error al preparar la caja de archivos:\n{str(e)}",
+                is_warning=False
             )
+            error_dialog.exec()
     
     def _update_right_panel_layout(self, mode: str) -> None:
         """
@@ -1062,8 +1129,8 @@ class MainWindow(QWidget):
         
         self._current_file_box_panel.setVisible(True)
         # Instalar filtro de eventos para capturar barra espaciadora
-        self._install_space_filter_recursive(self._current_file_box_panel)
-        logger.debug("_restore_file_box_panel: Space key filter installed on file_box_panel")
+        from app.ui.widgets.event_filter_utils import install_event_filter_recursive
+        install_event_filter_recursive(self._current_file_box_panel, self)
         self._file_box_panel_minimized = False
         self._update_right_panel_layout("FILE_BOX")
         self._update_file_box_button_state()

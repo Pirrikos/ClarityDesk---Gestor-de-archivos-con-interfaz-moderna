@@ -9,7 +9,7 @@ import os
 from typing import Optional, Callable
 
 from PySide6.QtGui import QContextMenuEvent
-from PySide6.QtWidgets import QApplication, QInputDialog, QMenu, QMessageBox, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QMenu, QWidget
 
 from app.core.logger import get_logger
 from app.managers.tab_manager import TabManager
@@ -24,6 +24,9 @@ from app.services.file_creation_service import (
     create_docx_file
 )
 from app.ui.widgets.folder_tree_styles import get_menu_stylesheet
+from app.ui.windows.confirmation_dialog import ConfirmationDialog
+from app.ui.windows.error_dialog import ErrorDialog
+from app.ui.windows.input_dialog import InputDialog
 
 logger = get_logger(__name__)
 
@@ -178,19 +181,23 @@ def _create_folder_dialog(
         parent_path: Path where folder will be created.
         on_refresh_callback: Optional callback to refresh view after creation.
     """
-    # Mostrar diálogo de entrada
-    name, ok = QInputDialog.getText(
-        parent,
-        "Nueva carpeta",
-        "Nombre de la carpeta:",
+    # Mostrar diálogo de entrada personalizado
+    dialog = InputDialog(
+        parent=parent,
+        title="Nueva carpeta",
+        label="Nombre de la carpeta:",
         text="Nueva carpeta"
     )
     
-    if not ok or not name.strip():
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return
+    
+    name = dialog.get_text()
+    if not name:
         return
     
     # Crear carpeta usando servicio
-    result = create_folder(parent_path, name.strip())
+    result = create_folder(parent_path, name)
     
     if result.success:
         # Refrescar vista si hay callback
@@ -199,11 +206,13 @@ def _create_folder_dialog(
         logger.info(f"Carpeta creada exitosamente en {parent_path}")
     else:
         # Mostrar error al usuario
-        QMessageBox.warning(
-            parent,
-            "Error al crear carpeta",
-            result.error_message
+        error_dialog = ErrorDialog(
+            parent=parent,
+            title="Error al crear carpeta",
+            message=result.error_message,
+            is_warning=False
         )
+        error_dialog.exec()
 
 
 def _move_to_trash_dialog(
@@ -253,11 +262,13 @@ def _move_to_trash_dialog(
     # Mostrar errores si los hay
     if error_messages:
         error_text = "\n".join(error_messages)
-        QMessageBox.warning(
-            parent,
-            "Error al mover a la papelera",
-            f"No se pudieron mover algunos elementos:\n\n{error_text}"
+        error_dialog = ErrorDialog(
+            parent=parent,
+            title="Error al mover a la papelera",
+            message=f"No se pudieron mover algunos elementos:\n\n{error_text}",
+            is_warning=True
         )
+        error_dialog.exec()
     
     # Refrescar vista si hubo al menos un éxito
     if success_count > 0:
@@ -307,21 +318,17 @@ def _show_confirmation_dialog(parent: QWidget, item_paths: list[str]) -> bool:
             # Archivo o carpeta vacía
             message = f"¿Mover '{item_name}' a la papelera?"
     
-    # Crear diálogo explícitamente para asegurar que se muestre correctamente
-    msg_box = QMessageBox(parent)
-    msg_box.setWindowTitle("Mover a la papelera")
-    msg_box.setText(message)
-    msg_box.setIcon(QMessageBox.Icon.Question)
-    msg_box.setStandardButtons(
-        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+    # Crear diálogo de confirmación personalizado
+    dialog = ConfirmationDialog(
+        parent=parent,
+        title="Mover a la papelera",
+        message=message,
+        confirm_text="Mover",
+        cancel_text="Cancelar"
     )
-    msg_box.setDefaultButton(QMessageBox.StandardButton.No)
-    msg_box.setModal(True)
     
     # Mostrar diálogo y obtener respuesta
-    reply = msg_box.exec()
-    
-    return reply == QMessageBox.StandardButton.Yes
+    return dialog.exec() == QDialog.DialogCode.Accepted and dialog.is_confirmed()
 
 
 def _paste_items(
@@ -364,11 +371,13 @@ def _paste_items(
     
     # Validación final
     if not paths or not mode:
-        QMessageBox.warning(
-            parent,
-            "Error al pegar",
-            "No hay datos para pegar en el clipboard."
+        error_dialog = ErrorDialog(
+            parent=parent,
+            title="Error al pegar",
+            message="No hay datos para pegar en el clipboard.",
+            is_warning=True
         )
+        error_dialog.exec()
         return
     
     # Obtener watcher del tab_manager si está disponible
@@ -413,11 +422,13 @@ def _paste_items(
     # Mostrar errores si los hay
     if error_messages:
         error_text = "\n".join(error_messages)
-        QMessageBox.warning(
-            parent,
-            "Error al pegar",
-            f"No se pudieron pegar algunos elementos:\n\n{error_text}"
+        error_dialog = ErrorDialog(
+            parent=parent,
+            title="Error al pegar",
+            message=f"No se pudieron pegar algunos elementos:\n\n{error_text}",
+            is_warning=True
         )
+        error_dialog.exec()
     
     # Refrescar vista si hubo éxito
     if success_count > 0:
@@ -444,29 +455,35 @@ def _create_file_dialog(
     # Obtener información del diálogo según tipo de archivo
     title, label = _FILE_TYPE_DIALOG_INFO.get(file_type, ("Nuevo archivo", "Nombre del archivo:"))
     
-    # Mostrar diálogo de entrada
-    name, ok = QInputDialog.getText(
-        parent,
-        title,
-        label,
+    # Mostrar diálogo de entrada personalizado
+    dialog = InputDialog(
+        parent=parent,
+        title=title,
+        label=label,
         text=""
     )
     
-    if not ok or not name.strip():
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return
+    
+    name = dialog.get_text()
+    if not name:
         return
     
     # Obtener función de creación según tipo
     creator = _FILE_CREATORS.get(file_type)
     if not creator:
-        QMessageBox.warning(
-            parent,
-            "Error",
-            f"Tipo de archivo no soportado: {file_type}"
+        error_dialog = ErrorDialog(
+            parent=parent,
+            title="Error",
+            message=f"Tipo de archivo no soportado: {file_type}",
+            is_warning=True
         )
+        error_dialog.exec()
         return
     
     # Crear archivo usando servicio
-    result = creator(parent_path, name.strip())
+    result = creator(parent_path, name)
     
     if result.success:
         # Refrescar vista si hay callback
@@ -475,9 +492,11 @@ def _create_file_dialog(
         logger.info(f"Archivo {file_type} creado exitosamente en {parent_path}")
     else:
         # Mostrar error al usuario
-        QMessageBox.warning(
-            parent,
-            f"Error al crear archivo {file_type}",
-            result.error_message
+        error_dialog = ErrorDialog(
+            parent=parent,
+            title=f"Error al crear archivo {file_type}",
+            message=result.error_message,
+            is_warning=False
         )
+        error_dialog.exec()
 

@@ -12,6 +12,7 @@ from typing import Optional, Callable
 
 from PySide6.QtCore import QSize, Qt, QThread
 from PySide6.QtGui import QPixmap, QImage
+from PySide6.QtWidgets import QApplication
 
 from app.core.logger import get_logger
 from app.services.docx_converter import DocxConverter
@@ -86,7 +87,10 @@ class PreviewPdfService:
 
     def render_pdf_page(self, pdf_path: str, max_size: QSize, page_num: int = 0) -> QPixmap:
         """Render specific page of PDF as pixmap using PyMuPDF (synchronous)."""
-        pixmap = self._pdf_renderer.render_page(pdf_path, max_size, page_num)
+        app = QApplication.instance()
+        # devicePixelRatio() devuelve int en PySide6, convertir a float
+        device_pixel_ratio = float(app.devicePixelRatio()) if app else 1.0
+        pixmap = self._pdf_renderer.render_page(pdf_path, max_size, page_num, device_pixel_ratio)
         if pixmap.isNull():
             logger.warning(f"Failed to render PDF page {page_num} from {pdf_path}")
         return pixmap
@@ -130,7 +134,12 @@ class PreviewPdfService:
         request_id = str(uuid.uuid4())
         self._current_request_id = request_id
         
-        worker = PdfRenderWorker(pdf_path, max_size, page_num, request_id)
+        # Obtener device pixel ratio desde el hilo principal
+        app = QApplication.instance()
+        # devicePixelRatio() devuelve int en PySide6, convertir a float
+        device_pixel_ratio = float(app.devicePixelRatio()) if app else 1.0
+        
+        worker = PdfRenderWorker(pdf_path, max_size, page_num, request_id, device_pixel_ratio)
         self._active_pdf_worker = worker
         logger.debug(f"render_pdf_page_async: Created worker, request_id={request_id}, pdf_path={pdf_path}, page_num={page_num}")
         

@@ -9,7 +9,7 @@ import os
 
 from PySide6.QtCore import QDataStream, QIODevice, QMimeData, QModelIndex, Qt
 from PySide6.QtGui import QDragMoveEvent, QDropEvent, QStandardItemModel
-from PySide6.QtWidgets import QMessageBox, QTreeView
+from PySide6.QtWidgets import QTreeView
 
 from app.services.path_utils import normalize_path
 from app.ui.widgets.folder_tree_model import (
@@ -108,15 +108,14 @@ def get_dragged_index_from_mime_data(
 
 def _show_reorder_warning(parent_widget) -> None:
     """Muestra un aviso cuando se intenta meter una carpeta raíz dentro de otra."""
-    msg = QMessageBox(parent_widget)
-    msg.setWindowTitle("Reordenamiento no permitido")
-    msg.setText(
-        "No se puede meter una carpeta raíz dentro de otra.\n\n"
-        "Solo se permite intercambiar posiciones entre carpetas raíz."
+    error_dialog = ErrorDialog(
+        parent=parent_widget,
+        title="Reordenamiento no permitido",
+        message="No se puede meter una carpeta raíz dentro de otra.\n\n"
+                "Solo se permite intercambiar posiciones entre carpetas raíz.",
+        is_warning=True
     )
-    msg.setIcon(QMessageBox.Icon.Warning)
-    msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-    msg.exec()
+    error_dialog.exec()
 
 
 def _validate_target_is_root(target_index: QModelIndex, target_item, model, tree_view) -> bool:

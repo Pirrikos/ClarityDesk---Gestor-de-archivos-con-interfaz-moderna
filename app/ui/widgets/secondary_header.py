@@ -5,14 +5,14 @@ Header visual igual al AppHeader con búsqueda y ajustes.
 
 from typing import Optional, Callable
 
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QPainter, QColor, QPaintEvent
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QRect, QSize
+from PySide6.QtGui import QPainter, QColor, QPaintEvent, QScreen, QIcon, QPixmap, QPainterPath
 from PySide6.QtWidgets import (
     QHBoxLayout, QWidget, QSizePolicy, QLabel, QLineEdit, QPushButton, QMenu, QFrame,
-    QColorDialog
+    QColorDialog, QApplication
 )
 
-from app.core.constants import DEBUG_LAYOUT
+from app.core.constants import DEBUG_LAYOUT, ROUNDED_BG_RADIUS, SEPARATOR_LINE_COLOR, WORKSPACE_BUTTON_HEIGHT
 from app.services.settings_service import SettingsService
 
 
@@ -25,20 +25,20 @@ class SecondaryHeader(QWidget):
             border-bottom: 1px solid #2A2E36;
         }
         QLineEdit {
-            background-color: rgba(255, 255, 255, 0.9);
-            border: 1px solid rgba(0, 0, 0, 0.15);
+            background-color: #C0C0C0;
+            border: 1px solid rgba(0, 0, 0, 0.3);
             border-radius: 8px;
             padding: 8px 32px 8px 8px;
-            color: rgba(0, 0, 0, 0.85);
+            color: #000000;
             font-weight: 400;
         }
         QLineEdit:focus {
-            background-color: #FFFFFF;
-            border: 1px solid rgba(0, 0, 0, 0.25);
-            color: rgba(0, 0, 0, 0.95);
+            background-color: #D0D0D0;
+            border: 1px solid rgba(0, 0, 0, 0.4);
+            color: #000000;
         }
         QLineEdit::placeholder {
-            color: rgba(0, 0, 0, 0.5);
+            color: rgba(0, 0, 0, 0.6);
         }
     """
 
@@ -73,11 +73,11 @@ class SecondaryHeader(QWidget):
         }
     """
 
-    _SEPARATOR_STYLESHEET = """
-        QFrame#SecondaryHeaderSeparator {
-            background-color: rgba(0, 0, 0, 0.1);
+    _SEPARATOR_STYLESHEET = f"""
+        QFrame#SecondaryHeaderSeparator {{
+            background-color: {SEPARATOR_LINE_COLOR};
             border: none;
-        }
+        }}
     """
 
     _MENU_STYLESHEET = """
@@ -123,7 +123,7 @@ class SecondaryHeader(QWidget):
         self._setup_base_configuration()
         layout = self._create_main_layout()
         # El workspace button se agregará después mediante set_workspace_button
-        layout.addStretch(1)  # Empuja todo a la derecha
+        # Se insertará en posición 0 y ocupará todo el espacio hasta el campo de búsqueda
         self._setup_menu_buttons(layout)
         self._setup_search_field(layout)
     
@@ -135,15 +135,18 @@ class SecondaryHeader(QWidget):
         self._workspace_button = workspace_button
         layout = self.layout()
         if layout and workspace_button:
-            # Insertar al inicio del layout (posición 0, antes del stretch)
-            # El stretch está en la posición 0 después de crear el layout
-            layout.insertWidget(0, workspace_button, 0)
+            # Quitar ancho fijo para que se expanda
+            workspace_button.setMaximumWidth(16777215)  # Qt máximo permitido
+            workspace_button.setMinimumWidth(220)  # Ancho mínimo
+            # Insertar al inicio (posición 0) y hacer que ocupe todo el espacio disponible
+            # hasta el campo de búsqueda (stretch factor 1)
+            layout.insertWidget(0, workspace_button, 1)  # stretch factor 1 para expandirse
 
     def _setup_base_configuration(self) -> None:
         """Configure base header properties."""
         self.setFixedHeight(48)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.setContentsMargins(0, 0, 0, 0)
+        self.setContentsMargins(0, -1, 0, 0)  # Margen superior negativo para superponerse con AppHeader
         self.setAutoFillBackground(False)
 
     def _create_main_layout(self) -> QHBoxLayout:
@@ -165,7 +168,7 @@ class SecondaryHeader(QWidget):
     def _setup_search_field(self, layout: QHBoxLayout) -> None:
         search_container = QWidget(self)
         search_container.setObjectName("SearchContainer")
-        search_container.setFixedHeight(36)
+        search_container.setFixedHeight(WORKSPACE_BUTTON_HEIGHT)
         search_layout = QHBoxLayout(search_container)
         search_layout.setContentsMargins(0, 0, 0, 0)
         search_layout.setSpacing(0)
@@ -174,9 +177,8 @@ class SecondaryHeader(QWidget):
         self._search = QLineEdit(search_container)
         self._search.setObjectName("SearchField")
         self._search.setPlaceholderText("Buscar (Ctrl+K)")
-        self._search.setMinimumWidth(120)
-        self._search.setMaximumWidth(200)
-        self._search.setFixedHeight(36)
+        self._search.setFixedWidth(220)  # Mismo ancho que el botón de workspace
+        self._search.setFixedHeight(WORKSPACE_BUTTON_HEIGHT)  # Misma altura que el botón de workspace
         self._search.returnPressed.connect(lambda: self.search_submitted.emit(self._search.text()))
         self._search.textChanged.connect(lambda text: self.search_changed.emit(text))
         
@@ -211,20 +213,28 @@ class SecondaryHeader(QWidget):
         layout.addWidget(search_container, 0)
 
     def _setup_menu_buttons(self, layout: QHBoxLayout) -> None:
+        # TODO: Botón de ajustes oculto temporalmente - implementación futura
         self._settings_button = QPushButton("Ajustes ▼", self)
         self._settings_button.setFixedSize(100, 36)
         self._settings_button.setObjectName("SettingsButton")
         self._settings_button.setStyleSheet(self._MENU_BUTTON_STYLESHEET)
         self._create_settings_menu()
+        self._settings_button.setVisible(False)  # Oculto para futura implementación
         layout.addWidget(self._settings_button, 0)
 
-    def _add_separator(self, layout: QHBoxLayout) -> None:
+    def _create_separator(self) -> QFrame:
+        """Create a vertical separator line."""
         separator = QFrame(self)
         separator.setObjectName("SecondaryHeaderSeparator")
         separator.setFrameShape(QFrame.Shape.VLine)
         separator.setFixedWidth(1)
         separator.setFixedHeight(24)
         separator.setStyleSheet(self._SEPARATOR_STYLESHEET)
+        return separator
+    
+    def _add_separator(self, layout: QHBoxLayout) -> None:
+        """Add separator to layout (legacy method, use _create_separator for new code)."""
+        separator = self._create_separator()
         layout.addWidget(separator, 0)
 
     def _create_settings_menu(self) -> None:
@@ -317,18 +327,30 @@ class SecondaryHeader(QWidget):
         self.history_panel_toggle_requested.emit()
     
     def paintEvent(self, event: QPaintEvent) -> None:
-        """Paint header background and border."""
+        """Paint header background and border with rounded bottom corners."""
         if DEBUG_LAYOUT:
             super().paintEvent(event)
             return
         
         p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing, True)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         rect = self.rect()
-        p.fillRect(rect, QColor("#1A1D22"))
-        # Línea inferior acorde al estilo del AppHeader
-        p.setPen(QColor("#2A2E36"))
-        p.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
+        radius = ROUNDED_BG_RADIUS
+        
+        # Crear path con esquinas redondeadas solo inferiores (sin redondeo superior para juntar con AppHeader)
+        path = QPainterPath()
+        path.moveTo(rect.left(), rect.top())
+        path.lineTo(rect.right(), rect.top())
+        path.lineTo(rect.right(), rect.bottom() - radius)
+        # Esquina inferior derecha: arco desde 0° (derecha) hacia -90° (arriba)
+        path.arcTo(rect.right() - 2 * radius, rect.bottom() - 2 * radius, 2 * radius, 2 * radius, 0, -90)
+        path.lineTo(rect.left() + radius, rect.bottom())
+        # Esquina inferior izquierda: arco desde 270° (abajo) hacia -90° (arriba, igual que la derecha)
+        path.arcTo(rect.left(), rect.bottom() - 2 * radius, 2 * radius, 2 * radius, 270, -90)
+        path.closeSubpath()
+        
+        p.fillPath(path, QColor("#1A1D22"))
+        
         p.end()
         super().paintEvent(event)
 

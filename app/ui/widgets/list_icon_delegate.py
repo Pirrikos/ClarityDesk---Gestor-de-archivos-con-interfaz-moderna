@@ -8,7 +8,7 @@ from PySide6.QtCore import QRect, QSize, Qt
 from PySide6.QtGui import QBrush, QColor, QIcon, QPainter, QPalette, QPen
 from PySide6.QtWidgets import QStyle, QStyleOptionViewItem, QStyledItemDelegate, QTableWidget
 
-from app.core.constants import SELECTION_BORDER_COLOR, SELECTION_BG_COLOR
+from app.core.constants import SELECTION_BORDER_COLOR, SELECTION_BG_COLOR, CENTRAL_AREA_BG, CENTRAL_AREA_BG_LIGHT
 
 
 class ListViewDelegate(QStyledItemDelegate):
@@ -26,7 +26,7 @@ class ListViewDelegate(QStyledItemDelegate):
     CONTAINER_MARGIN = 2  # Margen del contenedor alrededor del icono
     CONTAINER_RADIUS = 8  # Radio de esquinas redondeadas del contenedor
     TEXT_COLOR = QColor(232, 232, 232)  # Color del texto en columnas
-    BASE_BG_COLOR = QColor(17, 19, 24)  # Color base de fondo de celda
+    # BASE_BG_COLOR se obtiene dinámicamente del tema
     HOVER_BG_COLOR = QColor(255, 255, 255, 20)  # Fondo hover tipo Finder (rgba(255,255,255,0.08) ≈ 20/255)
     CONTAINER_BG_COLOR = QColor(190, 190, 190)  # #BEBEBE - fondo contenedor
     CONTAINER_BORDER_COLOR = QColor(160, 160, 160)  # Borde contenedor normal
@@ -81,13 +81,8 @@ class ListViewDelegate(QStyledItemDelegate):
         # Fondo uniforme por celda: evita "costuras" verticales del estilo nativo
         # en estado normal en Windows. No usamos transparencia aquí.
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
-        base_color = self.BASE_BG_COLOR
-        if self._table_widget:
-            try:
-                base_color = self._table_widget.palette().color(QPalette.ColorRole.Base)
-            except (AttributeError, RuntimeError):
-                # Widget puede no estar completamente inicializado o haber sido eliminado
-                pass
+        # Obtener color del tema dinámicamente desde AppSettings
+        base_color = self._get_theme_color()
         
         # SOLO la columna 1 (Nombre) pinta el fondo de hover para las columnas de contenido
         # La columna 0 (checkbox) se excluye explícitamente del hover
@@ -221,6 +216,17 @@ class ListViewDelegate(QStyledItemDelegate):
                 alignment = Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
             
             painter.drawText(option.rect, alignment, str(text))
+    
+    def _get_theme_color(self) -> QColor:
+        """Obtener color del tema desde AppSettings."""
+        try:
+            from app.managers import app_settings as app_settings_module
+            if app_settings_module.app_settings is not None:
+                color_theme = app_settings_module.app_settings.central_area_color
+                return QColor(CENTRAL_AREA_BG_LIGHT if color_theme == "light" else CENTRAL_AREA_BG)
+        except (AttributeError, RuntimeError):
+            pass
+        return QColor(CENTRAL_AREA_BG)  # Fallback al color oscuro
     
     def _calculate_full_row_rect(self, row: int) -> QRect:
         """

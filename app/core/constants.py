@@ -25,11 +25,12 @@ WORKSPACE_HEADER_HEIGHT = 52
 WORKSPACE_BUTTON_HEIGHT = 28
 
 # Rounded background styling (Finder-like)
-ROUNDED_BG_TOP_OFFSET = 8
+ROUNDED_BG_TOP_OFFSET = 0  # Sin offset para alineación perfecta con FileViewContainer
 ROUNDED_BG_RADIUS = 12
 
 # UI colors
 CENTRAL_AREA_BG = "#202326"
+CENTRAL_AREA_BG_LIGHT = "#666666"  # Gris oscuro sin brillo para tema claro
 SIDEBAR_BG = "#1A1D22"
 SEPARATOR_LINE_COLOR = "rgba(255, 255, 255, 0.15)"
 
@@ -111,6 +112,9 @@ HEADER_BORDER_RIGHT = "rgba(255, 255, 255, 0.05)"
 HEADER_BORDER_BOTTOM = "rgba(255, 255, 255, 0.08)"
 HEADER_TEXT_HOVER = "rgba(255, 255, 255, 0.6)"
 HEADER_BORDER_CORNER = "rgba(255, 255, 255, 0.1)"
+
+# List view cell background (gris oscuro sobre el que se muestran los tiles/archivos)
+LIST_CELL_BG = "#111318"  # Color base de fondo de celda (QColor(17, 19, 24))
 
 # Scrollbar colors
 SCROLLBAR_HANDLE_BG = "rgba(255, 255, 255, 0.12)"

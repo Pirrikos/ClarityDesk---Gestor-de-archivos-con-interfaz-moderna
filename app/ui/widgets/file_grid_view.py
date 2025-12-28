@@ -145,9 +145,12 @@ class FileGridView(QWidget):
     def _setup_ui(self) -> None:
         """Build the UI layout."""
         self.setAcceptDrops(True)
+        self.setAutoFillBackground(False)
         
         if not self._is_desktop_window:
-            self.setStyleSheet(f"QWidget {{ background-color: {CENTRAL_AREA_BG}; }}")
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+            self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+            self.setStyleSheet("QWidget { background-color: transparent; }")
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)

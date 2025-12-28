@@ -12,26 +12,30 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QWidget,
-    QInputDialog,
     QMenu,
     QFileDialog,
-    QMessageBox
+    QDialog
 )
 
 from app.core.constants import (
     SIDEBAR_BG, ROUNDED_BG_TOP_OFFSET, ROUNDED_BG_RADIUS, SEPARATOR_LINE_COLOR,
-    WORKSPACE_HEADER_HEIGHT, WORKSPACE_BUTTON_HEIGHT
+    WORKSPACE_HEADER_HEIGHT, WORKSPACE_BUTTON_HEIGHT, CENTRAL_AREA_BG, CENTRAL_AREA_BG_LIGHT
 )
 from app.core.logger import get_logger
 from app.ui.widgets.folder_tree_icon_utils import load_folder_icon_with_fallback
 from app.ui.widgets.toolbar_navigation_buttons import create_navigation_buttons
 from app.ui.utils.rounded_background_painter import paint_rounded_background
 from app.ui.widgets.view_icon_utils import load_view_icon
+from app.ui.windows.input_dialog import InputDialog
+from app.ui.windows.error_dialog import ErrorDialog
+from app.ui.windows.confirmation_dialog import ConfirmationDialog
 from app.ui.widgets.workspace_selector_styles import (
     get_base_stylesheet,
     get_workspace_menu_stylesheet,
     get_state_menu_stylesheet,
-    get_view_toggle_button_style
+    get_view_toggle_button_style,
+    get_workspace_button_dark_stylesheet,
+    get_file_box_button_active_stylesheet
 )
 
 logger = get_logger(__name__)
@@ -87,8 +91,21 @@ class WorkspaceSelector(QWidget):
         self._state_button = None
         self._rename_button = None
         self._state_menu = None
+        
+        # Inicializar color del tema desde AppSettings
+        from app.managers import app_settings as app_settings_module
+        if app_settings_module.app_settings is not None:
+            color_theme = app_settings_module.app_settings.central_area_color
+            self._theme_color = CENTRAL_AREA_BG_LIGHT if color_theme == "light" else CENTRAL_AREA_BG
+        else:
+            self._theme_color = CENTRAL_AREA_BG
+        
         self._setup_ui()
         self._apply_styling()
+        
+        # Conectar señal de cambio de tema después de setup_ui
+        if app_settings_module.app_settings is not None:
+            app_settings_module.app_settings.central_area_color_changed.connect(self._on_theme_changed)
     
     def set_workspace_manager(self, workspace_manager: Optional['WorkspaceManager']) -> None:
         """
@@ -157,12 +174,11 @@ class WorkspaceSelector(QWidget):
         layout.setSpacing(LAYOUT_SPACING)
         
         # === IZQUIERDA: Botones ===
-        # Workspace selector button (fuera del fondo redondeado)
         self._workspace_button = QPushButton()
         self._workspace_button.setObjectName("WorkspaceButton")
         self._workspace_button.setFixedHeight(WORKSPACE_BUTTON_HEIGHT)
-        self._workspace_button.setMinimumWidth(200)
-        self._workspace_button.setMaximumWidth(280)
+        self._workspace_button.setFixedWidth(220)
+        self._workspace_button.setStyleSheet(get_workspace_button_dark_stylesheet())
         self._workspace_button.clicked.connect(self._on_workspace_button_clicked)
         layout.addWidget(self._workspace_button, 0)
         
@@ -290,7 +306,7 @@ class WorkspaceSelector(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         widget_rect = self.rect().adjusted(0, 0, -1, -1)
-        bg_color = QColor(SIDEBAR_BG)
+        bg_color = QColor(self._theme_color)  # Usar color del tema dinámico
         
         paint_rounded_background(painter, widget_rect, bg_color)
         
@@ -361,6 +377,8 @@ class WorkspaceSelector(QWidget):
         # Añadir opciones de renombrar y eliminar workspace activo
         if active_id:
             menu.addSeparator()
+            reorder_action = menu.addAction("Reordenar workspace")
+            reorder_action.triggered.connect(self._on_reorder_workspace_clicked)
             rename_action = menu.addAction("Renombrar workspace…")
             rename_action.triggered.connect(self._on_rename_workspace_clicked)
             delete_action = menu.addAction("Eliminar workspace…")
@@ -371,6 +389,28 @@ class WorkspaceSelector(QWidget):
         menu_pos = self._workspace_button.mapToGlobal(QPoint(button_rect.left(), y_local))
         menu.exec(menu_pos)
     
+    def _on_reorder_workspace_clicked(self) -> None:
+        """Handle reorder workspace action - show reorder dialog."""
+        if not self._workspace_manager:
+            return
+        
+        from app.ui.windows.reorder_workspaces_dialog import ReorderWorkspacesDialog
+        
+        workspaces = self._workspace_manager.get_workspaces()
+        if not workspaces:
+            return
+        
+        dialog = ReorderWorkspacesDialog(workspaces, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            reordered_workspaces = dialog.get_reordered_workspaces()
+            if reordered_workspaces:
+                # Obtener IDs en el nuevo orden
+                workspace_ids = [ws.id for ws in reordered_workspaces]
+                # Reordenar en el manager
+                if self._workspace_manager.reorder_workspaces(workspace_ids):
+                    # Refrescar la lista de workspaces
+                    self._refresh_workspaces()
+    
     def _on_menu_item_selected(self, workspace_id: str) -> None:
         """Handle workspace selection from menu."""
         self.workspace_selected.emit(workspace_id)
@@ -380,17 +420,19 @@ class WorkspaceSelector(QWidget):
         if not self._workspace_manager:
             return
         
-        name, ok = QInputDialog.getText(
-            self,
-            "Nuevo Workspace",
-            "Nombre del workspace:",
+        dialog = InputDialog(
+            parent=self,
+            title="Nuevo Workspace",
+            label="Nombre del workspace:",
             text=""
         )
         
-        if ok and name.strip():
-            workspace = self._workspace_manager.create_workspace(name.strip())
-            self._refresh_workspaces()
-            self.workspace_selected.emit(workspace.id)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            name = dialog.get_text()
+            if name and name.strip():
+                workspace = self._workspace_manager.create_workspace(name.strip())
+                self._refresh_workspaces()
+                self.workspace_selected.emit(workspace.id)
     
     def _on_rename_workspace_clicked(self) -> None:
         """Handle rename workspace action - show dialog and rename."""
@@ -405,24 +447,30 @@ class WorkspaceSelector(QWidget):
         workspace_id = active_workspace.id
         
         # Diálogo de entrada con nombre actual pre-rellenado
-        new_name, ok = QInputDialog.getText(
-            self,
-            "Renombrar Workspace",
-            "Nuevo nombre del workspace:",
+        dialog = InputDialog(
+            parent=self,
+            title="Renombrar Workspace",
+            label="Nuevo nombre del workspace:",
             text=current_name
         )
         
-        if not ok or not new_name or not new_name.strip():
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        
+        new_name = dialog.get_text()
+        if not new_name:
             return
         
         # Validar que el nombre no esté vacío después de strip
         new_name = new_name.strip()
         if not new_name:
-            QMessageBox.warning(
-                self,
-                "Nombre inválido",
-                "El nombre del workspace no puede estar vacío."
+            error_dialog = ErrorDialog(
+                parent=self,
+                title="Nombre inválido",
+                message="El nombre del workspace no puede estar vacío.",
+                is_warning=True
             )
+            error_dialog.exec()
             return
         
         # Si el nombre no cambió, no hacer nada
@@ -436,11 +484,13 @@ class WorkspaceSelector(QWidget):
             # Refrescar UI para mostrar el nuevo nombre
             self._refresh_workspaces()
         else:
-            QMessageBox.warning(
-                self,
-                "Error",
-                "No se pudo renombrar el workspace."
+            error_dialog = ErrorDialog(
+                parent=self,
+                title="Error",
+                message="No se pudo renombrar el workspace.",
+                is_warning=False
             )
+            error_dialog.exec()
     
     def _on_delete_workspace_clicked(self) -> None:
         """Handle delete workspace action - show confirmation and delete."""
@@ -455,16 +505,16 @@ class WorkspaceSelector(QWidget):
         workspace_id = active_workspace.id
         
         # Diálogo de confirmación
-        reply = QMessageBox.question(
-            self,
-            "Eliminar Workspace",
-            f"¿Estás seguro de que quieres eliminar el workspace \"{workspace_name}\"?\n\n"
-            "Esta acción no se puede deshacer.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+        dialog = ConfirmationDialog(
+            parent=self,
+            title="Eliminar Workspace",
+            message=f"¿Estás seguro de que quieres eliminar el workspace \"{workspace_name}\"?\n\n"
+                    "Esta acción no se puede deshacer.",
+            confirm_text="Eliminar",
+            cancel_text="Cancelar"
         )
         
-        if reply != QMessageBox.StandardButton.Yes:
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.is_confirmed():
             return
         
         # Eliminar workspace (el manager guardará estado y hará switch completo si es necesario)
@@ -631,34 +681,14 @@ class WorkspaceSelector(QWidget):
             return
         
         if active:
-            # Botón activo: estilo destacado
-            if minimized:
-                self._file_box_button.setToolTip("Caja de archivos (minimizada - click para restaurar)")
-                self._file_box_button.setStyleSheet("""
-                    QPushButton#HeaderButton {
-                        background-color: #007AFF;
-                        color: white;
-                        border: none;
-                        border-radius: 6px;
-                    }
-                    QPushButton#HeaderButton:hover {
-                        background-color: #0056CC;
-                    }
-                """)
-            else:
-                self._file_box_button.setToolTip("Caja de archivos (activa)")
-                self._file_box_button.setStyleSheet("""
-                    QPushButton#HeaderButton {
-                        background-color: #007AFF;
-                        color: white;
-                        border: none;
-                        border-radius: 6px;
-                    }
-                    QPushButton#HeaderButton:hover {
-                        background-color: #0056CC;
-                    }
-                """)
+            tooltip = "Caja de archivos (minimizada - click para restaurar)" if minimized else "Caja de archivos (activa)"
+            self._file_box_button.setToolTip(tooltip)
+            self._file_box_button.setStyleSheet(get_file_box_button_active_stylesheet())
         else:
-            # Botón inactivo: estilo normal
             self._file_box_button.setToolTip("Caja de archivos")
-            self._file_box_button.setStyleSheet("")  # Usar estilo por defecto
+            self._file_box_button.setStyleSheet("")
+    
+    def _on_theme_changed(self, color_theme: str) -> None:
+        """Actualizar color del tema cuando cambia."""
+        self._theme_color = CENTRAL_AREA_BG_LIGHT if color_theme == "light" else CENTRAL_AREA_BG
+        self.update()  # Forzar repintado

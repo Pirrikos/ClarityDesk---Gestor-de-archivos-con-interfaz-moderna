@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QWidget
 
 from app.ui.widgets.file_tile_drag import handle_drag_enter, handle_drag_move, handle_drop
 from app.ui.widgets.tile_drag_handler import handle_tile_drag
+from app.ui.widgets.window_focus_utils import activate_parent_window
 
 if TYPE_CHECKING:
     from app.ui.widgets.file_tile import FileTile
@@ -25,6 +26,7 @@ def mouse_press_event(tile: 'FileTile', event: QMouseEvent) -> None:
             select_tile = getattr(tile._parent_view, '_select_tile', None)
             if select_tile:
                 select_tile(tile, event.modifiers())
+        activate_parent_window(tile)
     event.accept()
 
 

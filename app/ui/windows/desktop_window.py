@@ -26,6 +26,7 @@ from app.ui.widgets.dock_background_widget import DockBackgroundWidget
 from app.ui.widgets.file_view_sync import get_selected_files
 from app.ui.windows.main_window_file_handler import filter_previewable_files
 from app.ui.windows.quick_preview_window import QuickPreviewWindow
+from app.ui.windows.preview_coordination import close_other_window_preview
 from app.services.preview_pdf_service import PreviewPdfService
 
 logger = get_logger(__name__)
@@ -108,6 +109,8 @@ class DesktopWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
         # Habilitar drops en la ventana principal
         self.setAcceptDrops(True)
+        # Permitir que la ventana reciba foco para que funcionen los shortcuts
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
         # Position window according to dock_anchor setting
         self._position_window_by_anchor()
@@ -256,6 +259,10 @@ class DesktopWindow(QWidget):
         # Warmup: forzar un ciclo de layout para evitar flash en primera contracción
         # Qt cachea información de layout después del primer ciclo
         QTimer.singleShot(100, self._warmup_layout)
+        
+        # Activar ventana y dar foco para que funcionen los shortcuts de espacio
+        self.activateWindow()
+        self.setFocus()
     
     def _warmup_layout(self) -> None:
         """
@@ -556,21 +563,30 @@ class DesktopWindow(QWidget):
     
     def _setup_shortcuts(self) -> None:
         """Setup keyboard shortcuts for preview."""
-        logger.debug("_setup_shortcuts: Setting up spacebar shortcut for preview")
         self._preview_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
         self._preview_shortcut.activated.connect(self._open_quick_preview)
-        logger.debug("_setup_shortcuts: Spacebar shortcut connected")
+    
+    def _enable_preview_shortcut(self, enabled: bool) -> None:
+        """Habilitar/deshabilitar shortcut de preview de forma segura."""
+        if hasattr(self, '_preview_shortcut') and self._preview_shortcut:
+            self._preview_shortcut.setEnabled(enabled)
     
     def _open_quick_preview(self) -> None:
         """Open quick preview for selected files."""
         logger.debug("_open_quick_preview: STARTED")
         try:
             # Si hay un preview abierto, cerrarlo (toggle behavior)
-            if self._current_preview_window and self._current_preview_window.isVisible():
-                logger.debug("_open_quick_preview: Preview already open, closing it (toggle)")
-                self._current_preview_window.close()
+            try:
+                if self._current_preview_window and self._current_preview_window.isVisible():
+                    logger.debug("_open_quick_preview: Preview already open, closing it (toggle)")
+                    self._current_preview_window.close()
+                    self._current_preview_window = None
+                    self._enable_preview_shortcut(True)
+                    return  # Solo cerrar, no abrir otro
+            except RuntimeError:
+                # Objeto siendo destruido, limpiar referencia y continuar
                 self._current_preview_window = None
-                return  # Solo cerrar, no abrir otro
+                self._enable_preview_shortcut(True)
             
             # Obtener archivos seleccionados
             if not self._desktop_container:
@@ -592,22 +608,34 @@ class DesktopWindow(QWidget):
                 logger.debug("_open_quick_preview: No previewable files")
                 return
             
+            # Cerrar cualquier preview abierto en MainWindow para evitar conflictos
+            from app.ui.windows.main_window import MainWindow
+            close_other_window_preview(self, MainWindow)
+            
             # Crear y mostrar preview window
             logger.debug(f"_open_quick_preview: Creating QuickPreviewWindow with {len(previewable_files)} files")
             self._current_preview_window = QuickPreviewWindow(
                 self._preview_service,
                 file_paths=previewable_files,
                 start_index=0,
-                parent=self  # Pasar parent para poder acceder al desktop window
+                parent=self
             )
-            # NO deshabilitar shortcut - el preview maneja el cierre con espacio directamente
-            # El shortcut del desktop solo abre preview si no hay uno abierto
+            self._enable_preview_shortcut(False)
             logger.debug("_open_quick_preview: QuickPreviewWindow created, showing...")
             self._current_preview_window.show()
+            # Conectar señal closed para rehabilitar shortcut cuando preview se cierre
+            self._current_preview_window.closed.connect(self._on_preview_closed)
             logger.debug("_open_quick_preview: QuickPreviewWindow shown")
         except Exception as e:
             logger.error(f"_open_quick_preview: Error opening preview: {e}", exc_info=True)
     
+    def _on_preview_closed(self) -> None:
+        """Rehabilitar shortcut cuando preview se cierra."""
+        self._enable_preview_shortcut(True)
+        self._current_preview_window = None
+        # Reactivar foco en DesktopWindow para que funcione el próximo shortcut
+        self.activateWindow()
+        self.setFocus()
     
     def _open_file(self, file_path: str) -> None:
         """Open file with default system application or preview if previewable."""
@@ -712,5 +740,11 @@ class DesktopWindow(QWidget):
         """Capture drop events and propagate to FileViewContainer (strict validation)."""
         if not self._handle_drag_event(event, is_strict=True):
             event.ignore()
+    
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Activar ventana y dar foco al hacer clic para que funcionen los shortcuts."""
+        self.activateWindow()
+        self.setFocus()
+        super().mousePressEvent(event)
     
     
