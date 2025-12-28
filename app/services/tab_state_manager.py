@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 from app.services.path_utils import normalize_path, is_state_context_path
 from app.services.tab_helpers import validate_folder
 from app.services.tab_storage_service import load_app_state, load_state, save_app_state, save_state
+from app.services.desktop_path_helper import is_system_desktop
 
 
 class TabStateManager:
@@ -57,6 +58,9 @@ class TabStateManager:
         """
         valid_paths = []
         for path in paths:
+            # Prohibir Escritorio del sistema
+            if is_system_desktop(path):
+                continue
             normalized = normalize_path(path)
             if validate_folder(normalized):
                 valid_paths.append(path)
@@ -183,6 +187,9 @@ class TabStateManager:
         root_folders_order = state.get('root_folders_order', [])
         valid_root_order = []
         for normalized_path in root_folders_order:
+            # Prohibir Escritorio del sistema
+            if is_system_desktop(normalized_path):
+                continue
             if validate_folder(normalized_path):
                 valid_root_order.append(normalized_path)
         

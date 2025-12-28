@@ -1,15 +1,20 @@
 {
   "workspaces": [
     {
-      "id": "18df7e51-cb6c-473b-8c26-4f9a6bc95b9d",
+      "id": "5d0d6e3c-baaf-473f-94c8-3450bf5b966c",
       "name": "Default",
-      "created_at": "2025-12-28T22:20:42.834255"
+      "created_at": "2025-12-28T23:36:36.793138"
     },
     {
-      "id": "2a1a9c1c-ee68-4461-bb45-81b8570042a1",
-      "name": "escritorio",
-      "created_at": "2025-12-28T22:20:42.834262"
+      "id": "b20d9976-6a39-4b2f-8085-b1c43a822acc",
+      "name": "asdfasdfasdfsdf",
+      "created_at": "2025-12-28T23:36:36.793145"
+    },
+    {
+      "id": "5712baef-72fb-44f9-bcd2-4ff1edf5b9a2",
+      "name": "1 ESO",
+      "created_at": "2025-12-28T23:36:36.793146"
     }
   ],
-  "active_workspace_id": "2a1a9c1c-ee68-4461-bb45-81b8570042a1"
+  "active_workspace_id": "5712baef-72fb-44f9-bcd2-4ff1edf5b9a2"
 }

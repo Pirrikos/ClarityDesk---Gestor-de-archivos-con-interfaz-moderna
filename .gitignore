@@ -1,64 +1,42 @@
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Build y distribución
-build/
-dist/
-*.spec
-*.exe
+*.pyc
+*.pyo
 *.pyd
-
-# Virtual Environment
-venv/
-ENV/
+.Python
 env/
+venv/
 .venv/
+pip-log.txt
+pip-delete-this-directory.txt
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
-.cursor/
 
-# Base de datos y almacenamiento local
-*.db
-storage/claritydesk.db
-storage/tabs.json
-storage/trash/
-storage/dock_files/
+# Build/Dist
+build/
+dist/
+
+# Qt / PySide artifacts
+*.qm
+*.qrc
+*.qhc
 
 # Logs
 *.log
-app_logs.txt
-*.log.*
 
-# Archivos temporales
-*.tmp
-*.bak
-*.backup
-*.cache
+# Test caches
+.pytest_cache/
+.coverage
 
-# OS
-.DS_Store
-Thumbs.db
-desktop.ini
-*.lnk
-
-# Archivos de configuración local
-run_with_logs.py
-
-# Poppler (binarios del sistema, no versionar)
-assets/poppler/bin/
-
-# Informes y análisis (opcional - descomentar si no quieres versionarlos)
-# INFORMES/
-
+# App runtime storage (user data, large caches)
+storage/dock_files/
+storage/trash/
+storage/*.db
+storage/tabs.json

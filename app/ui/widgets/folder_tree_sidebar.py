@@ -11,6 +11,7 @@ from typing import Optional
 from app.core.constants import SIDEBAR_MAX_WIDTH
 from app.core.logger import get_logger
 from app.services.path_utils import normalize_path
+from app.services.desktop_path_helper import is_system_desktop
 
 logger = get_logger(__name__)
 from PySide6.QtCore import QModelIndex, QPoint, QRect, QSize, Qt, Signal, QTimer
@@ -354,6 +355,10 @@ class FolderTreeSidebar(QWidget):
         pass
     
     def add_focus_path(self, path: str, skip_sort: bool = False) -> None:
+        # Rechazar Escritorio globalmente
+        if is_system_desktop(path):
+            return
+        
         normalized_path = normalize_path(path)
         
         if normalized_path in self._path_to_item:
@@ -779,15 +784,20 @@ class FolderTreeSidebar(QWidget):
         self._model.setHorizontalHeaderLabels(["Folders"])
         self._path_to_item.clear()
         
+        # Filtrar Escritorio globalmente; Clarity no se filtra a nivel global
+        filtered_paths = [path for path in paths if not is_system_desktop(path)]
+        filtered_expanded = [path for path in expanded_paths if not is_system_desktop(path)]
+        filtered_root_order = [path for path in root_folders_order if not is_system_desktop(path)] if root_folders_order else None
+        
         # Separate root folders from children
         root = self._model.invisibleRootItem()
         root_paths = []
         child_paths = []
         
         # Crear set de paths normalizados para comparación rápida
-        normalized_paths_set = {normalize_path(p) for p in paths}
+        normalized_paths_set = {normalize_path(p) for p in filtered_paths}
         
-        for path in paths:
+        for path in filtered_paths:
             normalized = normalize_path(path)
             # Check if path would be a root folder (no parent in paths list)
             parent_path = os.path.dirname(normalized)
@@ -800,9 +810,9 @@ class FolderTreeSidebar(QWidget):
                 child_paths.append(path)  # Preservar path original
         
         # Ordenar carpetas raíz según root_folders_order si existe
-        if root_folders_order:
+        if filtered_root_order:
             # Crear diccionario de orden: normalized_path -> índice en root_folders_order
-            order_map = {normalized: idx for idx, normalized in enumerate(root_folders_order)}
+            order_map = {normalized: idx for idx, normalized in enumerate(filtered_root_order)}
             
             # Separar carpetas con orden guardado y nuevas carpetas
             ordered_roots = []
@@ -829,7 +839,7 @@ class FolderTreeSidebar(QWidget):
             self.add_focus_path(path, skip_sort=True)
         
         # Expand specified nodes
-        expanded_set = set(expanded_paths)
+        expanded_set = set(filtered_expanded)
         for path in expanded_set:
             try:
                 # Normalizar path para buscar en _path_to_item (las claves están normalizadas)

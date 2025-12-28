@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from app.models.workspace import Workspace
+from app.services.path_utils import filter_system_paths_from_state
 
 
 def get_storage_dir() -> Path:
@@ -127,13 +128,16 @@ def load_workspace_state(workspace_id: str) -> Optional[dict]:
         with open(state_file_str, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
+        # Filtrar rutas del Escritorio/Clarity del estado
+        filtered_data = filter_system_paths_from_state(data)
+        
         return {
-            'tabs': data.get('tabs', []),
-            'active_tab': data.get('active_tab'),
-            'focus_tree_paths': data.get('focus_tree_paths', []),
-            'expanded_nodes': data.get('expanded_nodes', []),
-            'root_folders_order': data.get('root_folders_order'),
-            'view_mode': data.get('view_mode', 'grid')
+            'tabs': filtered_data.get('tabs', []),
+            'active_tab': filtered_data.get('active_tab'),
+            'focus_tree_paths': filtered_data.get('focus_tree_paths', []),
+            'expanded_nodes': filtered_data.get('expanded_nodes', []),
+            'root_folders_order': filtered_data.get('root_folders_order'),
+            'view_mode': filtered_data.get('view_mode', 'grid')
         }
     except (json.JSONDecodeError, IOError, OSError):
         return None
@@ -150,13 +154,16 @@ def save_workspace_state(workspace_id: str, state: dict) -> None:
     state_file = get_workspace_state_file(workspace_id)
     state_file_str = str(state_file)
     
+    # Filtrar rutas del Escritorio/Clarity antes de guardar
+    filtered_state = filter_system_paths_from_state(state)
+    
     data = {
-        'tabs': state.get('tabs', []),
-        'active_tab': state.get('active_tab'),
-        'focus_tree_paths': state.get('focus_tree_paths', []),
-        'expanded_nodes': state.get('expanded_nodes', []),
-        'root_folders_order': state.get('root_folders_order'),
-        'view_mode': state.get('view_mode', 'grid')
+        'tabs': filtered_state.get('tabs', []),
+        'active_tab': filtered_state.get('active_tab'),
+        'focus_tree_paths': filtered_state.get('focus_tree_paths', []),
+        'expanded_nodes': filtered_state.get('expanded_nodes', []),
+        'root_folders_order': filtered_state.get('root_folders_order'),
+        'view_mode': filtered_state.get('view_mode', 'grid')
     }
     
     try:

@@ -282,6 +282,7 @@ class FileGridView(QWidget):
     def update_files(self, file_list: list) -> None:
         """Update displayed files or stacks with incremental updates when possible."""
         
+        
         # Almacenar datos y renderizar inmediatamente (como Lista)
         if file_list and isinstance(file_list[0], FileStack):
             old_expanded = self._expanded_stacks.copy()
@@ -298,15 +299,14 @@ class FileGridView(QWidget):
         else:
             # Categorizar archivos solo en MainWindow (no en DesktopWindow)
             if not self._is_desktop_window:
-                # Cache de categorización: solo recalcular si lista de archivos cambió
+                # Cache de categorización: recalcular si lista filtrada cambió
                 file_list_hash = hash(tuple(file_list) if file_list else ())
                 if (self._cached_categorized_files is None or 
                     self._cached_file_list_hash != file_list_hash):
-                    self._files = get_categorized_files_with_labels(file_list)
+                    self._files = get_categorized_files_with_labels(file_list or [])
                     self._cached_categorized_files = self._files
                     self._cached_file_list_hash = file_list_hash
                 else:
-                    # Reutilizar resultado cacheado
                     self._files = self._cached_categorized_files
             else:
                 self._files = file_list
@@ -315,7 +315,7 @@ class FileGridView(QWidget):
                 self._cached_file_list_hash = None
             self._stacks = []
             self._expanded_stacks = {}
-            
+        
         # Refresh completo (el nuevo sistema maneja incrementalmente)
         self._previous_files = self._files.copy() if hasattr(self._files, 'copy') else self._files
         self._refresh_tiles()
@@ -360,6 +360,7 @@ class FileGridView(QWidget):
     def _on_stack_clicked(self, file_stack: FileStack) -> None:
         """Handle stack click - toggle expansion horizontally below stack."""
         on_stack_clicked(self, file_stack)
+    
     
     def _emit_expansion_height(self) -> None:
         """Calculate and emit the height needed for expanded stacks."""

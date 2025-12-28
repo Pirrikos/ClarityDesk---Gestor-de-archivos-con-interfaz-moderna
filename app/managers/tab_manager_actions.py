@@ -13,6 +13,7 @@ from app.services.file_list_service import get_files
 from app.services.path_utils import is_state_context_path, normalize_path
 from app.services.tab_helpers import find_tab_index, validate_folder
 from app.services.tab_history_manager import TabHistoryManager
+from app.services.desktop_path_helper import is_system_desktop
 
 if TYPE_CHECKING:
     from PySide6.QtCore import Signal
@@ -69,6 +70,9 @@ def add_tab(
     """
     # Rechazar explícitamente paths virtuales de estado
     if is_state_context_path(folder_path):
+        return False, tabs, active_index
+    
+    if is_system_desktop(folder_path):
         return False, tabs, active_index
     
     if not validate_folder(folder_path):

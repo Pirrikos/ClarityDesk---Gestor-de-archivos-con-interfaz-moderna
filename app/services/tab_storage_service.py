@@ -9,8 +9,9 @@ import os
 from pathlib import Path
 from typing import List, Optional
 
-from app.services.path_utils import normalize_path
+from app.services.path_utils import normalize_path, filter_system_paths_from_list, filter_system_paths_from_state
 from app.services.tab_helpers import validate_folder
+from app.services.desktop_path_helper import is_system_desktop
 
 
 def load_state(storage_path: Path, validate_func) -> tuple[List[str], int, bool]:
@@ -35,9 +36,9 @@ def load_state(storage_path: Path, validate_func) -> tuple[List[str], int, bool]
 
 def _validate_tabs(tabs: List[str], validate_func) -> List[str]:
     """Validate and filter existing folder tabs, preserving original case."""
+    filtered_tabs = filter_system_paths_from_list(tabs)
     valid_tabs = []
-    for tab_path in tabs:
-        # Validar usando normalización pero preservar path original
+    for tab_path in filtered_tabs:
         normalized = normalize_path(tab_path)
         if validate_func(normalized):
             valid_tabs.append(tab_path)
@@ -63,9 +64,17 @@ def save_state(storage_path: Path, tabs: List[str], active_index: int) -> None:
         tabs: List of tab folder paths.
         active_index: Index of active tab.
     """
+    filtered_tabs = filter_system_paths_from_list(tabs)
+    
+    adjusted_index = active_index
+    if active_index >= len(filtered_tabs):
+        adjusted_index = len(filtered_tabs) - 1 if filtered_tabs else -1
+    elif active_index >= 0 and active_index < len(tabs) and is_system_desktop(tabs[active_index]):
+        adjusted_index = 0 if filtered_tabs else -1
+    
     data = {
-        'tabs': tabs,
-        'active_index': active_index
+        'tabs': filtered_tabs,
+        'active_index': adjusted_index
     }
 
     try:
@@ -103,9 +112,10 @@ def load_app_state(storage_path: Path) -> Optional[dict]:
             data = json.load(f)
         
         # Support both old format (tabs/active_index) and new format
-        state = {
+        # Normalizar formato antes de filtrar
+        state_data = {
             'open_tabs': data.get('open_tabs', data.get('tabs', [])),
-            'active_tab': data.get('active_tab', None),
+            'active_tab': data.get('active_tab'),
             'history': data.get('history', []),
             'history_index': data.get('history_index', -1),
             'focus_tree_paths': data.get('focus_tree_paths', []),
@@ -113,12 +123,19 @@ def load_app_state(storage_path: Path) -> Optional[dict]:
             'root_folders_order': data.get('root_folders_order', [])
         }
         
+        # Filtrar rutas del sistema
+        filtered_state = filter_system_paths_from_state(state_data)
+        
         # If old format, derive active_tab from active_index
-        if state['active_tab'] is None and 'active_index' in data:
+        if filtered_state['active_tab'] is None and 'active_index' in data:
             active_index = data.get('active_index', -1)
-            tabs = state['open_tabs']
-            if 0 <= active_index < len(tabs):
-                state['active_tab'] = tabs[active_index]
+            old_tabs = data.get('open_tabs', data.get('tabs', []))
+            if 0 <= active_index < len(old_tabs):
+                candidate_tab = old_tabs[active_index]
+                if not is_system_desktop(candidate_tab):
+                    filtered_state['active_tab'] = candidate_tab
+        
+        return filtered_state
         
         return state
     except (json.JSONDecodeError, IOError, OSError):
@@ -141,18 +158,23 @@ def save_app_state(storage_path: Path, state: dict) -> None:
             - root_folders_order: List of normalized root folder paths in visual order (optional)
     """
     try:
+        # Filtrar rutas del sistema antes de guardar
+        filtered_state = filter_system_paths_from_state(state)
+        
         # Backwards compatibility: incluir también 'tabs' y 'active_index'
-        data = dict(state)
-        open_tabs = data.get('open_tabs', [])
-        active_tab = data.get('active_tab')
+        data = dict(filtered_state)
+        open_tabs = filtered_state.get('open_tabs', [])
+        active_tab = filtered_state.get('active_tab')
+        
         active_index = -1
-        if open_tabs and active_tab in open_tabs:
+        if open_tabs and active_tab and active_tab in open_tabs:
             try:
                 active_index = open_tabs.index(active_tab)
             except ValueError:
                 active_index = -1
         data['tabs'] = open_tabs
         data['active_index'] = active_index
+        
         with open(storage_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
     except (IOError, OSError):

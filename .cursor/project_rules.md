@@ -1,0 +1,972 @@
+CLARITYDESK PRO - ARCHITECTURE RULES (v2.1 - AI Optimized)
+Professional Code + Token Efficiency + AI Collaboration
+═══════════════════════════════════════════════════════════════
+QUICK REFERENCE (Most Critical - Always Active)
+═══════════════════════════════════════════════════════════════
+ARCHITECTURE CORE:
+✅ Layer separation: models → services → managers → ui (Rule 1)
+✅ One class = one sentence description (Rule 2)
+✅ Cohesion: 1 file (400 lines) > 5 files (80 lines each) (Rule 3)
+✅ No code duplication - centralize in utils (Rule 4)
+✅ Always inject dependencies, never hardcode (Rule 5)
+FORBIDDEN PATTERNS:
+❌ *_wrapper.py with no logic (Rule 6)
+❌ Single-function files (Rule 6)
+❌ Single-method classes (Rule 6)
+❌ God objects (>15 public methods) (Rule 6)
+Qt CRITICAL:
+⚡ Signals: class-level, emit AFTER state update (Rule 16)
+⚡ Managers NEVER import QWidget (Rule 17)
+⚡ Always pass parent to QWidget/QObject (Rule 18)
+⚡ Heavy ops (>100ms): use QThread (Rule 20)
+⚡ File events: debounce 500ms (Rule 21)
+FILE LIMITS:
+📏 Max 800 lines/file (AI coherence limit)
+📏 Split only if: different responsibility OR reused 3+ places
+📏 Names must be self-documenting
+TESTING:
+🧪 Managers/Services MUST have tests
+🧪 Min 3 tests: success, error, edge case
+🧪 Red flag: needs >3 mocks → refactor class
+═══════════════════════════════════════════════════════════════
+
+0. AI COLLABORATION PROTOCOL
+Token Optimization Strategy:
+Full rules: ~8,000 tokens
+Context budget per task: ~20,000 tokens
+
+Loading strategy:
+1. Load full rules ONCE at session start
+2. Per task: cite only relevant rule numbers
+3. Example: "Modify sidebar following rules 3, 16, 18"
+
+AI remembers rules from session context.
+Don't reload unless new Cursor session.
+Context Window Management:
+
+Max 800 lines per file (AI loses coherence above this)
+Provide max 3-4 files per request
+State goal in ONE sentence
+Specify what must NOT change
+
+AI Must Always (Before Coding):
+
+Restate request: "You want to [X]?"
+List affected files: file1.py (modify), file2.py (new)
+Validate rules: ✅ Follows layer separation, ⚠️ Needs tests
+Ask confirmation: "Proceed? (yes/no/modify)"
+
+AI Must NEVER:
+❌ Change >3 files without asking
+❌ Make assumptions about requirements
+❌ Ignore errors and continue
+❌ Skip explanation of WHY
+On Error - Recovery Protocol:
+
+STOP immediately (don't continue making changes)
+Show what changed (file list)
+Explain root cause + line number
+Propose: A) Revert, B) Fix forward, C) Ask human
+Get confirmation before proceeding
+
+
+1. LAYER SEPARATION (STRICT ENFORCEMENT)
+Directory Structure:
+app/
+├── models/      → Pure data (no logic, no Qt, no I/O)
+├── services/    → Business operations (can use Qt for I/O)
+├── managers/    → High-level coordination (orchestrate services)
+└── ui/          → Visual components (windows, widgets)
+Import Rules (NEVER VIOLATE):
+
+models/ imports: NOTHING (only standard library + typing)
+services/ imports: models only
+managers/ imports: models + services
+ui/ imports: everything
+
+Validation:
+
+If services imports ui → WRONG
+If models imports services → WRONG
+If managers imports ui → WRONG
+
+
+2. SINGLE RESPONSIBILITY PRINCIPLE (REAL MEANING)
+Each class = one sentence description.
+✅ GOOD:
+
+"TabManager manages the list of open tabs"
+"FileListService lists files from a folder"
+"TabStorage persists tab state to disk"
+
+❌ BAD:
+
+"TabManager manages tabs, saves state, validates paths, sends notifications, handles errors"
+
+Test: If you cannot explain a class in ONE clear sentence → class does too much → REFACTOR
+
+3. COHESION OVER FRAGMENTATION (TOKEN EFFICIENCY)
+File Size Guidelines:
+Small files (50-150 lines):
+
+Pure data models (dataclasses)
+Simple utilities (1-3 related functions)
+
+Medium files (150-400 lines):
+
+Services (one business operation)
+Managers (coordinate related services)
+UI widgets (complex components)
+
+Large files ALLOWED (400-800 lines):
+
+Complex managers with state transitions
+Main windows with extensive UI setup
+Feature-complete modules with internal helpers
+
+HARD LIMIT: 800 lines per file
+
+Reason: AI context window optimization
+Above 800 lines → AI loses coherence
+Split at logical boundaries (responsibilities)
+
+CRITICAL RULE:
+✅ ONE file with 400 cohesive lines
+❌ FIVE files with 80 fragmented lines
+Why:
+
+Reading 1 file = ~500 tokens
+Reading 5 files = ~5000 tokens + overhead
+AI tracks fewer contexts = better results
+
+Only Split Files If:
+
+✅ Different responsibility (TabManager vs TabStorage)
+✅ Reused in 3+ places (path_utils.py)
+✅ Can be tested independently
+❌ NEVER split just to reduce line count
+
+
+4. NO CODE DUPLICATION (DRY WITH DETECTION)
+Before Writing Similar Code:
+Step 1: Does this function already exist?
+
+YES → Use it
+NO → Continue to Step 2
+
+Step 2: Will this logic be used 2+ times?
+
+YES → Create reusable function in appropriate utils file
+NO → Keep inline in current file
+
+Common Centralization Patterns:
+
+Path operations → path_utils.py
+Folder validation → validators.py
+I/O error handling → error_handler.py
+File extensions → file_extensions.py
+
+Forbidden Duplication:
+❌ Normalizing paths in 5 different files
+❌ Validating folders in 8 different places
+❌ Same error handling in 10 locations
+
+5. DEPENDENCY INJECTION (ALWAYS)
+Correct Pattern:
+pythonclass TabManager:
+    def __init__(self, storage: TabStorage, validator: FolderValidator):
+        self._storage = storage
+        self._validator = validator
+Wrong Pattern:
+pythonclass TabManager:
+    def __init__(self):
+        self._storage = TabStorage()  # ❌ Hardcoded dependency
+        self._validator = FolderValidator()  # ❌ Cannot test/swap
+Why:
+
+Easier testing (inject mocks)
+Clearer dependencies (visible in signature)
+Flexible implementations (swap without changing class)
+AI understands structure without reading implementation
+
+
+6. FORBIDDEN PATTERNS (TOKEN WASTERS)
+❌ NEVER CREATE:
+
+Empty Wrappers (NO LOGIC):
+
+python# ❌ FORBIDDEN
+def add_tab_wrapper(self, path):
+    return execute_action(self, add_tab_action, path)
+
+# ✅ CORRECT
+def add_tab(self, path: str) -> bool:
+    # Direct implementation here
+AI Validation Rule:
+
+If wrapper has <3 lines of actual logic → DELETE IT
+If wrapper adds validation/logging/error handling → KEEP IT
+
+
+Single-Function Files:
+
+python# ❌ FORBIDDEN: normalize_path.py
+def normalize(path):
+    return os.path.normpath(path)
+
+# ✅ CORRECT: Add to path_utils.py with related functions
+
+Single-Method Classes:
+
+python# ❌ FORBIDDEN
+class PathNormalizer:
+    def normalize(self, path): ...
+
+# ✅ CORRECT: Simple function in utils
+def normalize_path(path: str) -> str: ...
+
+Forbidden Filenames:
+
+
+*_wrapper.py → Code smell (unless adds real logic)
+*_helper.py (with 1 function) → Code smell
+*_utils.py (with unrelated functions) → Code smell
+
+
+God Objects:
+
+
+Class with >15 public methods → Too complex, split by responsibility
+File needing 10+ imports → Too coupled, refactor
+
+
+Circular Imports:
+
+
+If A imports B and B imports A → Design flaw
+Solution: Create C that both use, or restructure
+
+
+7. DESCRIPTIVE NAMES (SELF-DOCUMENTING)
+Classes:
+✅ FileListService, TabManager, FolderValidator
+❌ Helper, Manager, Utils, Handler
+Functions:
+✅ get_files_from_folder(), validate_folder_path(), normalize_path()
+❌ do_stuff(), process(), handle(), get_data()
+Files:
+✅ tab_manager.py, file_list_service.py, path_utils.py
+❌ manager.py, service.py, helpers.py, stuff.py
+Rule: Name should explain purpose WITHOUT reading code
+
+8. TYPE HINTS (MANDATORY)
+Always Required:
+python# ✅ CORRECT
+def add_tab(self, path: str) -> bool: ...
+def get_files(self, folder: str) -> List[str]: ...
+def process_data(self, items: List[FileInfo]) -> Optional[Result]: ...
+
+# ❌ WRONG
+def add_tab(self, path): ...
+Why:
+
+AI understands without reading implementation
+Catches errors early
+Serves as inline documentation
+Reduces tokens (no need to infer types)
+
+
+9. DOCUMENTATION STRATEGY
+Docstrings: Only When Necessary
+Names are clear → No docstring needed:
+pythondef add_tab(self, path: str) -> bool:
+    # Implementation (no docstring needed)
+Names unclear OR complex logic → Brief docstring:
+pythondef restore_state(self, tabs: List[str], history: List[str]) -> None:
+    """Restore application state without creating history entries."""
+Forbidden:
+❌ 10-line docstrings for simple functions
+❌ Repeating what the name already says
+❌ Parameter descriptions when types are obvious
+Token Efficiency:
+Clear name (5 tokens) > Unclear name + long docstring (150 tokens)
+
+10. ERROR HANDLING (EXPLICIT)
+Correct Pattern:
+pythontry:
+    file_content = open(path).read()
+except FileNotFoundError:
+    logger.error(f"File not found: {path}")
+    return None
+except PermissionError:
+    logger.error(f"No permission: {path}")
+    return None
+Wrong Pattern:
+pythontry:
+    file_content = open(path).read()
+except:  # ❌ Too broad
+    pass  # ❌ Silent failure
+Rules:
+
+Always catch specific exceptions
+Log errors with context (path, operation, etc.)
+Never use bare except: pass
+Return meaningful defaults or raise informative errors
+
+
+11. TESTING (MANDATORY)
+Coverage Requirements:
+Must have tests:
+
+ALL Managers (tab_manager, files_manager, etc.)
+ALL Services with file I/O
+ALL business logic with conditionals
+
+Nice to have:
+
+Simple utilities
+Pure UI components (visual testing)
+
+Minimum Test Cases:
+pythondef test_add_tab_success():
+    """Test successful tab addition."""
+    # Happy path
+
+def test_add_tab_error():
+    """Test error handling."""
+    # Error case
+
+def test_add_tab_edge_case():
+    """Test boundary conditions."""
+    # Edge case
+Red Flags:
+🚨 Test needs >3 mocks → Class poorly designed → Refactor first
+🚨 Test needs >5 lines setup → Class too complex
+🚨 Test is >30 lines → Test does too much → Split
+AI Test Generation:
+When creating/modifying Manager/Service:
+
+AI asks: "Should I generate tests?"
+AI generates minimum 3 tests (success, error, edge)
+AI validates test can run with ≤3 mocks
+
+
+12. IMPORT ORGANIZATION
+Standard Order:
+python# Standard library
+import os
+from typing import List, Optional
+
+# Third party
+from PySide6.QtCore import QObject, Signal
+
+# Local application
+from app.services import TabStorage
+from app.models import FileInfo
+Rules:
+
+Group imports by category (standard, third-party, local)
+Separate groups with blank line
+Sort alphabetically within each group
+Use explicit imports (avoid wildcard imports)
+
+
+13. FILE SPLITTING RULES
+AI Decision Tree:
+START: File has >800 lines?
+  ├─ NO → Keep as is
+  └─ YES → Continue
+
+Does file have 2+ clear responsibilities?
+  ├─ NO → Extract private methods to _internal.py
+  └─ YES → Continue
+
+Can each responsibility be described in ONE sentence?
+  ├─ NO → Responsibilities not clear → Refactor first
+  └─ YES → SPLIT into separate files
+Valid Reasons to Split:
+✅ Different responsibilities (TabManager vs TabStorage)
+✅ Code reused in 3+ places (path_utils.py)
+✅ Independent testing needed
+Invalid Reasons to Split:
+❌ File has >200 lines (arbitrary metric)
+❌ Creating "helpers" with one method
+❌ Wrappers without additional logic
+AI Splitting Checklist:
+
+ New files have clear single responsibility
+ Names are descriptive (no generic _helper.py)
+ Each file is 150-400 lines
+ No circular imports created
+ Tests updated for new structure
+ Original functionality preserved
+
+AI Must Ask Before Splitting:
+"I detected file.py has 850 lines. I can split into:
+
+file.py (core responsibility)
+file_storage.py (persistence)
+file_validator.py (validation)
+
+Proceed? (yes/no/modify)"
+
+14. VALIDATION CHECKLIST
+Before considering code complete, verify:
+
+✅ Can explain this class in one sentence?
+✅ Names clear without reading code?
+✅ No duplicate code?
+✅ Dependencies injected?
+✅ Has basic tests?
+✅ Follows layer separation?
+✅ Type hints present?
+✅ Error handling explicit?
+✅ Qt resources properly managed?
+✅ Heavy operations in QThread?
+
+If ANY answer is NO → Refactor before continuing.
+
+15. CODE SMELL INDICATORS
+Watch Out For:
+🚨 Filenames:
+
+*_wrapper.py (without real logic)
+*_helper.py (with 1 function)
+*_utils.py (with unrelated functions)
+
+🚨 Patterns:
+
+Function that only calls another function
+Classes with 1 public method
+Same code in 3+ places
+
+🚨 Structure:
+
+
+
+10 files for one feature
+
+
+Need to open 5+ files to understand something
+Simple change requires touching multiple files
+
+🚨 Dependencies:
+
+Circular imports
+God objects (>15 public methods)
+Hardcoded dependencies in init
+
+
+16. Qt SIGNALS & SLOTS PATTERN (PySide6 Specific)
+Correct Pattern:
+pythonclass TabManager(QObject):
+    # Declare signals at class level
+    tabs_changed = Signal(list)
+    active_tab_changed = Signal(int, str)  # (index, path)
+    
+    def add_tab(self, path: str):
+        # 1. Update state
+        self._tabs.append(path)
+        self._active_index = len(self._tabs) - 1
+        
+        # 2. Emit signals AFTER state is updated
+        self.tabs_changed.emit(self._tabs)
+        self.active_tab_changed.emit(self._active_index, path)
+Wrong Pattern:
+python# ❌ Creating signals dynamically
+def add_tab(self, path: str):
+    self.tabs_changed = Signal(list)  # WRONG: must be class-level
+    
+# ❌ Emitting before state update
+def add_tab(self, path: str):
+    self.tabs_changed.emit(self._tabs)  # WRONG: emit first
+    self._tabs.append(path)  # then update
+Rules:
+
+Signals MUST be declared at class level (not in init)
+Emit signals AFTER state is fully updated
+Name signals with past tense: tabs_changed (not tabs_change)
+Document what each signal emits using type hints
+Connect signals in init or setup methods, never scattered
+
+
+17. UI/BUSINESS LOGIC SEPARATION (Critical for Qt)
+STRICT RULE:
+Managers NEVER import or use Qt widgets (QWidget, QPushButton, QLabel, etc.)
+Managers CAN use QObject and Signal (these are not UI)
+Correct:
+python# ❌ FORBIDDEN in managers/
+from PySide6.QtWidgets import QWidget, QMessageBox
+
+# ✅ ALLOWED in managers/
+from PySide6.QtCore import QObject, Signal
+
+# ✅ ALLOWED in ui/
+from PySide6.QtWidgets import QWidget, QPushButton
+Pattern:
+python# ✅ Manager (business logic)
+class TabManager(QObject):
+    error_occurred = Signal(str)  # Emit error message
+    
+    def add_tab(self, path: str):
+        if not self._validator.is_valid(path):
+            self.error_occurred.emit(f"Invalid path: {path}")
+            return False
+        # Business logic here
+
+# ✅ UI (presentation)
+class MainWindow(QWidget):
+    def __init__(self):
+        self.tab_manager.error_occurred.connect(self._show_error)
+    
+    def _show_error(self, message: str):
+        QMessageBox.warning(self, "Error", message)
+Why:
+
+Managers can be tested without UI
+Managers can be reused in different UIs (desktop, CLI, web)
+Clear separation of concerns
+
+
+18. Qt RESOURCE MANAGEMENT (Memory Leaks Prevention)
+Parent-Child Relationship:
+python# ✅ CORRECT: Widget with parent (auto-cleanup)
+class FileView(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)  # Parent will delete this
+        
+        # Child widgets also get parent
+        self.button = QPushButton("Click", self)  # self is parent
+        self.label = QLabel("Text", self)  # self is parent
+
+# ❌ WRONG: No parent (memory leak)
+class FileView(QWidget):
+    def __init__(self):
+        super().__init__()  # No parent = manual cleanup needed
+        self.button = QPushButton("Click")  # No parent = leak
+Signal Disconnection:
+python# ✅ CORRECT: Track connection state
+class FileView(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._connected = False
+        self.connect_signals()
+    
+    def connect_signals(self):
+        if not self._connected:
+            self.tab_manager.tabs_changed.connect(self._on_tabs_changed)
+            self._connected = True
+    
+    def disconnect_signals(self):
+        if self._connected:
+            self.tab_manager.tabs_changed.disconnect(self._on_tabs_changed)
+            self._connected = False
+    
+    def closeEvent(self, event):
+        self.disconnect_signals()
+        super().closeEvent(event)
+Timers and Threads:
+python# ✅ CORRECT: Stop timers/threads in cleanup
+def closeEvent(self, event):
+    if hasattr(self, '_timer') and self._timer.isActive():
+        self._timer.stop()
+    if hasattr(self, '_worker_thread') and self._worker_thread.isRunning():
+        self._worker_thread.quit()
+        self._worker_thread.wait(1000)  # Wait max 1 second
+    super().closeEvent(event)
+Rules:
+
+ALWAYS pass parent to QWidget/QObject constructors
+Track signal connection state (avoid try/except for flow control)
+Disconnect signals in closeEvent/cleanup methods
+Stop timers before widget destruction
+Quit and wait for threads before closing
+
+
+19. FILE I/O ERROR HANDLING PATTERN (Critical for File Manager)
+Standard Pattern for ALL File Operations:
+pythonfrom pathlib import Path
+from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+def safe_file_operation(path: str) -> Optional[Result]:
+    """Standard pattern for file operations."""
+    try:
+        path_obj = Path(path)
+        
+        # 1. Validate existence
+        if not path_obj.exists():
+            logger.warning(f"Path does not exist: {path}")
+            return None
+        
+        # 2. Check permissions
+        if not os.access(path, os.R_OK):
+            logger.error(f"No read permission: {path}")
+            return None
+        
+        # 3. Do operation
+        result = path_obj.read_text()
+        return Result(success=True, data=result)
+        
+    except FileNotFoundError:
+        logger.error(f"File not found: {path}")
+        return None
+    except PermissionError:
+        logger.error(f"Permission denied: {path}")
+        return None
+    except OSError as e:
+        logger.error(f"OS error for {path}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error for {path}: {e}")
+        return None
+Rules:
+
+ALWAYS use pathlib.Path (not os.path when possible)
+ALWAYS validate before operation (exists, permissions)
+ALWAYS log errors with context (which file, what operation)
+NEVER let exceptions bubble up to UI
+Return Optional[Result] or Result with success flag
+Use specific exceptions (FileNotFoundError, PermissionError, etc.)
+
+
+20. Qt THREADING FOR HEAVY OPERATIONS
+NEVER block the UI thread:
+python# ❌ FORBIDDEN: Blocking operation in UI
+def on_button_click(self):
+    icon = generate_icon(large_pdf)  # Takes 2 seconds, UI freezes!
+    self.display_icon(icon)
+
+# ✅ CORRECT: Use QThread
+from PySide6.QtCore import QThread, Signal
+
+class IconWorker(QThread):
+    finished = Signal(object)  # Signal with result
+    error = Signal(str)  # Signal for errors
+    
+    def __init__(self, pdf_path: str):
+        super().__init__()
+        self.pdf_path = pdf_path
+    
+    def run(self):
+        try:
+            icon = generate_icon(self.pdf_path)
+            self.finished.emit(icon)
+        except Exception as e:
+            self.error.emit(str(e))
+
+# In UI:
+def on_button_click(self):
+    self.worker = IconWorker(pdf_path)  # Store reference!
+    self.worker.finished.connect(self.display_icon)
+    self.worker.error.connect(self.show_error)
+    self.worker.start()
+Rules:
+
+Operations >100ms MUST run in QThread
+UI updates ONLY from main thread (use signals)
+Store worker reference to prevent garbage collection
+Always call thread.quit() and thread.wait() on cleanup
+Handle errors in thread (emit error signal)
+
+Operations that need threading:
+
+PDF rendering/preview generation
+Icon/thumbnail generation
+Large file operations (>10MB)
+Image processing
+File searching in large directories
+
+
+21. FILE SYSTEM WATCHER DEBOUNCING (Desktop Stacks Feature)
+Problem Without Debouncing:
+python# ❌ BAD: Process every event immediately
+def on_file_changed(self, path: str):
+    self.reload_files()  # Called 100 times/second when copying files!
+Correct Pattern with Debouncing:
+pythonfrom PySide6.QtCore import QTimer
+
+class FileWatcher:
+    def __init__(self):
+        self._timer = QTimer()
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._process_changes)
+        self._pending_changes = []
+    
+    def on_file_changed(self, path: str):
+        # Don't process immediately
+        self._pending_changes.append(path)
+        
+        # Restart timer (wait for quiet period)
+        self._timer.stop()
+        self._timer.start(500)  # Wait 500ms of quiet
+    
+    def _process_changes(self):
+        # Process all changes at once
+        unique_changes = set(self._pending_changes)
+        self._pending_changes.clear()
+        self._handle_batch(unique_changes)
+Rules:
+
+NEVER process file system events immediately
+Debounce with 300-500ms delay
+Batch multiple changes together
+Use QTimer.singleShot pattern
+Avoid infinite loops (watch → modify → watch)
+
+Why:
+
+Prevents UI lag when copying many files
+Reduces unnecessary reloads
+Improves performance dramatically
+
+
+22. STATE PERSISTENCE STRATEGY (JSON + SQLite)
+When to use what:
+Use JSON for:
+✅ Tabs state (small, simple data)
+✅ User preferences/settings
+✅ Recent files list
+✅ UI state (window size, positions)
+✅ Anything <1000 records
+Use SQLite for:
+✅ File states (trabajado, pendiente, etc.) - many records
+✅ File metadata cache
+✅ Search indexes
+✅ Anything >1000 records
+✅ Complex queries needed
+JSON Pattern:
+pythondef save_tabs(tabs: List[str], active_index: int):
+    """Save simple state to JSON."""
+    state = {
+        'tabs': tabs,
+        'active_index': active_index,
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    # Atomic write (write to temp, then rename)
+    temp_path = storage_path + '.tmp'
+    with open(temp_path, 'w') as f:
+        json.dump(state, f, indent=2)
+    
+    # Atomic rename (prevents corruption)
+    os.replace(temp_path, storage_path)
+SQLite Pattern:
+pythondef save_file_state(file_path: str, state: str):
+    """Save file state to SQLite."""
+    conn = sqlite3.connect('claritydesk.db')
+    try:
+        conn.execute("""
+            INSERT OR REPLACE INTO file_states (path, state, updated_at)
+            VALUES (?, ?, ?)
+        """, (file_path, state, datetime.now()))
+        conn.commit()
+    finally:
+        conn.close()
+Rules:
+
+JSON: Use atomic write (temp + rename)
+SQLite: Always use try/finally for connections
+Backup before overwriting (keep .bak file)
+Version your schema (add version field)
+Handle migration when structure changes
+
+
+23. PREVIEW/THUMBNAIL CACHING STRATEGY
+Cache Strategy:
+pythonclass PreviewCache:
+    def __init__(self, cache_dir: Path, max_size_mb: int = 500):
+        self._cache_dir = cache_dir
+        self._max_size = max_size_mb * 1024 * 1024
+    
+    def get_preview(self, file_path: str) -> Optional[QPixmap]:
+        """Get cached preview or generate new one."""
+        cache_key = self._get_cache_key(file_path)
+        cache_path = self._cache_dir / cache_key
+        
+        # Check if cached version exists and is newer than file
+        if cache_path.exists():
+            file_mtime = Path(file_path).stat().st_mtime
+            cache_mtime = cache_path.stat().st_mtime
+            
+            if cache_mtime > file_mtime:
+                return QPixmap(str(cache_path))
+        
+        # Generate new preview
+        preview = self._generate_preview(file_path)
+        if preview:
+            preview.save(str(cache_path))
+            self._cleanup_if_needed()
+        
+        return preview
+    
+    def _get_cache_key(self, file_path: str) -> str:
+        return hashlib.md5(file_path.encode()).hexdigest() + '.png'
+    
+    def _cleanup_if_needed(self):
+        """Remove old cache files if over limit."""
+        total_size = sum(f.stat().st_size for f in self._cache_dir.glob('*'))
+        
+        if total_size > self._max_size:
+            files = sorted(self._cache_dir.glob('*'), 
+                         key=lambda f: f.stat().st_mtime)
+            
+            while total_size > self._max_size * 0.8:
+                old_file = files.pop(0)
+                total_size -= old_file.stat().st_size
+                old_file.unlink()
+Rules:
+
+ALWAYS cache generated previews/thumbnails
+Check file modification time (don't cache stale previews)
+Set max cache size (500MB recommended)
+Auto-cleanup old files when limit reached
+Use hash of path as cache key (handles special chars)
+Store cache in user's AppData/temp directory
+
+Why:
+
+Prevents regenerating same preview repeatedly
+Massive performance improvement
+Better user experience (instant previews)
+
+
+24. CANCELABLE OPERATIONS (File Manager Critical)
+Problem:
+Long operations (copying 10GB, generating 500 thumbnails) need cancellation.
+Pattern:
+pythonfrom PySide6.QtCore import QThread, Signal
+
+class CancelableWorker(QThread):
+    progress = Signal(int)  # Progress %
+    finished = Signal(bool)  # Success/cancelled
+    
+    def __init__(self):
+        super().__init__()
+        self._cancel_requested = False
+    
+    def cancel(self):
+        """Request cancellation."""
+        self._cancel_requested = True
+    
+    def run(self):
+        """Main work loop."""
+        total = len(self.items)
+        
+        for i, item in enumerate(self.items):
+            # Check cancellation every iteration
+            if self._cancel_requested:
+                self._cleanup_partial_work()
+                self.finished.emit(False)  # Cancelled
+                return
+            
+            # Do work
+            self.process(item)
+            
+            # Report progress
+            progress_pct = int((i + 1) / total * 100)
+            self.progress.emit(progress_pct)
+        
+        self.finished.emit(True)  # Success
+    
+    def _cleanup_partial_work(self):
+        """Clean up if cancelled mid-operation."""
+        # Remove temp files, rollback changes, etc.
+        pass
+Rules:
+
+Check _cancel_requested every iteration
+Emit progress updates (% done)
+Cleanup partial work on cancel
+Never leave file system in broken state
+Provide cancel button in UI for operations >2 seconds
+
+Why:
+
+User can stop long operations
+No zombie processes
+Better UX
+
+
+SUMMARY: KEY TAKEAWAYS
+
+Cohesion: 1 file (400 lines) > 5 files (80 lines each)
+Single Responsibility: One class = one sentence
+DRY: Centralize common operations
+Injection: Always inject dependencies
+No Wrappers: Unless they add real logic (>3 lines)
+Clear Names: Self-documenting code
+Type Hints: Mandatory for all public methods
+Minimal Docs: Only when name isn't clear
+Explicit Errors: Catch specific exceptions, log context
+Tests: Managers/Services must have tests
+Qt Signals: Class-level, emit after state update
+UI Separation: Managers never import QWidget
+Resource Cleanup: Always use parent parameter
+File I/O Safety: Validate, check permissions, handle errors
+Threading: Operations >100ms must use QThread
+Debouncing: File system events need 500ms debounce
+Storage: JSON for simple, SQLite for complex
+Caching: Always cache generated previews
+Cancellation: Long operations must be cancelable
+AI Protocol: Load rules once, cite rule numbers per task
+
+
+VALIDATION CHECKLIST (Before Completing Any Task)
+
+ Can explain this class in one sentence?
+ Names clear without reading code?
+ No duplicate code?
+ Dependencies injected?
+ Has basic tests?
+ Follows layer separation?
+ Type hints present?
+ Error handling explicit?
+ Qt resources properly managed?
+ Heavy operations in QThread?
+ File system events debounced?
+ Previews/thumbnails cached?
+ Long operations cancelable?
+
+If ANY answer is NO → Refactor before continuing.
+REGLA DE COMENTARIOS (OBLIGATORIA)
+
+El código debe explicar qué hace por sí solo.
+
+Los comentarios solo se permiten para explicar por qué una lógica existe.
+
+Se permiten comentarios únicamente cuando:
+
+Hay lógica sensible (tiempos, debounce, doble clic, gestos, eventos).
+
+Hay decisiones no obvias que no deben modificarse.
+
+El código puede parecer extraño pero es correcto y no debe refactorizarse.
+
+No se permiten comentarios:
+
+Para explicar código evidente.
+
+Para describir cada línea.
+
+Como tutorial.
+
+Para justificar mal diseño.
+
+Formato de los comentarios:
+
+Máximo 1–2 líneas.
+
+En español.
+
+Explican la intención, no la implementación.
+
+Sirven como protección frente a refactors automáticos de IA.
+
+Regla para IA:
+
+Si un bloque de código tiene comentario, su comportamiento no debe cambiar.
+
+No se permite “optimizar” ni refactorizar lógica comentada sin justificación explícita.

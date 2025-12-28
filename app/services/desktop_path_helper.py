@@ -38,7 +38,7 @@ def get_desktop_path() -> str:
         winreg.CloseKey(key)
         _desktop_path_cache = desktop_path
         return desktop_path
-    except Exception:
+    except (OSError, PermissionError, FileNotFoundError):
         desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
         _desktop_path_cache = desktop_path
         return desktop_path
@@ -104,3 +104,32 @@ def is_desktop_focus(path: str) -> bool:
     
     return False
 
+
+def is_system_desktop(path: str) -> bool:
+    """
+    Verificar si una ruta es el Escritorio del sistema.
+    
+    Detecta el Escritorio del sistema independientemente de:
+    - Idioma del sistema (Desktop/Escritorio)
+    - Mayúsculas/minúsculas
+    - Separadores de ruta
+    """
+    if not path:
+        return False
+    
+    # Resolver path real (sigue symlinks, normaliza)
+    try:
+        resolved_path = Path(path).resolve()
+        normalized_path = normalize_path(str(resolved_path))
+    except (OSError, ValueError):
+        # Si no se puede resolver, usar path original normalizado
+        normalized_path = normalize_path(path)
+    
+    # Obtener ruta del Escritorio normalizada
+    desktop_path = normalize_path(get_desktop_path())
+    
+    # Verificar si es exactamente el Escritorio
+    if normalized_path == desktop_path:
+        return True
+    
+    return False
