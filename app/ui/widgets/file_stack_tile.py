@@ -353,11 +353,8 @@ class FileStackTile(QWidget):
             self._drag_start_position = None
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        """Handle double-click."""
-        # Prevent single-click from firing after double-click
+        """Handle double-click - prevent single-click from firing after double-click."""
         self._drag_start_position = None
-        if self._file_stack.files:
-            self.open_file.emit(self._file_stack.files[0])
         event.accept()
         super().mouseDoubleClickEvent(event)
 

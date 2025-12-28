@@ -434,7 +434,38 @@ class FileGridView(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             clicked_tile, _ = self._get_clicked_tile(event.pos())
             
+            # Check if clicked widget is a FileStackTile - let it handle the event
+            clicked_widget = self.childAt(event.pos())
+            widget = clicked_widget
+            while widget is not None and widget != self:
+                widget_type = widget.__class__.__name__
+                if widget_type == 'FileStackTile':
+                    # Let FileStackTile handle the event
+                    super().mousePressEvent(event)
+                    return
+                widget = widget.parent()
+            
             if clicked_tile is None:
+                # If this is desktop mode and click is on background, propagate to parent DockBackgroundWidget
+                if self._is_desktop_window:
+                    parent = self.parent()
+                    while parent:
+                        parent_type = parent.__class__.__name__
+                        if parent_type == 'DockBackgroundWidget':
+                            # Convert event position to parent coordinates
+                            parent_pos = parent.mapFromGlobal(event.globalPos())
+                            parent_event = QMouseEvent(
+                                event.type(),
+                                parent_pos,
+                                event.globalPos(),
+                                event.button(),
+                                event.buttons(),
+                                event.modifiers()
+                            )
+                            parent.mousePressEvent(parent_event)
+                            return
+                        parent = parent.parent()
+                
                 self._clear_selection()
                 event.accept()
                 return

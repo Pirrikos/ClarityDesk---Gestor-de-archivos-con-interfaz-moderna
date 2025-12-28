@@ -271,14 +271,11 @@ class QuickPreviewWindow(QWidget):
                     
                     # R1: Validate request_id matches current request
                     if self._current_request_id != request_id:
-                        from app.core.logger import get_logger
-                        get_logger(__name__).debug(f"R1: Ignoring stale result (current: {self._current_request_id}, received: {request_id})")
+                        logger.debug(f"R1: Ignoring stale result (current: {self._current_request_id}, received: {request_id})")
                         return  # Stale result, ignore
                     
                     # R14: Validate pixmap before applying
                     if not validate_pixmap(pixmap):
-                        from app.core.logger import get_logger
-                        logger = get_logger(__name__)
                         logger.warning(f"R14: Pixmap validation failed (null: {pixmap.isNull() if pixmap else 'None'}, size: {pixmap.width()}x{pixmap.height() if pixmap else 'N/A'})")
                         # R4: Fallback visual
                         self._header.update_file(current_path, Path(current_path).name, self.close)
@@ -287,8 +284,7 @@ class QuickPreviewWindow(QWidget):
                         self._show_loading(False)  # Siempre ocultar loading
                         return
                     
-                    from app.core.logger import get_logger
-                    get_logger(__name__).debug(f"on_page_finished: Applying pixmap (size: {pixmap.width()}x{pixmap.height()})")
+                    logger.debug(f"on_page_finished: Applying pixmap (size: {pixmap.width()}x{pixmap.height()})")
                     
                     header_text = self._pdf_handler.get_header_text(current_path)
                     self._header.update_file(current_path, header_text, self.close)
@@ -343,9 +339,6 @@ class QuickPreviewWindow(QWidget):
         R4: Always shows something - never blank screen or null pixmap.
         R14: Validates pixmap before applying (not null, minimum size, coherence).
         """
-        from app.core.logger import get_logger
-        logger = get_logger(__name__)
-        
         # R14: Validate pixmap before applying
         if validate_pixmap(pixmap):
             logger.debug(f"_apply_pixmap: Valid pixmap (size: {pixmap.width()}x{pixmap.height()})")
@@ -364,8 +357,7 @@ class QuickPreviewWindow(QWidget):
                 # R14: Validate scaled result
                 if not validate_pixmap(scaled):
                     # R4: Fallback if scaling failed
-                    from app.core.logger import get_logger
-                    get_logger(__name__).warning(f"R14: Scaled pixmap invalid in _apply_pixmap (size: {scaled.width()}x{scaled.height() if scaled else 'N/A'})")
+                    logger.warning(f"R14: Scaled pixmap invalid in _apply_pixmap (size: {scaled.width()}x{scaled.height() if scaled else 'N/A'})")
                     self._image_label.clear()
                     self._image_label.setText(NO_PREVIEW)
                     self._image_label.setStyleSheet(get_error_label_style())
@@ -488,14 +480,11 @@ class QuickPreviewWindow(QWidget):
                 
                 # R1: Validate request_id matches current request
                 if self._current_request_id != request_id:
-                    from app.core.logger import get_logger
-                    get_logger(__name__).debug(f"R1: Ignoring stale result in _load_preview (current: {self._current_request_id}, received: {request_id})")
+                    logger.debug(f"R1: Ignoring stale result in _load_preview (current: {self._current_request_id}, received: {request_id})")
                     return  # Stale result, ignore
                 
                 # R14: Validate pixmap before applying
                 if not validate_pixmap(pixmap):
-                    from app.core.logger import get_logger
-                    logger = get_logger(__name__)
                     logger.warning(f"R14: Pixmap validation failed in _load_preview (null: {pixmap.isNull() if pixmap else 'None'}, size: {pixmap.width()}x{pixmap.height() if pixmap else 'N/A'})")
                     # R4: Fallback visual
                     self._header.update_file(current_path, Path(current_path).name, self.close)
@@ -504,8 +493,7 @@ class QuickPreviewWindow(QWidget):
                     self._show_loading(False)  # Siempre ocultar loading
                     return
                 
-                from app.core.logger import get_logger
-                get_logger(__name__).debug(f"_load_preview on_page_finished: Applying pixmap (size: {pixmap.width()}x{pixmap.height()})")
+                logger.debug(f"_load_preview on_page_finished: Applying pixmap (size: {pixmap.width()}x{pixmap.height()})")
                 
                 header_text = self._pdf_handler.get_header_text(current_path)
                 self._header.update_file(current_path, header_text, self.close)

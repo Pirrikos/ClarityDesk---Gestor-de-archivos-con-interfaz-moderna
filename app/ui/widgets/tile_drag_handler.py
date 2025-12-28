@@ -62,7 +62,7 @@ def handle_tile_drag(
     # MoveAction: file moves to destination (deleted from source)
     # CopyAction: file copied to destination (source remains)
     allowed_actions = Qt.DropAction.MoveAction | Qt.DropAction.CopyAction
-    returned_action = drag.exec(allowed_actions, Qt.DropAction.MoveAction)
+    drag.exec(allowed_actions, Qt.DropAction.MoveAction)
     
     # Force cleanup of drag preview artifacts (Qt/Windows bug workaround)
     _cleanup_drag_visual(parent_view)
