@@ -5,7 +5,6 @@ Helper functions for detecting Desktop Focus and normalizing paths.
 """
 
 import os
-from pathlib import Path
 
 from app.services.path_utils import normalize_path
 
@@ -13,7 +12,6 @@ from app.services.path_utils import normalize_path
 DESKTOP_FOCUS_PATH = "__CLARITY_DESKTOP__"
 
 _desktop_path_cache: str | None = None
-_clarity_path_cache: str | None = None
 
 
 def get_desktop_path() -> str:
@@ -44,43 +42,13 @@ def get_desktop_path() -> str:
         return desktop_path
 
 
-def get_clarity_folder_path() -> str:
-    """
-    Get Clarity folder path in Desktop.
-    
-    Creates folder if it doesn't exist.
-    Uses cache to avoid repeated path calculations.
-    
-    Returns:
-        Path to Clarity folder as string.
-    """
-    global _clarity_path_cache
-    
-    if _clarity_path_cache is not None:
-        return _clarity_path_cache
-    
-    desktop_path = get_desktop_path()
-    clarity_path = os.path.join(desktop_path, "Clarity")
-    
-    # Validate desktop exists and is accessible before creating
-    if os.path.isdir(desktop_path):
-        try:
-            Path(clarity_path).mkdir(parents=True, exist_ok=True)
-        except (OSError, PermissionError):
-            # Silently fail - return path anyway
-            pass
-    
-    _clarity_path_cache = clarity_path
-    return clarity_path
-
-
 def is_desktop_focus(path: str) -> bool:
     """
-    Check if path is Desktop Focus (real Desktop, Clarity folder, or virtual identifier).
+    Check if path is Desktop Focus (real Desktop or virtual identifier).
     
     Args:
         path: Path to check.
-    
+        
     Returns:
         True if Desktop Focus, False otherwise.
     """
@@ -95,11 +63,6 @@ def is_desktop_focus(path: str) -> bool:
     
     # Check if it's the desktop folder itself
     if normalized_path == desktop_path:
-        return True
-    
-    # Check if it's the Clarity folder (dock storage)
-    clarity_path = normalize_path(get_clarity_folder_path())
-    if normalized_path == clarity_path:
         return True
     
     return False

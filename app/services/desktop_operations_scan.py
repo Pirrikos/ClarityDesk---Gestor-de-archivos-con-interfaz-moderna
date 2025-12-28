@@ -7,12 +7,13 @@ Handles loading files from Windows Desktop and dock storage detection.
 import os
 from pathlib import Path
 
-from app.services.desktop_path_helper import get_desktop_path
+from app.services.desktop_path_helper import get_desktop_path, get_clarity_folder_path
 from app.services.desktop_visibility import is_system_file, is_hidden_file
+from app.services.path_utils import normalize_path
 
 
 def _get_dock_storage_path() -> Path:
-    """Get path to dock files storage folder."""
+    """Get path to dock files storage folder (legacy - deprecated)."""
     dock_dir = Path(__file__).parent.parent.parent / "storage" / "dock_files"
     dock_dir.mkdir(parents=True, exist_ok=True)
     return dock_dir
@@ -20,19 +21,34 @@ def _get_dock_storage_path() -> Path:
 
 def is_file_in_dock(file_path: str) -> bool:
     """
-    Check if file is in dock storage folder.
+    Check if file is in dock storage folder (Clarity folder).
+    
+    CRÍTICO: Ahora los archivos del dock están en Escritorio/Clarity/
+    no en storage/dock_files.
     
     Args:
         file_path: Path to check.
         
     Returns:
-        True if file is in dock storage, False otherwise.
+        True if file is in Clarity folder (dock storage), False otherwise.
     """
     try:
+        # Verificar si está en Clarity (nuevo almacenamiento del dock)
+        clarity_path = normalize_path(get_clarity_folder_path())
+        file_abs = normalize_path(os.path.abspath(file_path))
+        clarity_abs = normalize_path(os.path.abspath(clarity_path))
+        
+        # Verificar si el archivo está dentro de Clarity
+        if file_abs.startswith(clarity_abs + os.sep) or file_abs == clarity_abs:
+            return True
+        
+        # Verificar legacy storage (por compatibilidad)
         dock_storage = _get_dock_storage_path()
-        file_abs = os.path.abspath(file_path)
-        dock_abs = os.path.abspath(str(dock_storage))
-        return file_abs.startswith(dock_abs + os.sep) or file_abs == dock_abs
+        dock_abs = normalize_path(os.path.abspath(str(dock_storage)))
+        if file_abs.startswith(dock_abs + os.sep) or file_abs == dock_abs:
+            return True
+        
+        return False
     except Exception:
         return False
 

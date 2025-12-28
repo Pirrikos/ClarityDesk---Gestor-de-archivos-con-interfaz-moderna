@@ -5,7 +5,7 @@ Handles drag out operations from file tiles with file deletion logic.
 Supports single and multiple tile drag operations.
 """
 
-from PySide6.QtCore import QMimeData, QPoint, Qt, QUrl, QTimer
+from PySide6.QtCore import QMimeData, QPoint, Qt, QUrl
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import QApplication
 
@@ -58,12 +58,11 @@ def handle_tile_drag(
     if not drag:
         return False
     
-    returned_action = drag.exec(Qt.DropAction.CopyAction)
-    
-    if returned_action == Qt.DropAction.CopyAction:
-        pass
-    elif returned_action == Qt.DropAction.IgnoreAction:
-        pass
+    # Allow both Move and Copy - Windows will choose based on drop target
+    # MoveAction: file moves to destination (deleted from source)
+    # CopyAction: file copied to destination (source remains)
+    allowed_actions = Qt.DropAction.MoveAction | Qt.DropAction.CopyAction
+    returned_action = drag.exec(allowed_actions, Qt.DropAction.MoveAction)
     
     # Force cleanup of drag preview artifacts (Qt/Windows bug workaround)
     _cleanup_drag_visual(parent_view)
@@ -73,39 +72,12 @@ def handle_tile_drag(
 
 def _cleanup_drag_visual(parent_view) -> None:
     """Force cleanup of drag preview visual artifacts."""
-    # Clear any pending events
-    QApplication.processEvents()
-    
     # Reset cursor to ensure drag cursor is cleared
     QApplication.restoreOverrideCursor()
     
-    # Force immediate repaint of view
+    # Force repaint without processEvents (avoids triggering stale signals)
     if hasattr(parent_view, 'update'):
         parent_view.update()
-    
-    # Force repaint of window
-    if hasattr(parent_view, 'window'):
-        window = parent_view.window()
-        if window:
-            window.update()
-    
-    # Schedule additional cleanup after event loop processes
-    QTimer.singleShot(50, lambda: _delayed_cleanup(parent_view))
-
-
-def _delayed_cleanup(parent_view) -> None:
-    """Delayed cleanup to ensure drag artifacts are cleared."""
-    try:
-        QApplication.processEvents()
-        if hasattr(parent_view, 'repaint'):
-            parent_view.repaint()
-        if hasattr(parent_view, 'window'):
-            window = parent_view.window()
-            if window:
-                window.repaint()
-    except RuntimeError:
-        # Widget may have been deleted
-        pass
 
 
 def _create_drag_object(parent_view, file_paths: list[str], icon_pixmap, icon_service: IconService) -> QDrag:

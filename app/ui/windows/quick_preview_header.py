@@ -112,6 +112,10 @@ class QuickPreviewHeader:
         self._open_pdf_btn.setVisible(ext == ".pdf")
         self._open_word_btn.setVisible(ext == ".docx")
 
+    def set_close_callback(self, on_close_callback) -> None:
+        """Set the close button callback."""
+        self._on_close_callback = on_close_callback
+    
     def set_zoom_callbacks(self, on_zoom_in, on_zoom_out, on_zoom_reset) -> None:
         self._on_zoom_in = on_zoom_in
         self._on_zoom_out = on_zoom_out
@@ -124,7 +128,7 @@ class QuickPreviewHeader:
     
     def _on_close_clicked(self) -> None:
         """Handle close button click."""
-        if hasattr(self, '_on_close_callback'):
+        if self._on_close_callback:
             self._on_close_callback()
 
     def _on_zoom_in_clicked(self) -> None:

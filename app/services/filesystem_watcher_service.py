@@ -73,15 +73,11 @@ class FileSystemWatcherService(QObject):
         if is_state_context_path(folder_path):
             return True  # Retornar True sin observar
 
-        # Clear previous snapshot when changing folders
-        # Set to empty list (not None) to indicate we have an initial snapshot
-        # but don't want to emit on first change detection
-        self._previous_snapshot = []
-
         # Add folder to watcher
         if self._watcher.addPath(folder_path):
             self._watched_folder = folder_path
-            # Take initial snapshot but don't emit - this is just for comparison
+            # Take initial snapshot - this is the baseline for comparison
+            # Any change from this point will emit filesystem_changed
             self._previous_snapshot = self._take_snapshot(folder_path)
             return True
         return False
@@ -106,13 +102,15 @@ class FileSystemWatcherService(QObject):
         """
         Set flag to ignore filesystem events.
         
-        Used during internal operations (move, rename) to prevent
-        refresh loops.
+        DEPRECATED: Watcher blocking is no longer needed.
+        Debounce and snapshot comparison prevent refresh loops automatically.
+        This method is kept for backward compatibility but does nothing.
         
         Args:
-            ignore: True to ignore events, False to allow.
+            ignore: Ignored (kept for compatibility).
         """
-        self._ignore_events = ignore
+        # No-op: debounce and snapshot comparison handle everything
+        pass
 
     def _take_snapshot(self, folder_path: str) -> list[tuple[str, float, bool, int]]:
         """
@@ -327,7 +325,6 @@ class FileSystemWatcherService(QObject):
         Handle debounce timeout - check snapshot and emit if changed.
 
         Only emits filesystem_changed if snapshot actually changed.
-        Does NOT emit on first snapshot (when folder is first watched).
         Detects folder rename/move and emits folder_renamed signal.
         """
         if not self._watched_folder:
@@ -336,15 +333,8 @@ class FileSystemWatcherService(QObject):
         # Take new snapshot
         current_snapshot = self._take_snapshot(self._watched_folder)
 
-        # Compare with previous snapshot
-        # Empty list means initial snapshot - don't emit, just set it
-        if self._previous_snapshot == []:
-            # First snapshot after watch_folder - don't emit, just store it
-            self._previous_snapshot = current_snapshot
-            return
-
         # Only process if snapshot changed (and we have a previous snapshot)
-        if self._previous_snapshot and not self._snapshots_equal(self._previous_snapshot, current_snapshot):
+        if self._previous_snapshot is not None and not self._snapshots_equal(self._previous_snapshot, current_snapshot):
             # Try to detect folder rename/move (simple rename in same directory)
             rename_info = self._detect_folder_rename(
                 self._previous_snapshot,

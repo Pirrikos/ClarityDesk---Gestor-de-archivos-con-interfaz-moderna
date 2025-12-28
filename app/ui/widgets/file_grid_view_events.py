@@ -4,10 +4,13 @@ Event handlers for FileGridView.
 Handles resize, stack clicks, expansion height, and tile animations.
 """
 
+from math import ceil
+
 from PySide6.QtCore import QTimer
 
 from app.models.file_stack import FileStack
 from app.ui.widgets.file_tile import FileTile
+from app.ui.widgets.grid_layout_config import calculate_files_per_row
 from app.ui.widgets.grid_tile_positions import calculate_columns_for_normal_grid
 
 
@@ -80,17 +83,19 @@ def on_stack_clicked(view, file_stack: FileStack) -> None:
         view._expanded_stacks[stack_type] = file_stack.files
     
     # Calcular parámetros de layout
-    total_stacks = len(view._stacks) if view._stacks else 5
     total_expanded_files = sum(len(files) for files in view._expanded_stacks.values())
     
     if view._is_desktop_window and view._desktop_window:
         if total_expanded_files > 0:
-            # Calcular filas discretas (1-3)
-            from math import ceil
-            approx_rows = (total_expanded_files + total_stacks - 1) // total_stacks
-            num_rows = max(1, min(3, approx_rows))
+            # Calcular files_per_row basado en el ancho del dock
+            width = view._desktop_window.width()
+            max_files_per_row = calculate_files_per_row(width)
+            
+            # Calcular filas discretas (1-3) basado en archivos y espacio disponible
+            num_rows = ceil(total_expanded_files / max_files_per_row)
+            num_rows = max(1, min(3, num_rows))
             files_per_row = ceil(total_expanded_files / num_rows)
-            files_per_row = max(1, min(files_per_row, total_stacks))
+            files_per_row = max(1, min(files_per_row, max_files_per_row))
             
             view._dock_rows_state = num_rows
             view._desktop_window._pending_expansion_state = {
@@ -116,12 +121,7 @@ def on_stack_clicked(view, file_stack: FileStack) -> None:
     # Usar ExpandedStacksWidget para cambio instantáneo
     if view._is_desktop_window and view._expanded_stacks_widget:
         if view._expanded_stacks:
-            # Calcular files_per_row
-            files_per_row = total_stacks
-            if view._dock_rows_state:
-                from math import ceil
-                files_per_row = ceil(total_expanded_files / view._dock_rows_state)
-                files_per_row = max(1, min(files_per_row, total_stacks))
+            # Reutilizar files_per_row ya calculado arriba (basado en ancho del dock)
             
             if is_reducing:
                 # REDUCIENDO: preparar página con altura 0, mostrar altura después de animación

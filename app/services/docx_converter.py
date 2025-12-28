@@ -8,9 +8,11 @@ Includes cache size management and auto-cleanup.
 import os
 import hashlib
 import tempfile
+import shutil
 from pathlib import Path
 
 from app.core.logger import get_logger
+from app.services.preview_file_extensions import normalize_extension
 
 logger = get_logger(__name__)
 
@@ -26,11 +28,89 @@ class DocxConverter:
         """Initialize converter with temporary cache directory."""
         self._cache_dir = Path(tempfile.gettempdir()) / "claritydesk_previews"
         self._cache_dir.mkdir(exist_ok=True)
+        # Directory for temporary copies with normalized extensions
+        self._temp_dir = self._cache_dir / "temp_docx"
+        self._temp_dir.mkdir(exist_ok=True)
     
     def get_cached_pdf_path(self, docx_path: str) -> Path:
         """Get cached PDF path for a DOCX file."""
         file_hash = hashlib.md5(docx_path.encode()).hexdigest()
         return self._cache_dir / f"{file_hash}.pdf"
+    
+    def _get_normalized_temp_path(self, original_path: str) -> str:
+        """
+        Get a temporary copy of the file with normalized extension for docx2pdf.
+        
+        docx2pdf's Path.resolve() returns the actual filename from filesystem,
+        which may have uppercase extension. This creates a temporary copy with
+        lowercase extension so resolve() returns the normalized path.
+        
+        Args:
+            original_path: Original file path with potentially uppercase extension.
+        
+        Returns:
+            Path to temporary copy with normalized extension, or original path if already normalized.
+        """
+        try:
+            path_obj = Path(original_path)
+            if path_obj.suffix.lower() != '.docx':
+                return original_path
+            
+            # Only create temp copy if extension has uppercase (not exactly .docx)
+            if path_obj.suffix.lower() == '.docx' and path_obj.suffix == '.docx':
+                # Extension is already normalized, no temp copy needed
+                return original_path
+            
+            # Create temp filename with normalized extension
+            file_hash = hashlib.md5(original_path.encode()).hexdigest()
+            temp_name = f"{file_hash}.docx"
+            temp_path = self._temp_dir / temp_name
+            
+            # Check if temp file exists and is newer than original
+            if temp_path.exists():
+                try:
+                    original_mtime = os.path.getmtime(original_path)
+                    temp_mtime = os.path.getmtime(str(temp_path))
+                    if temp_mtime >= original_mtime:
+                        logger.debug(f"Using existing temp copy: '{temp_path}'")
+                        return str(temp_path)
+                except (OSError, ValueError):
+                    pass
+            
+            # Create temp copy with normalized extension
+            logger.debug(f"Creating temp copy: '{original_path}' -> '{temp_path}'")
+            shutil.copy2(original_path, temp_path)
+            return str(temp_path)
+        except Exception as e:
+            logger.warning(f"Failed to create temp copy for '{original_path}': {e}")
+            # Fallback: return original path (will likely fail with docx2pdf)
+            return original_path
+    
+    def _normalize_path_extension(self, path: str) -> str:
+        """
+        Normalize file extension to lowercase in path.
+        
+        Note: This may not work with docx2pdf's Path.resolve() which returns
+        the actual filename from filesystem. Use _create_normalized_symlink() instead.
+        
+        Args:
+            path: File path with potentially uppercase extension.
+        
+        Returns:
+            Path with normalized extension (lowercase).
+        """
+        # Find the last dot to get the extension
+        last_dot_index = path.rfind('.')
+        if last_dot_index != -1:
+            extension = path[last_dot_index:]
+            extension_lower = extension.lower()
+            # If extension is .docx (case-insensitive) but not exactly .docx, normalize it
+            if extension_lower == '.docx' and extension != '.docx':
+                base_path = path[:last_dot_index]
+                normalized_path = base_path + '.docx'
+                logger.debug(f"Normalizing extension: '{path}' -> '{normalized_path}'")
+                return normalized_path
+        return path
     
     def convert_to_pdf(self, docx_path: str) -> str:
         """Convert DOCX to PDF using docx2pdf.
@@ -43,11 +123,16 @@ class DocxConverter:
         
         try:
             if not os.path.exists(docx_path):
+                logger.debug(f"DOCX file does not exist: {docx_path}")
                 return ""
-        except (OSError, ValueError):
+        except (OSError, ValueError) as e:
+            logger.warning(f"Cannot check DOCX file existence: {docx_path}, error: {e}")
             return ""
         
-        if not docx_path.lower().endswith('.docx'):
+        # R11: Normalize extension in single entry point
+        ext = normalize_extension(docx_path)
+        if ext != '.docx':
+            logger.debug(f"File is not DOCX (extension: {ext}): {docx_path}")
             return ""
         
         try:
@@ -70,9 +155,13 @@ class DocxConverter:
                     pass  # Continue to regenerate
             
             try:
-                convert(docx_path, str(pdf_path))
+                # docx2pdf's Path.resolve() returns the actual filename from filesystem,
+                # which may have uppercase extension. Create a temp copy with normalized extension.
+                normalized_docx_path = self._get_normalized_temp_path(docx_path)
+                logger.debug(f"Using path for docx2pdf: '{normalized_docx_path}' (original: '{docx_path}')")
+                convert(normalized_docx_path, str(pdf_path))
             except Exception as e:
-                logger.warning(f"DOCX conversion failed: {e}")
+                logger.warning(f"DOCX conversion failed for '{docx_path}' (normalized: '{normalized_docx_path}'): {type(e).__name__}: {e}", exc_info=True)
                 return ""
             
             try:

@@ -210,9 +210,9 @@ class GridContentWidget(QWidget):
                     # Los errores se manejan internamente en handle_file_drop
                     pass
         
-        # CRÍTICO: El drop NUNCA actualiza la UI - solo mueve archivos
-        # La UI se actualiza UNA SOLA VEZ por watcher (con debounce si hace falta)
-        # Los stacks siempre se derivan del escaneo de Clarity (automático cuando watcher detecta cambios)
+        # Actualizar vista después de un breve delay para asegurar que los archivos existen
+        if moved_any:
+            QTimer.singleShot(300, lambda: self._update_view_after_drop(container))
         
         # Aceptar el evento con MoveAction (equivalente a Explorador de Windows)
         # Incluso si hubo errores, aceptamos el evento para que Windows complete la operación

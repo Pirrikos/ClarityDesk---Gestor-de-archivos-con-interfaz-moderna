@@ -54,12 +54,9 @@ def handle_start_drag(
         drag.setPixmap(preview_pixmap)
         drag.setHotSpot(calculate_drag_hotspot(preview_pixmap))
     
-    returned_action = drag.exec(Qt.DropAction.CopyAction)
-    
-    if returned_action == Qt.DropAction.CopyAction:
-        pass
-    elif returned_action == Qt.DropAction.IgnoreAction:
-        pass
+    # Allow both Move and Copy - Windows will choose based on drop target
+    allowed_actions = Qt.DropAction.MoveAction | Qt.DropAction.CopyAction
+    drag.exec(allowed_actions, Qt.DropAction.MoveAction)
 
 
 def _extract_file_paths_from_items(selected_items: list[QTableWidgetItem]) -> list[str]:

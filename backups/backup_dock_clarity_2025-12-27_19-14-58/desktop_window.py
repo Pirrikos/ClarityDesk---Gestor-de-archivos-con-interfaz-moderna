@@ -8,26 +8,18 @@ Opens automatically on app startup.
 import os
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QUrl, QTimer, QPoint, QEvent
-from PySide6.QtGui import QDesktopServices, QPainter, QColor, QBrush, QPen, QMouseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut
+from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QUrl, QTimer, QPoint
+from PySide6.QtGui import QDesktopServices, QPainter, QColor, QBrush, QPen, QMouseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
 )
 
 from app.managers.tab_manager import TabManager
-from app.services.desktop_path_helper import get_clarity_folder_path, get_desktop_path
+from app.services.desktop_path_helper import get_desktop_path
 from app.services.icon_service import IconService
-from app.services.path_utils import normalize_path
 from app.services.trash_storage import TRASH_FOCUS_PATH
-from app.services.preview_pdf_service import PreviewPdfService
 from app.ui.widgets.file_view_container import FileViewContainer
-from app.ui.widgets.file_view_sync import get_selected_files
-from app.ui.windows.main_window_file_handler import filter_previewable_files
-from app.ui.windows.quick_preview_window import QuickPreviewWindow
-from app.core.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 class DockBackgroundWidget(QWidget):
@@ -48,6 +40,7 @@ class DockBackgroundWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._drag_start_position: Optional[QPoint] = None
         # Habilitar drops para que pasen a los widgets hijos
         self.setAcceptDrops(True)
     
@@ -73,17 +66,54 @@ class DockBackgroundWidget(QWidget):
         painter.end()
     
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Propagate mouse press to parent DesktopWindow for window dragging."""
-        # Always propagate to parent - DesktopWindow will handle dragging logic
-        event.ignore()
+        """Handle mouse press - start window dragging if clicking on background."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Check if click is on a child widget (icon/tile)
+            child_widget = self.childAt(event.pos())
+            
+            # Check if the widget or any of its parents is a tile
+            is_tile = False
+            widget = child_widget
+            while widget is not None and widget != self:
+                widget_type = type(widget).__name__
+                # Check if it's a tile widget (FileStackTile, DesktopStackTile, FileTile, etc.)
+                if 'Tile' in widget_type or 'StackTile' in widget_type:
+                    is_tile = True
+                    break
+                widget = widget.parent()
+            
+            if not is_tile:
+                # Click is on background (not on a tile), start dragging
+                self._drag_start_position = event.globalPos()
+                event.accept()
+            else:
+                # Click is on a tile, let it handle the event
+                event.ignore()
+        else:
+            event.ignore()
     
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        """Propagate mouse move to parent DesktopWindow for window dragging."""
-        event.ignore()
+        """Handle mouse move - drag window if dragging started."""
+        if self._drag_start_position is not None:
+            # Calculate movement delta
+            delta = event.globalPos() - self._drag_start_position
+            # Move the window
+            main_window = self.window()
+            if main_window:
+                new_pos = main_window.pos() + delta
+                main_window.move(new_pos)
+                self._drag_start_position = event.globalPos()
+            event.accept()
+        else:
+            event.ignore()
     
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """Propagate mouse release to parent DesktopWindow for window dragging."""
-        event.ignore()
+        """Handle mouse release - stop dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_position = None
+            event.accept()
+        else:
+            event.ignore()
     
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Propagate drag enter to child widgets (FileViewContainer)."""
@@ -167,12 +197,6 @@ class DesktopWindow(QWidget):
         self._height_animation_in_progress: bool = False
         # Estado de expansión calculado antes de la animación (para usar al finalizar)
         self._pending_expansion_state: Optional[dict] = None
-        
-        # Window dragging
-        self._drag_start_position: Optional[QPoint] = None
-        
-        # Install event filter to capture mouse events before children
-        self.installEventFilter(self)
         
         # Setup UI structure only (no heavy initialization)
         self._setup_ui()
@@ -269,33 +293,12 @@ class DesktopWindow(QWidget):
         self._trash_tab_manager = TabManager(str(trash_storage))
         
         # Set Desktop and Trash as active tabs
-        clarity_path = get_clarity_folder_path()
-        
-        # CRÍTICO: Limpiar tabs existentes y asegurar que solo Clarity esté activo
-        # Eliminar cualquier tab del escritorio completo que pueda estar guardado
         desktop_path = get_desktop_path()
-        tabs = self._desktop_tab_manager.get_tabs()
-        for tab_path in tabs[:]:  # Copia de la lista para iterar
-            normalized_tab = normalize_path(tab_path)
-            normalized_desktop = normalize_path(desktop_path)
-            normalized_clarity = normalize_path(clarity_path)
-            # Eliminar tab del escritorio completo (pero NO Clarity)
-            if normalized_tab == normalized_desktop and normalized_tab != normalized_clarity:
-                tab_index = tabs.index(tab_path)
-                self._desktop_tab_manager.remove_tab(tab_index)
-        
-        # Asegurar que Clarity esté como tab activo
-        self._desktop_tab_manager.add_tab(clarity_path)
+        self._desktop_tab_manager.add_tab(desktop_path)
         self._trash_tab_manager.add_tab(TRASH_FOCUS_PATH)
         
         # Create IconService
         self._icon_service = IconService()
-        
-        # Create PreviewPdfService for quick preview
-        self._preview_service = PreviewPdfService(self._icon_service)
-        
-        # Track current preview window
-        self._current_preview_window = None
         
         # Get parent widget for FileViewContainer (usar referencia directa)
         central_widget = self._central_widget
@@ -340,19 +343,6 @@ class DesktopWindow(QWidget):
             
             # Insert container at the same position
             layout.insertWidget(placeholder_index, self._desktop_container, 1)
-            
-            # Install event filter on container to capture mouse events for dragging
-            if self._desktop_container:
-                self._desktop_container.installEventFilter(self)
-                # Also install on grid view if it exists
-                if hasattr(self._desktop_container, '_grid_view') and self._desktop_container._grid_view:
-                    self._desktop_container._grid_view.installEventFilter(self)
-                    # Install on content widget too
-                    if hasattr(self._desktop_container._grid_view, '_content_widget'):
-                        self._desktop_container._grid_view._content_widget.installEventFilter(self)
-        
-        # Setup keyboard shortcuts
-        self._setup_shortcuts()
         
         # Warmup: forzar un ciclo de layout para evitar flash en primera contracción
         # Qt cachea información de layout después del primer ciclo
@@ -476,40 +466,6 @@ class DesktopWindow(QWidget):
         target_y = self.WINDOW_TOP_MARGIN
         return target_height, target_y
     
-    def _adjust_window_width(self, stacks_count: int) -> None:
-        """Adjust window width based on number of stacks."""
-        target_width = self._calculate_target_width(stacks_count)
-        current_geometry = self.geometry()
-        
-        if current_geometry.width() == target_width:
-            return
-        
-        screen = self.screen().availableGeometry()
-        new_x = (screen.width() - target_width) // 2
-        current_height = current_geometry.height()
-        
-        self._apply_width_animation(current_geometry, target_width, new_x, current_height)
-    
-    def _calculate_target_width(self, stacks_count: int) -> int:
-        """Calculate target width for dock window based on stacks count."""
-        if stacks_count == 0:
-            return self.DEFAULT_WINDOW_WIDTH
-        
-        # Márgenes: main_layout + central_internal_layout + grid_layout
-        layout_margins = (self.MAIN_LAYOUT_MARGIN * 2) + (self.CENTRAL_LAYOUT_MARGIN * 2)
-        grid_margins = self.GRID_LAYOUT_LEFT_MARGIN + self.GRID_LAYOUT_RIGHT_MARGIN
-        total_margins = layout_margins + grid_margins
-        
-        stacks_width = stacks_count * self.STACK_TILE_WIDTH
-        # Spacing: entre escritorio-ajustes, ajustes-separador, separador-primer stack, entre stacks
-        # A la izquierda: después del separador hay spacing antes del primer stack
-        # A la derecha: el margin derecho del grid proporciona el espacio simétrico
-        # Total spacing: 3 espacios fijos + (stacks_count - 1) entre stacks = stacks_count + 2
-        total_spacing = (stacks_count + 2) * self.STACK_SPACING
-        
-        return (self.DESKTOP_TILE_WIDTH + self.SETTINGS_TILE_WIDTH + self.SEPARATOR_WIDTH + 
-                stacks_width + total_spacing + total_margins)
-    
     def _force_grid_relayout(self) -> None:
         """Force grid layout recalculation after geometry animation finishes."""
         # Marcar que la animación ha terminado
@@ -578,7 +534,7 @@ class DesktopWindow(QWidget):
             try:
                 current_animation.finished.disconnect(self._force_grid_relayout)
             except (TypeError, RuntimeError):
-                # No hay conexión o ya fue eliminada - ignorar
+                # TypeError: no hay conexiones, RuntimeError: objeto ya eliminado
                 pass
             setattr(self, animation_attr, None)
             
@@ -614,6 +570,40 @@ class DesktopWindow(QWidget):
         )
         self._apply_geometry_animation(current_geometry, target_geometry, '_height_animation')
     
+    def _adjust_window_width(self, stacks_count: int) -> None:
+        """Adjust window width based on number of stacks."""
+        target_width = self._calculate_target_width(stacks_count)
+        current_geometry = self.geometry()
+        
+        if current_geometry.width() == target_width:
+            return
+        
+        screen = self.screen().availableGeometry()
+        new_x = (screen.width() - target_width) // 2
+        current_height = current_geometry.height()
+        
+        self._apply_width_animation(current_geometry, target_width, new_x, current_height)
+    
+    def _calculate_target_width(self, stacks_count: int) -> int:
+        """Calculate target width for dock window based on stacks count."""
+        if stacks_count == 0:
+            return self.DEFAULT_WINDOW_WIDTH
+        
+        # Márgenes: main_layout + central_internal_layout + grid_layout
+        layout_margins = (self.MAIN_LAYOUT_MARGIN * 2) + (self.CENTRAL_LAYOUT_MARGIN * 2)
+        grid_margins = self.GRID_LAYOUT_LEFT_MARGIN + self.GRID_LAYOUT_RIGHT_MARGIN
+        total_margins = layout_margins + grid_margins
+        
+        stacks_width = stacks_count * self.STACK_TILE_WIDTH
+        # Spacing: entre escritorio-ajustes, ajustes-separador, separador-primer stack, entre stacks
+        # A la izquierda: después del separador hay spacing antes del primer stack
+        # A la derecha: el margin derecho del grid proporciona el espacio simétrico
+        # Total spacing: 3 espacios fijos + (stacks_count - 1) entre stacks = stacks_count + 2
+        total_spacing = (stacks_count + 2) * self.STACK_SPACING
+        
+        return (self.DESKTOP_TILE_WIDTH + self.SETTINGS_TILE_WIDTH + self.SEPARATOR_WIDTH + 
+                stacks_width + total_spacing + total_margins)
+    
     def _apply_width_animation(self, current_geometry: QRect, target_width: int, new_x: int, current_height: int) -> None:
         """Apply smooth width animation to window."""
         target_geometry = QRect(
@@ -622,110 +612,9 @@ class DesktopWindow(QWidget):
         )
         self._apply_geometry_animation(current_geometry, target_geometry, '_width_animation')
     
-    def _setup_shortcuts(self) -> None:
-        """Setup keyboard shortcuts."""
-        logger.debug("Setting up shortcuts for DesktopWindow")
-        shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
-        shortcut.activated.connect(self._open_quick_preview)
-        logger.debug("Spacebar shortcut connected")
-    
-    def _open_quick_preview(self) -> None:
-        """Toggle quick preview window (open/close)."""
-        logger.debug("_open_quick_preview CALLED")
-        
-        if (hasattr(self, "_current_preview_window") and 
-            self._current_preview_window and 
-            self._current_preview_window.isVisible()):
-            logger.debug("Closing existing preview window")
-            self._current_preview_window.close()
-            self._current_preview_window = None
-            return
-
-        logger.debug("Getting selected files...")
-        selected = []
-        if hasattr(self, '_desktop_container') and self._desktop_container:
-            selected = get_selected_files(self._desktop_container)
-            logger.debug(f"Selected files from container: {len(selected)} files")
-            for f in selected:
-                logger.debug(f"  - {f}")
-        else:
-            logger.warning("_desktop_container not available")
-        
-        if not selected:
-            logger.warning("No files selected")
-            return
-
-        logger.debug("Filtering previewable files...")
-        allowed_files = filter_previewable_files(selected)
-        logger.debug(f"Previewable files: {len(allowed_files)} files")
-        for f in allowed_files:
-            logger.debug(f"  - {f}")
-        
-        if not allowed_files:
-            logger.warning("No previewable files found")
-            return
-
-        logger.debug("Creating preview window...")
-        preview_window = QuickPreviewWindow(
-            self._preview_service,
-            file_paths=allowed_files,
-            start_index=0,
-            parent=None
-        )
-
-        self._current_preview_window = preview_window
-        logger.debug("Showing preview window...")
-        preview_window.show()
-        preview_window.setFocus()
-        logger.debug("Preview window shown")
-    
     def _open_file(self, file_path: str) -> None:
-        """Open file with preview if previewable, otherwise with default system application."""
-        if not os.path.exists(file_path):
-            return
-        
-        # Verificar si el archivo está directamente en el dock (no en un stack expandido)
-        # Los archivos dentro de stacks expandidos también emiten open_file, pero queremos
-        # hacer preview solo de archivos que están directamente en el dock
-        use_stacks = True
-        dock_files = self._desktop_tab_manager.get_files(use_stacks=use_stacks)
-        
-        # Verificar si el archivo está en algún stack (no hacer preview)
-        is_in_stack = False
-        for item in dock_files:
-            if hasattr(item, 'files'):  # Es un FileStack
-                if file_path in item.files:
-                    is_in_stack = True
-                    break
-        
-        # Si el archivo está en un stack, abrir con el sistema (comportamiento original)
-        if is_in_stack:
-            url = QUrl.fromLocalFile(file_path)
-            QDesktopServices.openUrl(url)
-            return
-        
-        # Verificar si el archivo es previewable
-        previewable_files = filter_previewable_files([file_path])
-        if previewable_files:
-            # Abrir preview en lugar de abrir con el sistema
-            if (hasattr(self, '_current_preview_window') and 
-                self._current_preview_window and 
-                self._current_preview_window.isVisible()):
-                self._current_preview_window.close()
-                self._current_preview_window = None
-            
-            preview_window = QuickPreviewWindow(
-                self._preview_service,
-                file_paths=previewable_files,
-                start_index=0,
-                parent=None
-            )
-            
-            self._current_preview_window = preview_window
-            preview_window.show()
-            preview_window.setFocus()
-        else:
-            # No es previewable, abrir con el sistema
+        """Open file with default system application."""
+        if os.path.exists(file_path):
             url = QUrl.fromLocalFile(file_path)
             QDesktopServices.openUrl(url)
     
@@ -791,105 +680,5 @@ class DesktopWindow(QWidget):
         """Capture drop events and propagate to FileViewContainer (strict validation)."""
         if not self._handle_drag_event(event, is_strict=True):
             event.ignore()
-    
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse press - start window dragging if clicking on background."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Check if click is on an interactive widget (tile, button, etc.)
-            child_widget = self.childAt(event.pos())
-            
-            # Check if the widget or any of its parents is interactive
-            is_interactive = False
-            widget = child_widget
-            while widget is not None and widget != self:
-                widget_type = type(widget).__name__
-                # Check if it's a tile widget or button
-                if 'Tile' in widget_type or 'StackTile' in widget_type or 'Button' in widget_type:
-                    is_interactive = True
-                    break
-                widget = widget.parent()
-            
-            if not is_interactive:
-                # Click is on background, start dragging
-                self._drag_start_position = event.globalPos()
-                event.accept()
-            else:
-                # Click is on interactive widget, let it handle the event
-                super().mousePressEvent(event)
-        else:
-            super().mousePressEvent(event)
-    
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse move - drag window if dragging started."""
-        if self._drag_start_position is not None and event.buttons() == Qt.MouseButton.LeftButton:
-            # Calculate movement delta
-            delta = event.globalPos() - self._drag_start_position
-            # Move the window
-            new_pos = self.pos() + delta
-            self.move(new_pos)
-            self._drag_start_position = event.globalPos()
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
-    
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse release - stop dragging."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_start_position = None
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
-    
-    def eventFilter(self, obj, event: QEvent) -> bool:
-        """Filter events to capture mouse events for window dragging."""
-        # Only filter events from widgets we're monitoring (self, container, grid_view, content_widget)
-        if obj not in (self, self._desktop_container, 
-                       getattr(self._desktop_container, '_grid_view', None) if self._desktop_container else None,
-                       getattr(getattr(self._desktop_container, '_grid_view', None), '_content_widget', None) if self._desktop_container else None):
-            return False
-        
-        if event.type() == QEvent.Type.MouseButtonPress:
-            mouse_event = event
-            if mouse_event.button() == Qt.MouseButton.LeftButton:
-                # Convert position to window coordinates
-                if obj != self:
-                    global_pos = obj.mapToGlobal(mouse_event.pos())
-                    window_pos = self.mapFromGlobal(global_pos)
-                else:
-                    window_pos = mouse_event.pos()
-                
-                # Check if click is on an interactive widget
-                child_widget = self.childAt(window_pos)
-                is_interactive = False
-                widget = child_widget
-                while widget is not None and widget != self:
-                    widget_type = type(widget).__name__
-                    if 'Tile' in widget_type or 'StackTile' in widget_type or 'Button' in widget_type:
-                        is_interactive = True
-                        break
-                    widget = widget.parent()
-                
-                if not is_interactive:
-                    self._drag_start_position = mouse_event.globalPos()
-                    return True  # Consume event
-                else:
-                    return False  # Let widget handle it
-        
-        elif event.type() == QEvent.Type.MouseMove:
-            mouse_event = event
-            if self._drag_start_position is not None and mouse_event.buttons() == Qt.MouseButton.LeftButton:
-                delta = mouse_event.globalPos() - self._drag_start_position
-                new_pos = self.pos() + delta
-                self.move(new_pos)
-                self._drag_start_position = mouse_event.globalPos()
-                return True  # Consume event
-        
-        elif event.type() == QEvent.Type.MouseButtonRelease:
-            mouse_event = event
-            if mouse_event.button() == Qt.MouseButton.LeftButton and self._drag_start_position is not None:
-                self._drag_start_position = None
-                return True  # Consume event
-        
-        return False  # Let other events pass through
     
     

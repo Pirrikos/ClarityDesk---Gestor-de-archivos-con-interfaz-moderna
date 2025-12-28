@@ -70,8 +70,25 @@ def scan_files(folder_path: str) -> list[str]:
     if not folder_path:
         return []
     
+    # CRÍTICO: Si es Desktop Focus pero es la carpeta Clarity, escanear Clarity directamente
+    # No usar scan_desktop_files() que escanea el escritorio completo
     if is_desktop_focus(folder_path):
-        return scan_desktop_files()
+        from app.services.desktop_path_helper import get_clarity_folder_path, get_desktop_path
+        from app.services.path_utils import normalize_path
+        
+        normalized_path = normalize_path(folder_path)
+        normalized_desktop = normalize_path(get_desktop_path())
+        normalized_clarity = normalize_path(get_clarity_folder_path())
+        
+        # Si es la carpeta Clarity, escanear Clarity directamente
+        if normalized_path == normalized_clarity:
+            return scan_folder_files(folder_path)
+        # Si es el escritorio completo (o virtual path), usar scan_desktop_files()
+        elif normalized_path == normalized_desktop:
+            return scan_desktop_files()
+        else:
+            # Virtual path (DESKTOP_FOCUS_PATH) - usar scan_desktop_files()
+            return scan_desktop_files()
     elif folder_path == TRASH_FOCUS_PATH:
         return scan_trash_files()
     else:

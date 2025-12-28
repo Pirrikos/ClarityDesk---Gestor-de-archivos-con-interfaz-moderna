@@ -11,7 +11,7 @@ from typing import Optional, Callable
 from PySide6.QtCore import QMimeData
 
 from app.managers.tab_manager import TabManager
-from app.services.desktop_path_helper import get_clarity_folder_path, is_desktop_focus
+from app.services.desktop_path_helper import get_desktop_path, is_desktop_focus
 from app.services.desktop_operations import is_file_in_dock
 from app.services.file_delete_service import delete_file
 
@@ -85,7 +85,7 @@ def is_same_folder_drop(source_path: str, tab_manager: Optional[TabManager]) -> 
 
     # Obtener la ruta real del destino (puede ser Desktop Focus)
     if is_desktop_focus(active_folder):
-        real_active_folder = get_clarity_folder_path()
+        real_active_folder = get_desktop_path()
     else:
         real_active_folder = active_folder
 

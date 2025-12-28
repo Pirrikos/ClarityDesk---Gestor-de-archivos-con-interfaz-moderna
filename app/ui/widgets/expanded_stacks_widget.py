@@ -116,6 +116,8 @@ class StackPage(QWidget):
                 path = tile.get_file_path()
                 if path:
                     existing_by_path[path] = tile
+                    # Remover del layout para reposicionar
+                    self._grid_layout.removeWidget(tile)
             except RuntimeError:
                 pass
         
@@ -129,7 +131,6 @@ class StackPage(QWidget):
                 del existing_by_path[file_path]
             else:
                 # Crear nuevo tile
-                # FileTile emite open_file a través de su _parent_view
                 tile = create_file_tile(
                     file_path, view, view._icon_service, view._state_manager,
                     dock_style=True
@@ -143,7 +144,6 @@ class StackPage(QWidget):
         # Eliminar tiles que ya no se necesitan
         for tile in existing_by_path.values():
             try:
-                self._grid_layout.removeWidget(tile)
                 tile.setParent(None)
                 tile.deleteLater()
             except RuntimeError:

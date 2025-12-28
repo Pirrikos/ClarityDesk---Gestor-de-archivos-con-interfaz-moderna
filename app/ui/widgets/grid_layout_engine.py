@@ -445,6 +445,29 @@ def _build_stack_tiles(view, items_to_render: list, grid_layout: QGridLayout) ->
         
         col_offset = 3
     
+    # Eliminar tiles de stacks que ya no existen
+    from app.ui.widgets.file_stack_tile import FileStackTile
+    
+    # Calcular cuántos stacks nuevos hay
+    new_stacks_count = len(items_to_render) if view._stacks else 0
+    
+    # Encontrar y eliminar tiles de stacks en columnas que ya no tienen stacks
+    col_to_check = col_offset
+    while True:
+        existing_item = grid_layout.itemAtPosition(stack_row, col_to_check)
+        if not existing_item:
+            break
+        widget = existing_item.widget()
+        if widget and isinstance(widget, FileStackTile):
+            # Si esta columna está más allá del número de stacks nuevos, eliminar
+            if col_to_check >= col_offset + new_stacks_count:
+                grid_layout.removeWidget(widget)
+                # Limpiar badge antes de eliminar (está en parent diferente)
+                if hasattr(widget, '_cleanup_badge'):
+                    widget._cleanup_badge()
+                widget.deleteLater()
+        col_to_check += 1
+    
     # Reutilizar stack tiles existentes en lugar de recrearlos
     for idx, item in enumerate(items_to_render):
         col = idx + col_offset
@@ -455,19 +478,33 @@ def _build_stack_tiles(view, items_to_render: list, grid_layout: QGridLayout) ->
             # Buscar tile existente en esta posición
             existing_item = grid_layout.itemAtPosition(stack_row, col)
             existing_tile = None
+            widget_to_remove = None
+            
             if existing_item and existing_item.widget():
                 widget = existing_item.widget()
                 # Verificar si es un FileStackTile y corresponde al mismo stack_type
-                from app.ui.widgets.file_stack_tile import FileStackTile
                 if isinstance(widget, FileStackTile):
-                    # Verificar que corresponde al mismo stack_type
                     if hasattr(widget, '_file_stack') and widget._file_stack.stack_type == stack_type:
                         existing_tile = widget
+                    else:
+                        # Tile de tipo diferente - marcar para eliminar
+                        widget_to_remove = widget
+            
+            # Eliminar tile antiguo de tipo diferente si existe
+            if widget_to_remove:
+                grid_layout.removeWidget(widget_to_remove)
+                # Limpiar badge antes de eliminar (está en parent diferente)
+                if hasattr(widget_to_remove, '_cleanup_badge'):
+                    widget_to_remove._cleanup_badge()
+                widget_to_remove.deleteLater()
             
             if existing_tile:
-                # Reutilizar tile existente - solo actualizar badge si es necesario
+                # Reutilizar tile existente
                 tile = existing_tile
-                # No repintar ni animar - solo actualizar badge
+                # Actualizar el stack interno con los nuevos archivos
+                tile._file_stack = stack
+                # Forzar actualización del badge (resetear _last_count para forzar update)
+                tile._last_count = -1
                 QTimer.singleShot(0, tile.update_badge_count)
             else:
                 # Crear nuevo tile solo si no existe

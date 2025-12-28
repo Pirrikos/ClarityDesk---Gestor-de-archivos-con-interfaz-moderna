@@ -8,7 +8,7 @@ Supports navigation, PDF multi-page viewing, and animations.
 import uuid
 from typing import Optional
 
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import QSize, Qt, QTimer, QPoint
 from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget, QStackedLayout, QProgressBar, QApplication
 
@@ -33,6 +33,9 @@ from app.ui.windows.quick_preview_constants import (
     BORDER_COLOR_DARK,
     OUTER_BORDER_WIDTH,
 )
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class QuickPreviewWindow(QWidget):
@@ -80,7 +83,10 @@ class QuickPreviewWindow(QWidget):
         self._zoom = 1.0
         self._thumbs_loading = False
         self._current_request_id: Optional[str] = None  # R1: Track current request
+        self._is_closing = False  # Flag para indicar que se está cerrando
         
+        # Variables para arrastrar la ventana
+        self._drag_position: Optional[QPoint] = None
         
         self._setup_ui()
         self._loader = QuickPreviewLoader(self._cache, self._pdf_handler)
@@ -118,6 +124,39 @@ class QuickPreviewWindow(QWidget):
         
         header_widget = self._header.create_header()
         self._header_widget = header_widget  # guardar referencia para medir altura
+        # Configurar el callback de cerrar desde el inicio
+        self._header.set_close_callback(self.close)
+        
+        # Crear funciones wrapper que capturen el widget correcto
+        def make_mouse_press_handler(widget):
+            def handler(event):
+                self._header_mouse_press(event, widget)
+            return handler
+        
+        def make_mouse_move_handler(widget):
+            def handler(event):
+                self._header_mouse_move(event, widget)
+            return handler
+        
+        def make_mouse_release_handler(widget):
+            def handler(event):
+                self._header_mouse_release(event, widget)
+            return handler
+        
+        # Hacer que el header y sus hijos sean movibles para arrastrar la ventana
+        header_widget.mousePressEvent = make_mouse_press_handler(header_widget)
+        header_widget.mouseMoveEvent = make_mouse_move_handler(header_widget)
+        header_widget.mouseReleaseEvent = make_mouse_release_handler(header_widget)
+        
+        # También hacer que el label del nombre sea movible
+        name_label = self._header._name_label
+        if name_label:
+            name_label.mousePressEvent = make_mouse_press_handler(name_label)
+            name_label.mouseMoveEvent = make_mouse_move_handler(name_label)
+            name_label.mouseReleaseEvent = make_mouse_release_handler(name_label)
+            # Permitir que el label reciba eventos de mouse
+            name_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        
         main_layout.addWidget(header_widget)
         
         thumbnails_panel = self._thumbnails.create_panel()
@@ -185,6 +224,10 @@ class QuickPreviewWindow(QWidget):
 
     def _on_thumbnails_finished(self) -> None:
         """Callback cuando termina la generación de miniaturas."""
+        # Verificar si la ventana se está cerrando
+        if self._is_closing:
+            return
+        
         self._thumbs_loading = False
         self._show_loading(False)
 
@@ -200,6 +243,10 @@ class QuickPreviewWindow(QWidget):
         if QuickPreviewPdfHandler.is_pdf_or_docx_file(current_path):
             self._show_loading(True, LOADING_DOCUMENT)
             def on_info_finished(is_new_file: bool) -> None:
+                # Verificar si la ventana se está cerrando
+                if self._is_closing:
+                    return
+                
                 if self._pdf_handler.total_pages > 1:
                     self._thumbnails.show()
                     self._thumbs_loading = True
@@ -218,6 +265,10 @@ class QuickPreviewWindow(QWidget):
                 self._current_request_id = request_id
                 
                 def on_page_finished(pixmap: QPixmap) -> None:
+                    # Verificar si la ventana se está cerrando
+                    if self._is_closing:
+                        return
+                    
                     # R1: Validate request_id matches current request
                     if self._current_request_id != request_id:
                         from app.core.logger import get_logger
@@ -248,6 +299,10 @@ class QuickPreviewWindow(QWidget):
                     self._show_loading(False)
                 
                 def on_page_error(msg: str) -> None:
+                    # Verificar si la ventana se está cerrando
+                    if self._is_closing:
+                        return
+                    
                     # R1: Validate request_id matches current request
                     if self._current_request_id != request_id:
                         return  # Stale error, ignore
@@ -264,6 +319,10 @@ class QuickPreviewWindow(QWidget):
                     on_error=on_page_error
                 )
             def on_info_error(err: str) -> None:
+                # Verificar si la ventana se está cerrando
+                if self._is_closing:
+                    return
+                
                 self._image_label.setText("No preview available")
                 self._image_label.setStyleSheet(get_error_label_style())
                 self._show_loading(False)
@@ -365,6 +424,10 @@ class QuickPreviewWindow(QWidget):
     
     def _load_pdf_info(self, path: str) -> None:
         """Load PDF/DOCX information and setup thumbnails."""
+        # Verificar si la ventana se está cerrando
+        if self._is_closing:
+            return
+        
         is_new_file = self._pdf_handler.load_pdf_info(path)
         
         if self._pdf_handler.total_pages > 1:
@@ -399,6 +462,10 @@ class QuickPreviewWindow(QWidget):
     
     def _load_preview(self, use_crossfade: bool = True) -> None:
         """Load and display the file preview."""
+        # Verificar si la ventana se está cerrando antes de cargar
+        if self._is_closing:
+            return
+        
         # Renderizar usando tamaño base; el escalado final usa el tamaño efectivo
         current_path = self._paths[self._index] if self._paths else ""
         
@@ -415,6 +482,10 @@ class QuickPreviewWindow(QWidget):
             self._current_request_id = request_id
             
             def on_page_finished(pixmap: QPixmap) -> None:
+                # Verificar si la ventana se está cerrando
+                if self._is_closing:
+                    return
+                
                 # R1: Validate request_id matches current request
                 if self._current_request_id != request_id:
                     from app.core.logger import get_logger
@@ -443,6 +514,10 @@ class QuickPreviewWindow(QWidget):
                 self._show_loading(False)  # Siempre ocultar loading
             
             def on_page_error(msg: str) -> None:
+                # Verificar si la ventana se está cerrando
+                if self._is_closing:
+                    return
+                
                 # R1: Validate request_id matches current request
                 if self._current_request_id != request_id:
                     return  # Stale error, ignore
@@ -562,17 +637,105 @@ class QuickPreviewWindow(QWidget):
             return
         super().keyPressEvent(event)
     
+    def _header_mouse_press(self, event: QMouseEvent, source_widget: QWidget) -> None:
+        """Handle mouse press on header for window dragging."""
+        # Verificar si el clic es sobre un botón (dejar que el botón maneje el evento)
+        from PySide6.QtWidgets import QPushButton
+        if isinstance(source_widget, QPushButton):
+            QWidget.mousePressEvent(source_widget, event)
+            return
+        
+        # Permitir arrastrar la ventana con el botón izquierdo del ratón desde el header
+        if event.button() == Qt.MouseButton.LeftButton:
+            global_pos = event.globalPosition().toPoint()
+            frame_top_left = self.frameGeometry().topLeft()
+            self._drag_position = global_pos - frame_top_left
+            event.accept()
+        else:
+            QWidget.mousePressEvent(source_widget, event)
+    
+    def _header_mouse_move(self, event: QMouseEvent, source_widget: QWidget) -> None:
+        """Handle mouse move on header for window dragging."""
+        if self._drag_position is not None:
+            if event.buttons() == Qt.MouseButton.LeftButton:
+                global_pos = event.globalPosition().toPoint()
+                new_pos = global_pos - self._drag_position
+                self.move(new_pos)
+                event.accept()
+                return
+            else:
+                self._drag_position = None
+        
+        QWidget.mouseMoveEvent(source_widget, event)
+    
+    def _header_mouse_release(self, event: QMouseEvent, source_widget: QWidget) -> None:
+        """Handle mouse release on header."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_position = None
+        
+        QWidget.mouseReleaseEvent(source_widget, event)
+    
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Handle mouse press events."""
         if self._navigation and self._navigation.handle_mouse_press(event):
             return
+        
         super().mousePressEvent(event)
 
-    def closeEvent(self, event) -> None:
+    def _cancel_all_operations(self) -> None:
+        """Cancel all ongoing operations (PDF rendering, thumbnails, DOCX conversion)."""
+        self._is_closing = True
+        
+        # Invalidar el request_id actual para que los callbacks no se ejecuten
+        self._current_request_id = None
+        
+        # Cancelar todos los workers del preview service sin esperar (cierre inmediato)
         try:
             if hasattr(self, '_preview_service') and self._preview_service:
-                if hasattr(self._preview_service, 'stop_workers'):
-                    self._preview_service.stop_workers()
+                # Cancelar workers sin esperar (cierre inmediato)
+                if hasattr(self._preview_service, '_active_pdf_worker') and self._preview_service._active_pdf_worker:
+                    try:
+                        self._preview_service._active_pdf_worker.cancel()
+                        self._preview_service._active_pdf_worker.quit()
+                        # No esperar - cierre inmediato
+                    except Exception:
+                        pass
+                
+                if hasattr(self._preview_service, '_active_docx_worker') and self._preview_service._active_docx_worker:
+                    try:
+                        self._preview_service._active_docx_worker.cancel()
+                        self._preview_service._active_docx_worker.quit()
+                        # No esperar - cierre inmediato
+                    except Exception:
+                        pass
+                
+                if hasattr(self._preview_service, '_active_thumbs_worker') and self._preview_service._active_thumbs_worker:
+                    try:
+                        self._preview_service._active_thumbs_worker.cancel()
+                        self._preview_service._active_thumbs_worker.quit()
+                        # No esperar - cierre inmediato
+                    except Exception:
+                        pass
         except Exception:
             pass
+    
+    def close(self) -> bool:
+        """Close the preview window, canceling all ongoing operations."""
+        # Marcar como cerrando primero para evitar que los callbacks se ejecuten
+        self._is_closing = True
+        # Invalidar request_id inmediatamente
+        self._current_request_id = None
+        # Ocultar la ventana inmediatamente para feedback visual instantáneo
+        self.hide()
+        # Cancelar operaciones en segundo plano (sin bloquear)
+        QTimer.singleShot(0, self._cancel_all_operations)
+        # Cerrar la ventana inmediatamente
+        return super().close()
+    
+    def closeEvent(self, event) -> None:
+        """Handle window close event, canceling all ongoing operations."""
+        # Cancelar operaciones sin esperar
+        self._cancel_all_operations()
+        # Aceptar el evento de cierre inmediatamente
+        event.accept()
         super().closeEvent(event)

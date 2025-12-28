@@ -61,8 +61,8 @@ def handle_file_drop(
     
     # Obtener la ruta real del destino (puede ser Desktop Focus)
     if is_desktop_focus(active_folder):
-        from app.services.desktop_path_helper import get_clarity_folder_path
-        real_dest_folder = get_clarity_folder_path()
+        from app.services.desktop_path_helper import get_desktop_path
+        real_dest_folder = get_desktop_path()
     else:
         real_dest_folder = active_folder
     

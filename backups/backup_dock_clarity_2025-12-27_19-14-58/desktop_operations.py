@@ -17,6 +17,7 @@ from app.services.desktop_operations_scan import (
     is_file_in_dock
 )
 from app.services.desktop_drag_ops import (
+    copy_into_dock,
     move_into_desktop,
     move_out_of_desktop,
     rename_desktop_file
@@ -25,6 +26,7 @@ from app.services.desktop_drag_ops import (
 __all__ = [
     'load_desktop_files',
     'is_file_in_dock',
+    'copy_into_dock',
     'move_into_desktop',
     'move_out_of_desktop',
     'rename_desktop_file',

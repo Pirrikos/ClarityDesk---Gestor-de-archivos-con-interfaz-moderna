@@ -49,7 +49,8 @@ def _get_file_preview_impl(path: str, size: QSize, icon_provider) -> QPixmap:
         return _get_folder_preview_impl(path, size, icon_provider)
     
     # Para accesos directos (.lnk), verificar si apuntan a una carpeta
-    ext = os.path.splitext(path)[1].lower()
+    # R11: Normalize extension in single entry point
+    ext = normalize_extension(path)
     if ext == '.lnk':
         try:
             import win32com.client

@@ -1,7 +1,8 @@
 {
   "labels": {
-    "pending": "probando",
-    "review": "SIN REVISAR"
+    "pending": "HECHO",
+    "review": "SIN REVISAR",
+    "delivered": "ENVIADO"
   },
   "order": [
     "pending",

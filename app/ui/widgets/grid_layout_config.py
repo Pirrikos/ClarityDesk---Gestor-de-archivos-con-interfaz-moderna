@@ -8,6 +8,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGridLayout
 
 
+# Dock layout constants
+DOCK_TILE_WIDTH = 85
+DOCK_TILE_SPACING = 16
+DOCK_EXPANDED_MARGIN = 32
+DOCK_DEFAULT_FILES_PER_ROW = 5
+
+
 def setup_dock_layout_config(grid_layout: QGridLayout) -> None:
     """Configure grid layout for Dock style."""
     grid_layout.setSpacing(12)
@@ -52,4 +59,20 @@ def calculate_expansion_height(
     # Usar cálculo consistente con ExpandedStacksWidget
     from app.ui.widgets.expanded_stacks_widget import ExpandedStacksWidget
     return ExpandedStacksWidget.calculate_height_for_rows(num_rows)
+
+
+def calculate_files_per_row(window_width: int) -> int:
+    """
+    Calculate files per row based on window width.
+    
+    Args:
+        window_width: Width of the dock window in pixels.
+        
+    Returns:
+        Number of files that fit per row.
+    """
+    available = window_width - DOCK_EXPANDED_MARGIN
+    if available <= 0:
+        return DOCK_DEFAULT_FILES_PER_ROW
+    return max(1, available // (DOCK_TILE_WIDTH + DOCK_TILE_SPACING))
 

@@ -61,10 +61,8 @@ def rename_file(
     # Handle conflict by appending number
     dest_path = resolve_conflict(dest_path)
 
-    # Block watcher events during rename
-    if watcher and hasattr(watcher, 'ignore_events'):
-        watcher.ignore_events(True)
-
+    # Rename file - watcher will detect changes automatically via debounce and snapshot comparison
+    # No need to block watcher - debounce prevents refresh loops
     try:
         source_path.rename(dest_path)
         logger.info(f"Renamed file: {file_path} -> {dest_path}")
@@ -78,9 +76,6 @@ def rename_file(
     except Exception as e:
         logger.error(f"Unexpected error renaming {file_path} to {new_name}: {e}", exc_info=True)
         result = FileOperationResult.error(f"Failed to rename file: {str(e)}")
-    finally:
-        if watcher and hasattr(watcher, 'ignore_events'):
-            watcher.ignore_events(False)
     
     return result
 

@@ -43,10 +43,8 @@ def move_file(
     # Handle destination conflict by appending number
     dest_path = resolve_conflict(dest_path)
 
-    # Block watcher events during move operation
-    if watcher and hasattr(watcher, 'ignore_events'):
-        watcher.ignore_events(True)
-    
+    # Move file - watcher will detect changes automatically via debounce and snapshot comparison
+    # No need to block watcher - debounce prevents refresh loops
     try:
         shutil.move(str(source_path), str(dest_path))
         logger.info(f"Moved file: {source} -> {dest_path}")
@@ -63,10 +61,6 @@ def move_file(
     except Exception as e:
         logger.error(f"Unexpected error moving {source} to {destination_folder}: {e}", exc_info=True)
         result = FileOperationResult.error(f"Failed to move: {str(e)}")
-    finally:
-        # Unblock watcher events
-        if watcher and hasattr(watcher, 'ignore_events'):
-            watcher.ignore_events(False)
     
     return result
 
@@ -124,10 +118,8 @@ def copy_path(
     # Handle destination conflict by appending number
     dest_path = resolve_conflict(dest_path)
     
-    # Block watcher events during copy operation
-    if watcher and hasattr(watcher, 'ignore_events'):
-        watcher.ignore_events(True)
-    
+    # Copy file/folder - watcher will detect changes automatically via debounce and snapshot comparison
+    # No need to block watcher - debounce prevents refresh loops
     try:
         # Detect if source is file or folder and copy accordingly
         if os.path.isdir(source):
@@ -152,9 +144,5 @@ def copy_path(
     except Exception as e:
         logger.error(f"Unexpected error copying {source} to {destination_folder}: {e}", exc_info=True)
         result = FileOperationResult.error(f"Failed to copy: {str(e)}")
-    finally:
-        # Unblock watcher events
-        if watcher and hasattr(watcher, 'ignore_events'):
-            watcher.ignore_events(False)
     
     return result

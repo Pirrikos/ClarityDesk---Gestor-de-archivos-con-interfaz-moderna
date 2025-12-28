@@ -6,6 +6,7 @@ Emits signal on double-click to open file.
 """
 
 import os
+from math import ceil
 from typing import List, Optional, Tuple, Union, TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QPoint, QTimer, Signal
@@ -28,6 +29,7 @@ from app.ui.widgets.file_grid_view_scroll import create_scroll_area, configure_s
 from app.ui.widgets.file_stack_tile import FileStackTile
 from app.ui.widgets.file_tile import FileTile
 from app.ui.widgets.grid_content_widget import GridContentWidget
+from app.ui.widgets.grid_layout_config import calculate_files_per_row, DOCK_DEFAULT_FILES_PER_ROW
 from app.ui.widgets.grid_layout_engine import build_dock_layout, build_normal_grid
 from app.ui.widgets.expanded_stacks_widget import ExpandedStacksWidget
 from app.ui.widgets.grid_selection_logic import (
@@ -335,6 +337,9 @@ class FileGridView(QWidget):
             # Emit stacks count change to adjust window width
             stacks_count = len(self._stacks) if self._stacks else 0
             self.stacks_count_changed.emit(stacks_count)
+            
+            # Actualizar ExpandedStacksWidget si hay un stack expandido
+            self._update_expanded_stack_if_visible()
         else:
             build_normal_grid(self, items_to_render, self._grid_layout)
         
@@ -356,6 +361,45 @@ class FileGridView(QWidget):
     def _emit_expansion_height(self) -> None:
         """Calculate and emit the height needed for expanded stacks."""
         emit_expansion_height(self)
+    
+    def _update_expanded_stack_if_visible(self) -> None:
+        """Actualizar ExpandedStacksWidget si hay un stack expandido con nuevos archivos."""
+        if not self._expanded_stacks_widget:
+            return
+        
+        current_stack_type = self._expanded_stacks_widget.get_current_stack_type()
+        if not current_stack_type:
+            return
+        
+        # Buscar archivos actuales del stack expandido
+        files = self._expanded_stacks.get(current_stack_type, [])
+        if not files:
+            # Stack ya no tiene archivos - ocultar y ajustar altura
+            self._expanded_stacks_widget.hide_stack()
+            self._dock_rows_state = 0
+            self._emit_expansion_height()
+            return
+        
+        # Calcular files_per_row basado en el ancho actual
+        files_per_row = DOCK_DEFAULT_FILES_PER_ROW
+        if self._desktop_window:
+            width = self._desktop_window.width()
+            files_per_row = calculate_files_per_row(width)
+        
+        # Calcular nuevo número de filas
+        num_rows = ceil(len(files) / files_per_row) if files_per_row > 0 else 1
+        num_rows = max(1, min(3, num_rows))
+        
+        # Actualizar estado de filas y emitir cambio de altura si cambió
+        old_rows = getattr(self, '_dock_rows_state', 0) or 0
+        if num_rows != old_rows:
+            self._dock_rows_state = num_rows
+            self._emit_expansion_height()
+        
+        # Actualizar el widget con los archivos actuales
+        self._expanded_stacks_widget.show_stack(
+            current_stack_type, files, self, files_per_row
+        )
 
     def dragEnterEvent(self, event) -> None:
         """Handle drag enter for file drop on main widget."""
