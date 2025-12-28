@@ -58,7 +58,9 @@ def create_name_cell(
     font: QFont
 ) -> QTableWidgetItem:
     filename = os.path.basename(file_path)
-    name_item = QTableWidgetItem(filename)
+    # Eliminar extensión del nombre ya que se muestra en la columna "Tipo"
+    name_without_ext, ext = os.path.splitext(filename)
+    name_item = QTableWidgetItem(name_without_ext)
     name_item.setFont(font)
     icon = _get_file_icon(file_path, icon_service)
     if icon:

@@ -132,14 +132,18 @@ class PreviewPdfService:
         
         worker = PdfRenderWorker(pdf_path, max_size, page_num, request_id)
         self._active_pdf_worker = worker
+        logger.debug(f"render_pdf_page_async: Created worker, request_id={request_id}, pdf_path={pdf_path}, page_num={page_num}")
         
         def handle_finished(qimage: QImage, result_request_id: str) -> None:
+            logger.debug(f"handle_finished: received request_id={result_request_id}, current={self._current_request_id}, qimage null={qimage.isNull() if qimage else 'None'}")
             try:
                 if result_request_id != self._current_request_id:
+                    logger.debug(f"Ignoring stale result (current: {self._current_request_id}, received: {result_request_id})")
                     return
                 
                 # Prioridad 1: Convertir QImage a QPixmap en el hilo GUI
                 if qimage.isNull():
+                    logger.warning(f"Received null QImage, using fallback")
                     if on_error:
                         try:
                             on_error("Failed to render PDF page")
@@ -153,7 +157,9 @@ class PreviewPdfService:
                     return
                 
                 pixmap = QPixmap.fromImage(qimage)
+                logger.debug(f"handle_finished: converted QImage to QPixmap, null={pixmap.isNull()}, size={pixmap.width()}x{pixmap.height() if not pixmap.isNull() else 'N/A'}")
                 if not validate_pixmap(pixmap):
+                    logger.warning(f"Received invalid pixmap after conversion, using fallback")
                     if on_error:
                         try:
                             on_error("Failed to render PDF page")
@@ -167,6 +173,7 @@ class PreviewPdfService:
                     return
                 
                 self._active_pdf_worker = None
+                logger.debug(f"handle_finished: calling on_finished callback")
                 try:
                     on_finished(pixmap)
                 except Exception as e:
@@ -178,6 +185,7 @@ class PreviewPdfService:
         def handle_error(error_msg: str, result_request_id: str) -> None:
             try:
                 if result_request_id != self._current_request_id:
+                    logger.debug("Ignoring stale error")
                     return
                 
                 self._active_pdf_worker = None
@@ -197,7 +205,9 @@ class PreviewPdfService:
         
         worker.finished.connect(handle_finished)
         worker.error.connect(handle_error)
+        logger.debug(f"render_pdf_page_async: Connected signals, starting worker, request_id={request_id}")
         worker.start()
+        logger.debug(f"render_pdf_page_async: Worker started, request_id={request_id}, worker.isRunning()={worker.isRunning()}")
         
         return request_id
     
@@ -246,6 +256,7 @@ class PreviewPdfService:
         def _on_progress(page_num: int, qimage: QImage, result_request_id: str):
             try:
                 if result_request_id != request_id:
+                    logger.debug(f"Ignoring stale thumbnail progress (current: {request_id}, received: {result_request_id})")
                     return
                 # Prioridad 1: Convertir QImage a QPixmap en el hilo GUI
                 if qimage.isNull():
@@ -262,6 +273,7 @@ class PreviewPdfService:
         def _on_finished(result_request_id: str):
             try:
                 if result_request_id != request_id:
+                    logger.debug("Ignoring stale thumbnail finished")
                     return
                 self._active_thumbs_worker = None
                 try:
@@ -281,6 +293,7 @@ class PreviewPdfService:
         def _on_error(msg: str, result_request_id: str):
             try:
                 if result_request_id != request_id:
+                    logger.debug("Ignoring stale thumbnail error")
                     return
                 self._active_thumbs_worker = None
                 if on_error:
@@ -324,20 +337,30 @@ class PreviewPdfService:
         Returns:
             request_id: Unique identifier for this request.
         """
+        logger.debug(f"convert_docx_to_pdf_async: STARTED, docx_path={docx_path}")
         # Prioridad 0: Asegurar que solo hay un render activo
         if self._active_docx_worker and self._active_docx_worker.isRunning():
+            logger.debug(f"convert_docx_to_pdf_async: Previous worker running, canceling")
+            # Invalidar request_id anterior antes de cancelar (docx no usa _current_request_id del servicio)
             self._cancel_worker(self._active_docx_worker)
+            # Esperar a que termine completamente antes de continuar
             if self._active_docx_worker.isRunning():
-                logger.warning(f"Previous worker still running, rejecting request")
-                return None
+                logger.warning(f"convert_docx_to_pdf_async: Previous worker still running, rejecting request")
+                return None  # Worker anterior aún activo, rechazar nuevo request
         
+        # R1: Generate unique request_id
         request_id = str(uuid.uuid4())
+        logger.debug(f"convert_docx_to_pdf_async: Generated request_id={request_id}")
+        
         worker = DocxConvertWorker(docx_path, request_id)
         self._active_docx_worker = worker
+        logger.debug(f"convert_docx_to_pdf_async: Created worker")
         
         def handle_finished(pdf_path: str, result_request_id: str) -> None:
+            logger.debug(f"convert_docx_to_pdf_async.handle_finished: STARTED, pdf_path={pdf_path}, exists={os.path.exists(pdf_path) if pdf_path else False}, request_id={result_request_id}")
             try:
                 if not pdf_path or not os.path.exists(pdf_path):
+                    logger.warning("Invalid PDF path result, using fallback")
                     if on_error:
                         try:
                             on_error("Failed to convert DOCX to PDF")
@@ -351,6 +374,7 @@ class PreviewPdfService:
                     return
                 
                 self._active_docx_worker = None
+                logger.debug(f"convert_docx_to_pdf_async.handle_finished: Calling on_finished callback")
                 try:
                     on_finished(pdf_path)
                 except Exception as e:
@@ -360,6 +384,7 @@ class PreviewPdfService:
                 self._active_docx_worker = None
         
         def handle_error(error_msg: str, result_request_id: str) -> None:
+            logger.error(f"convert_docx_to_pdf_async.handle_error: STARTED, error_msg={error_msg}, request_id={result_request_id}")
             try:
                 self._active_docx_worker = None
                 if on_error:
@@ -378,7 +403,9 @@ class PreviewPdfService:
         
         worker.finished.connect(handle_finished)
         worker.error.connect(handle_error)
+        logger.debug(f"convert_docx_to_pdf_async: Connected signals, starting worker")
         worker.start()
+        logger.debug(f"convert_docx_to_pdf_async: Worker started, request_id={request_id}, worker.isRunning()={worker.isRunning()}")
         
         return request_id
 

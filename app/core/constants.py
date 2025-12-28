@@ -52,8 +52,8 @@ APP_HEADER_BORDER = "#2A2E36"
 MENU_BG = "#1A1D22"
 MENU_BORDER = "#2A2E36"
 MENU_HOVER_BG = "#20242A"
-MENU_ACCENT = "#3D7BFF"
-MENU_ACCENT_BORDER = "#2F61CC"
+MENU_ACCENT = "#9D4EDD"  # Morado
+MENU_ACCENT_BORDER = "#7B2CBF"  # Morado oscuro
 
 # Menu colors (additional variants)
 MENU_BG_ALPHA = "rgba(26, 29, 34, 0.95)"

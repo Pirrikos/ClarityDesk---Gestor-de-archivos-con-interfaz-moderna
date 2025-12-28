@@ -782,7 +782,7 @@ class MainWindow(QWidget):
             self._preview_service,
             file_paths=allowed_files,
             start_index=0,
-            parent=None
+            parent=self
         )
 
         self._current_preview_window = preview_window

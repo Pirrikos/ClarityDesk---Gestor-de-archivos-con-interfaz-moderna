@@ -139,6 +139,7 @@ class RenameStateDialog(QDialog):
         layout.addWidget(name_label)
         
         self._name_input = QLineEdit()
+        self._name_input.setMaxLength(17)  # Límite máximo de 17 caracteres
         self._name_input.setStyleSheet("""
             QLineEdit {
                 padding: 8px;

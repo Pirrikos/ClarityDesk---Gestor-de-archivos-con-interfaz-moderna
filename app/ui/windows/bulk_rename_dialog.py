@@ -241,7 +241,11 @@ class BulkRenameDialog(QDialog):
             use_title_case=use_title_case
         )
         
-        is_valid, error_msg = self._rename_service.validate_names(new_names, self._base_dir)
+        is_valid, error_msg = self._rename_service.validate_names(
+            new_names, 
+            self._base_dir, 
+            original_paths=self._file_paths
+        )
         if not is_valid:
             user_friendly_msg = (
                 f"No se pueden renombrar los archivos:\n\n{error_msg}\n\n"

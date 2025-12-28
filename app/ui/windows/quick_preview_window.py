@@ -268,6 +268,8 @@ class QuickPreviewWindow(QWidget):
     
     def _on_thumbnails_finished(self) -> None:
         """Callback cuando termina la generación de miniaturas."""
+        if self._is_closing:
+            return
         if not self._safe_widget_check():
             return
         try:
@@ -312,6 +314,8 @@ class QuickPreviewWindow(QWidget):
                 max_size = self._effective_content_max_size()
                 
                 def on_page_finished(pixmap: QPixmap) -> None:
+                    if self._is_closing:
+                        return
                     if not self._safe_widget_check():
                         return
                     
@@ -350,6 +354,8 @@ class QuickPreviewWindow(QWidget):
                         logger.error(f"Error in on_page_finished: {e}", exc_info=True)
                 
                 def on_page_error(msg: str) -> None:
+                    if self._is_closing:
+                        return
                     if not self._safe_widget_check():
                         return
                     
@@ -522,6 +528,8 @@ class QuickPreviewWindow(QWidget):
     
     def _on_thumbnail_clicked(self, page_num: int) -> None:
         """Handle thumbnail click to change page."""
+        if self._is_closing:
+            return
         if 0 <= page_num < self._pdf_handler.total_pages:
             self._pdf_handler.current_page = page_num
             self._load_preview(use_crossfade=True)
@@ -544,6 +552,8 @@ class QuickPreviewWindow(QWidget):
             max_size = self._effective_content_max_size()
             
             def on_page_finished(pixmap: QPixmap) -> None:
+                if self._is_closing:
+                    return
                 if not self._safe_widget_check():
                     return
                 
@@ -577,6 +587,8 @@ class QuickPreviewWindow(QWidget):
                     logger.error(f"Error in _load_preview on_page_finished: {e}", exc_info=True)
             
             def on_page_error(msg: str) -> None:
+                if self._is_closing:
+                    return
                 if not self._safe_widget_check():
                     return
                 
@@ -652,16 +664,22 @@ class QuickPreviewWindow(QWidget):
         self._update_navigation_state()
 
     def _on_zoom_in(self) -> None:
+        if self._is_closing:
+            return
         self._zoom = min(self._zoom * 1.25, 6.0)
         self._header.set_zoom_percent(int(self._zoom * 100))
         self._load_preview(use_crossfade=False)
 
     def _on_zoom_out(self) -> None:
+        if self._is_closing:
+            return
         self._zoom = max(self._zoom / 1.25, 0.2)
         self._header.set_zoom_percent(int(self._zoom * 100))
         self._load_preview(use_crossfade=False)
 
     def _on_zoom_reset(self) -> None:
+        if self._is_closing:
+            return
         self._zoom = 1.0
         self._header.set_zoom_percent(100)
         self._load_preview(use_crossfade=False)
@@ -676,6 +694,8 @@ class QuickPreviewWindow(QWidget):
     
     def _prev(self) -> None:
         """Navigate to previous file."""
+        if self._is_closing:
+            return
         if self._index > 0:
             self._index -= 1
             self._pdf_handler.current_page = 0
@@ -683,6 +703,8 @@ class QuickPreviewWindow(QWidget):
     
     def _next(self) -> None:
         """Navigate to next file."""
+        if self._is_closing:
+            return
         if self._index < len(self._paths) - 1:
             self._index += 1
             self._pdf_handler.current_page = 0
@@ -690,6 +712,8 @@ class QuickPreviewWindow(QWidget):
     
     def _prev_page(self) -> None:
         """Navigate to previous PDF page."""
+        if self._is_closing:
+            return
         if self._pdf_handler.current_page > 0:
             self._pdf_handler.current_page -= 1
             self._load_preview(use_crossfade=True)
@@ -698,6 +722,8 @@ class QuickPreviewWindow(QWidget):
     
     def _next_page(self) -> None:
         """Navigate to next PDF page."""
+        if self._is_closing:
+            return
         if self._pdf_handler.current_page < self._pdf_handler.total_pages - 1:
             self._pdf_handler.current_page += 1
             self._load_preview(use_crossfade=True)

@@ -1,30 +1,54 @@
 """
-PathFooterWidget - Simple footer widget that displays file path.
+PathFooterWidget - Footer widget that displays file path with button to open containing folder.
 
-Shows the full path of the selected file.
-Non-interactive, no logic, just displays text.
+Shows the full path of the selected file and a button to open the containing folder.
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+
+from app.services.file_open_service import open_containing_folder
 
 
 class PathFooterWidget(QWidget):
-    """Simple footer widget that displays a file path."""
+    """Footer widget that displays a file path with button to open containing folder."""
     
     def __init__(self, parent=None):
         """Initialize footer widget."""
         super().__init__(parent)
+        self._current_path: str = ""
         self._setup_ui()
     
     def _setup_ui(self) -> None:
         """Setup UI layout and styling."""
-        from PySide6.QtWidgets import QHBoxLayout
-        
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 6, 12, 6)
-        layout.setSpacing(0)
+        layout.setSpacing(8)
         
+        # Botón para abrir carpeta contenedora
+        self._open_folder_button = QPushButton("Abrir carpeta contenedora", self)
+        self._open_folder_button.setStyleSheet("""
+            QPushButton {
+                color: rgba(100, 100, 100, 1.0);
+                font-size: 11px;
+                background-color: transparent;
+                border: 1px solid rgba(150, 150, 150, 0.3);
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QPushButton:hover {
+                background-color: rgba(150, 150, 150, 0.1);
+                border-color: rgba(150, 150, 150, 0.5);
+            }
+            QPushButton:pressed {
+                background-color: rgba(150, 150, 150, 0.2);
+            }
+        """)
+        self._open_folder_button.clicked.connect(self._on_open_folder_clicked)
+        self._open_folder_button.setVisible(False)
+        layout.addWidget(self._open_folder_button)
+        
+        # Etiqueta con la ruta del archivo
         self._label = QLabel(self)
         self._label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self._label.setText("")
@@ -37,7 +61,12 @@ class PathFooterWidget(QWidget):
             }
         """)
         
-        layout.addWidget(self._label)
+        layout.addWidget(self._label, 1)  # Stretch=1 para que ocupe el espacio restante
+    
+    def _on_open_folder_clicked(self) -> None:
+        """Handle click on open folder button."""
+        if self._current_path:
+            open_containing_folder(self._current_path)
     
     def set_text(self, text: str) -> None:
         """
@@ -46,10 +75,13 @@ class PathFooterWidget(QWidget):
         Args:
             text: Text to display (file path). Empty string to clear.
         """
+        self._current_path = text
         if text:
             self._label.setText(text)
             self._label.setVisible(True)
+            self._open_folder_button.setVisible(True)
         else:
             self._label.setText("")
             self._label.setVisible(False)
+            self._open_folder_button.setVisible(False)
 

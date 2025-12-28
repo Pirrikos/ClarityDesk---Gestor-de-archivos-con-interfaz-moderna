@@ -201,7 +201,7 @@ class StateSectionWidget(QWidget):
         # Usar la primera fuente disponible de la familia del sidebar
         font_family_list = FONT_FAMILY.replace('"', '').split(',')
         font.setFamily(font_family_list[0].strip() if font_family_list else "Segoe UI")
-        font.setPixelSize(13)  # Tamaño 13px igual que las carpetas
+        font.setPixelSize(11)  # Tamaño 11px
         font.setWeight(QFont.Weight.Medium)  # Peso Medium para el título (igual que carpetas raíz)
         painter.setFont(font)
         
@@ -223,7 +223,7 @@ class StateSectionWidget(QWidget):
         separator_x = self._calculate_separator_line_x(viewport_width)
         
         # Dibujar texto "ESTADOS" (recortar si hay línea separadora)
-        text_color = QColor(TEXT_PRIMARY)
+        text_color = QColor("#666666")  # Gris oscuro
         painter.setPen(QPen(text_color))
         text_x = self.CONTAINER_PADDING_LEFT + self.TITLE_ICON_SIZE.width() + 4  # Icono + espacio
         text_clip_right = separator_x - self.SEPARATOR_VERTICAL_TEXT_MARGIN if separator_x > 0 else rect.width()
@@ -310,10 +310,10 @@ class StateSectionWidget(QWidget):
                 self.COLOR_CIRCLE_RADIUS * 2
             )
             
-            # Texto del label en minúsculas
+            # Texto del label con primera letra en mayúscula
             label = self._state_label_manager.get_label(state) if self._state_label_manager else STATE_LABELS.get(state, state.lower())
-            # Asegurar que esté en minúsculas
-            label = label.lower() if label else state.lower()
+            # Capitalizar primera letra (primera en mayúscula, resto en minúsculas)
+            label = label.capitalize() if label else state.capitalize()
             
             # Color del texto (igual que las carpetas)
             text_color = QColor(230, 230, 230)  # TEXT_PRIMARY
@@ -416,7 +416,7 @@ class StateSectionWidget(QWidget):
             font = QFont()
             font_family_list = FONT_FAMILY.replace('"', '').split(',')
             font.setFamily(font_family_list[0].strip() if font_family_list else "Segoe UI")
-            font.setPixelSize(13)
+            font.setPixelSize(11)  # Tamaño 11px (igual que paintEvent)
             font_metrics = QFontMetrics(font)
             text_x = self.CONTAINER_PADDING_LEFT + self.TITLE_ICON_SIZE.width() + 4
             text_width = font_metrics.horizontalAdvance("ESTADOS")

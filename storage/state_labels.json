@@ -1,6 +1,6 @@
 {
   "labels": {
-    "pending": "HECHO",
+    "pending": "REGRESION",
     "review": "SIN REVISAR",
     "delivered": "ENVIADO"
   },

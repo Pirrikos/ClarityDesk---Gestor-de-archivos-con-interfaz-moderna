@@ -118,33 +118,52 @@ class RenameService:
         
         return new_name
     
-    def validate_names(self, names: list[str], base_dir: str) -> tuple[bool, Optional[str]]:
+    def validate_names(
+        self, 
+        names: list[str], 
+        base_dir: str, 
+        original_paths: Optional[list[str]] = None
+    ) -> tuple[bool, Optional[str]]:
         """
-        Validate that new names don't conflict with existing files.
+        Validate that new names don't conflict with existing files in filesystem.
+        
+        Only validates against filesystem real (os.path.exists), excluding files
+        that are being renamed. Internal batch conflicts are resolved automatically
+        by {n} numbering or conflict resolution in rename_file().
         
         Args:
             names: List of new filenames.
             base_dir: Directory where files will be renamed.
+            original_paths: Optional list of original file paths being renamed.
+                          Used to exclude them from validation.
         
         Returns:
             Tuple of (is_valid, error_message).
         """
-        try:
-            existing_files = set(os.listdir(base_dir))
-        except OSError:
-            existing_files = set()
+        # Build set of original filenames being renamed (to exclude from validation)
+        original_names = set()
+        if original_paths:
+            for path in original_paths:
+                original_names.add(os.path.basename(path))
         
+        # Validate each name against filesystem real
         for name in names:
-            if name in existing_files:
-                return False, f"El archivo '{name}' ya existe"
-            
+            # Validate empty name
             if not name or name.strip() == "":
                 return False, "No se permiten nombres vacíos"
             
+            # Validate invalid characters
             invalid_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
             for char in invalid_chars:
                 if char in name:
                     return False, f"El nombre contiene caracteres inválidos: {char}"
+            
+            # Validate against filesystem real (exclude files being renamed)
+            dest_path = os.path.join(base_dir, name)
+            if os.path.exists(dest_path):
+                # Only error if the existing file is NOT one being renamed
+                if name not in original_names:
+                    return False, f"El archivo '{name}' ya existe en el directorio"
         
         return True, None
     

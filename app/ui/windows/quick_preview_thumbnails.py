@@ -143,33 +143,42 @@ class QuickPreviewThumbnails:
         def on_finished(result_request_id: str):
             try:
                 if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
+                    logger.debug(f"Ignoring stale thumbnail finished (current: {request_id_holder['value']}, received: {result_request_id})")
                     return
                 
+                # Verificar que el layout aún existe antes de acceder
                 if not hasattr(self, '_layout') or not self._layout:
+                    logger.debug("on_finished: Layout destroyed, ignoring")
                     return
+                
+                try:
+                    logger.debug(f"Thumbnails finished loading, total widgets: {self._layout.count() - 1}")
+                except RuntimeError:
+                    logger.debug("on_finished: Layout destroyed during count, ignoring")
                 
                 if finished_cb:
                     try:
                         finished_cb()
                     except RuntimeError:
-                        pass
+                        logger.debug("on_finished: Widget destroyed during finished callback, ignoring")
                     except Exception:
                         pass
                 if progress_cb:
                     try:
                         progress_cb(100, DOCUMENT_READY)
                     except RuntimeError:
-                        pass
+                        logger.debug("on_finished: Widget destroyed during progress callback, ignoring")
                     except Exception:
                         pass
             except RuntimeError:
-                pass
+                logger.debug("on_finished: Widget destroyed, ignoring")
             except Exception as e:
                 logger.warning(f"Unexpected error in on_finished: {e}", exc_info=True)
         
         def on_error(msg: str, result_request_id: str):
             try:
                 if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
+                    logger.debug("Ignoring stale thumbnail error")
                     return
                 
                 logger.warning(f"Thumbnails error: {msg}")
@@ -178,11 +187,11 @@ class QuickPreviewThumbnails:
                     try:
                         finished_cb()
                     except RuntimeError:
-                        pass
+                        logger.debug("on_error: Widget destroyed during finished callback, ignoring")
                     except Exception:
                         pass
             except RuntimeError:
-                pass
+                logger.debug("on_error: Widget destroyed, ignoring")
             except Exception as e:
                 logger.warning(f"Unexpected error in on_error: {e}", exc_info=True)
         

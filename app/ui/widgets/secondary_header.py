@@ -232,40 +232,9 @@ class SecondaryHeader(QWidget):
         menu.setStyleSheet(self._MENU_STYLESHEET)
         
         menu.addAction("Tema").triggered.connect(self._on_theme_clicked)
-        menu.addAction("Idioma").triggered.connect(self._on_language_clicked)
-        menu.addAction("Tamaño de Iconos").triggered.connect(self._on_icon_size_clicked)
-        menu.addSeparator()
         menu.addAction("Mostrar historial").triggered.connect(self._on_history_panel_toggle)
-        menu.addSeparator()
-        
-        autosave_action = menu.addAction("Autoguardado")
-        autosave_action.setCheckable(True)
-        autosave_action.triggered.connect(self._on_autosave_toggled)
-        
-        startup_action = menu.addAction("Inicio Automático")
-        startup_action.setCheckable(True)
-        startup_action.triggered.connect(self._on_startup_toggled)
-        
-        taskbar_action = menu.addAction("Ocultar Barra de Tareas")
-        taskbar_action.setCheckable(True)
-        taskbar_action.triggered.connect(self._on_taskbar_toggled)
-        menu.addSeparator()
-        
-        menu.addAction("Recuperar Focus").triggered.connect(self._on_recover_focus_clicked)
-        menu.addAction("Limpiar Focus").triggered.connect(self._on_clean_focus_clicked)
-        menu.addSeparator()
-        
-        menu.addAction("Color de Fondo").triggered.connect(self._on_bg_color_clicked)
-        menu.addAction("Color del Título").triggered.connect(self._on_title_color_clicked)
-        menu.addAction("Color del Borde").triggered.connect(self._on_border_color_clicked)
-        menu.addSeparator()
-        
-        menu.addAction("Restaurar y Salir").triggered.connect(self._on_restore_exit_clicked)
         
         self._settings_button.setMenu(menu)
-        self._menu_autosave_action = autosave_action
-        self._menu_startup_action = startup_action
-        self._menu_taskbar_action = taskbar_action
 
     def _on_theme_clicked(self) -> None:
         settings = SettingsService()

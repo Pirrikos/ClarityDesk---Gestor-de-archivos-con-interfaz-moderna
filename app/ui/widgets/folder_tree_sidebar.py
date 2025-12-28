@@ -218,7 +218,7 @@ class FolderTreeSidebar(QWidget):
             font = QFont()
             font_family_list = FONT_FAMILY.replace('"', '').split(',')
             font.setFamily(font_family_list[0].strip() if font_family_list else "Segoe UI")
-            font.setPixelSize(13)
+            font.setPixelSize(11)  # Tamaño 11px
             font.setWeight(QFont.Weight.Medium)
             painter.setFont(font)
             
@@ -229,7 +229,7 @@ class FolderTreeSidebar(QWidget):
             separator_x = viewport_width - CONTROLS_AREA_TOTAL_OFFSET
             
             # Dibujar texto "ACCESOS DIRECTOS" (sin línea separadora vertical)
-            text_color = QColor(TEXT_PRIMARY)
+            text_color = QColor("#666666")  # Gris oscuro
             painter.setPen(QPen(text_color))
             text_x = CONTAINER_PADDING_LEFT
             text_y = y + (30 + font_metrics.ascent()) // 2  # TITLE_HEIGHT = 30

@@ -4,7 +4,6 @@ PDF Renderer - PDF page rendering using PyMuPDF.
 Handles rendering of PDF pages to QPixmap for previews and thumbnails.
 """
 
-import os
 import sys
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
@@ -55,7 +54,10 @@ class PdfRenderer:
     
     @staticmethod
     def _render_page_to_pixmap(doc, page_num: int, zoom: float) -> QPixmap:
-        """Render PDF page to QPixmap with given zoom, respecting orientation."""
+        """Render PDF page to QPixmap with given zoom, respecting orientation.
+        
+        R5: All PyMuPDF access is encapsulated in try/except.
+        """
         if not FITZ_AVAILABLE:
             return QPixmap()
         
@@ -69,11 +71,12 @@ class PdfRenderer:
             img_data = pix.tobytes("ppm")
             qpixmap = QPixmap()
             if not qpixmap.loadFromData(img_data, "PPM"):
-                logger.warning("Failed to load pixmap from PPM data")
+                logger.warning(f"R5: Failed to load pixmap from PPM data")
                 return QPixmap()
             return qpixmap
         except Exception as e:
-            logger.error(f"Exception in _render_page_to_pixmap: {e}", exc_info=True)
+            # R5: No exception crosses renderer boundary
+            logger.error(f"R5: Exception in _render_page_to_pixmap: {e}", exc_info=True)
             return QPixmap()
     
     @staticmethod
@@ -123,24 +126,38 @@ class PdfRenderer:
             logger.error("PyMuPDF (fitz) not available - module not imported")
             return QPixmap()
         
+        # R13: Early existence validation
+        # R12: Hard size limit check
         is_valid, error_msg = validate_file_for_preview(pdf_path)
         if not is_valid:
-            logger.warning(f"Cannot render PDF {pdf_path}: {error_msg}")
+            logger.warning(f"R12/R13: Cannot render PDF {pdf_path}: {error_msg}")
             return QPixmap()
+        
+        logger.debug(f"render_page: File validated, proceeding with render for {pdf_path}")
         
         doc = None
         try:
+            logger.debug(f"render_page: Opening PDF {pdf_path}, page {page_num}")
             doc = fitz.open(pdf_path)
             if len(doc) == 0:
-                logger.warning(f"PDF has 0 pages: {pdf_path}")
+                logger.warning(f"render_page: PDF has 0 pages: {pdf_path}")
                 return QPixmap()
             
+            logger.debug(f"render_page: PDF has {len(doc)} pages, rendering page {page_num}")
             qpixmap = PdfRenderer._render_page_to_pixmap(doc, page_num, 2.5)
             
+            # R14: Validate pixmap before scaling
             if validate_pixmap(qpixmap):
+                logger.debug(f"render_page: Page rendered, size: {qpixmap.width()}x{qpixmap.height()}")
                 result = PdfRenderer._ensure_minimum_size(qpixmap, max_size)
+                # R14: Validate scaled result
                 if validate_pixmap(result):
+                    logger.debug(f"render_page: After scaling, size: {result.width()}x{result.height()}")
                     return result
+                else:
+                    logger.warning(f"R14: Scaled pixmap is invalid (size: {result.width()}x{result.height()}, null: {result.isNull()})")
+            else:
+                logger.warning(f"R14: _render_page_to_pixmap returned invalid pixmap (size: {qpixmap.width()}x{qpixmap.height()}, null: {qpixmap.isNull()})")
             
             return QPixmap()
         except Exception as e:
@@ -158,46 +175,36 @@ class PdfRenderer:
         """Get thumbnail of a specific PDF page.
         
         R5: All PyMuPDF access is encapsulated in try/except.
-        R12: Hard file size limits prevent preview of oversized files.
-        R13: Early existence validation before rendering.
-        R14: Pixmap validation before returning.
         """
         if not FITZ_AVAILABLE:
             return QPixmap()
         
-        try:
-            if not pdf_path or not os.path.exists(pdf_path):
-                return QPixmap()
-            if not os.path.isfile(pdf_path):
-                return QPixmap()
-        except (OSError, ValueError):
-            return QPixmap()
-        
         doc = None
         try:
+            # R5: Encapsulate file access
             try:
                 doc = fitz.open(pdf_path)
             except Exception as e:
-                logger.warning(f"Cannot open PDF for thumbnail: {e}")
+                logger.warning(f"R5: Cannot open PDF for thumbnail: {e}")
                 return QPixmap()
             
             qpixmap = PdfRenderer._render_page_to_pixmap(doc, page_num, 0.5)
             
-            if validate_pixmap(qpixmap):
+            if not qpixmap.isNull():
                 try:
-                    scaled = qpixmap.scaled(
+                    return qpixmap.scaled(
                         thumbnail_size,
                         Qt.AspectRatioMode.KeepAspectRatio,
                         Qt.TransformationMode.SmoothTransformation
                     )
-                    if validate_pixmap(scaled):
-                        return scaled
                 except Exception as e:
-                    logger.warning(f"Failed to scale thumbnail: {e}")
+                    logger.warning(f"R5: Failed to scale thumbnail: {e}")
+                    return QPixmap()
             
             return QPixmap()
         except Exception as e:
-            logger.error(f"Exception in render_thumbnail: {e}", exc_info=True)
+            # R5: No exception crosses renderer boundary
+            logger.error(f"R5: Exception in render_thumbnail: {e}", exc_info=True)
             return QPixmap()
         finally:
             if doc:

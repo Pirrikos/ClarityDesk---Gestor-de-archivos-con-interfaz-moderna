@@ -48,9 +48,9 @@ def load_view_icon(svg_name: str, size: QSize, checked: bool) -> QIcon:
     
     try:
         if checked:
-            svg_content = svg_content.replace('fill="rgb(245,245,245)"', 'fill="rgba(255, 255, 255, 0.2)"')
-            svg_content = svg_content.replace('fill="rgb(255,255,255)"', 'fill="rgba(0, 0, 0, 0.85)"')
-            svg_content = svg_content.replace('stroke="rgb(255,255,255)"', 'stroke="rgba(0, 0, 0, 0.85)"')
+            svg_content = svg_content.replace('fill="rgb(245,245,245)"', 'fill="transparent"')  # Fondo transparente
+            svg_content = svg_content.replace('fill="rgb(255,255,255)"', 'fill="rgb(220, 220, 220)"')  # Gris claro sólido (no transparente)
+            svg_content = svg_content.replace('stroke="rgb(255,255,255)"', 'stroke="rgb(220, 220, 220)"')  # Gris claro sólido (no transparente)
         else:
             svg_content = svg_content.replace('fill="rgb(245,245,245)"', 'fill="transparent"')
             svg_content = svg_content.replace('fill="rgb(255,255,255)"', 'fill="rgba(255, 255, 255, 0.7)"')
