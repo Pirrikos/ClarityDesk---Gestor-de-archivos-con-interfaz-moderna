@@ -6,8 +6,8 @@ Displays ajustes.svg icon as a stack tile, always positioned at the rightmost po
 
 from typing import Optional
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor, QEnterEvent, QFont, QFontMetrics, QPainter, QPen, QPixmap
+from PySide6.QtCore import QPoint, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QEnterEvent, QFont, QFontMetrics, QMouseEvent, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QLabel,
@@ -22,6 +22,8 @@ from app.ui.widgets.text_elision import elide_middle_manual
 
 class SettingsStackTile(QWidget):
     """Tile widget for the settings icon."""
+    
+    clicked = Signal()  # Emitted when tile is clicked
 
     def __init__(
         self,
@@ -34,6 +36,7 @@ class SettingsStackTile(QWidget):
         self._is_hovered: bool = False
         self._icon_label: Optional[QLabel] = None
         self._icon_shadow: Optional[QGraphicsDropShadowEffect] = None
+        self._drag_start_position: Optional[QPoint] = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -169,4 +172,20 @@ class SettingsStackTile(QWidget):
         self._is_hovered = False
         self.update()
         super().leaveEvent(event)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse press."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_position = event.pos()
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """Handle mouse release - emit clicked signal if it was a click (not drag)."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._drag_start_position:
+                distance = (event.pos() - self._drag_start_position).manhattanLength()
+                if distance < 5:  # Click threshold (not a drag)
+                    self.clicked.emit()
+            self._drag_start_position = None
+        super().mouseReleaseEvent(event)
 

@@ -21,6 +21,7 @@ PREVIEW_TEXT_EXTENSIONS = frozenset({
     '.yaml', '.yml', '.ini', '.log', '.csv', '.rtf'
 })
 
+# Nota: .doc (formato antiguo) NO está soportado porque docx2pdf solo acepta .docx
 PREVIEW_PDF_DOCX_EXTENSIONS = frozenset({'.pdf', '.docx'})
 
 PREVIEWABLE_EXTENSIONS = (

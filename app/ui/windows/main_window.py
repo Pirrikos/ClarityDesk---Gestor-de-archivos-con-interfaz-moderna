@@ -6,7 +6,7 @@ Focus Dock replaces the old sidebar navigation system.
 
 import os
 from typing import Optional
-from PySide6.QtCore import Qt, QTimer, QEvent, QPoint, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup
+from PySide6.QtCore import Qt, QTimer, QEvent, QPoint, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QObject
 from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut, QPainter, QColor, QCursor
 from PySide6.QtWidgets import QWidget, QMessageBox, QApplication, QToolTip, QDialog, QGraphicsOpacityEffect
 
@@ -79,8 +79,6 @@ class MainWindow(QWidget):
             self._setup_shortcuts()
             self._load_workspace_state()
             self._is_initializing = False
-            
-            QApplication.instance().installEventFilter(self)
             
         except Exception as e:
             logger.error(f"Excepción crítica en MainWindow.__init__: {e}", exc_info=True)
@@ -686,40 +684,85 @@ class MainWindow(QWidget):
                     self._sidebar.add_focus_path(tab_path)
 
     def _on_file_open(self, file_path: str) -> None:
+        """Handle file open request from file box panel or other sources.
+        
+        El doble clic siempre abre el archivo normalmente con el sistema,
+        no hace preview. El preview solo se abre con la barra espaciadora.
+        """
         if os.path.isdir(file_path):
             self._navigate_to_folder(file_path)
             return
-        else:
-            QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
-            QTimer.singleShot(180, QApplication.restoreOverrideCursor)
-            success = open_file_with_system(file_path)
-            if not success:
-                QMessageBox.warning(
-                    self,
-                    "No se puede abrir",
-                    "No hay aplicación asociada o el archivo no es reconocible.\n"
-                    "Intenta abrirlo manualmente desde el sistema."
-                )
+        
+        # Siempre abrir con el sistema (doble clic no hace preview)
+        QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+        QTimer.singleShot(180, QApplication.restoreOverrideCursor)
+        success = open_file_with_system(file_path)
+        if not success:
+            QMessageBox.warning(
+                self,
+                "No se puede abrir",
+                "No hay aplicación asociada o el archivo no es reconocible.\n"
+                "Intenta abrirlo manualmente desde el sistema."
+            )
 
     def _setup_shortcuts(self) -> None:
         """Setup keyboard shortcuts."""
-        shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
-        shortcut.activated.connect(self._open_quick_preview)
+        self._back_shortcut = QShortcut(QKeySequence("Alt+Left"), self)
+        self._back_shortcut.activated.connect(self._on_nav_back_shortcut)
         
-        back_shortcut = QShortcut(QKeySequence("Alt+Left"), self)
-        back_shortcut.activated.connect(self._on_nav_back_shortcut)
+        self._forward_shortcut = QShortcut(QKeySequence("Alt+Right"), self)
+        self._forward_shortcut.activated.connect(self._on_nav_forward_shortcut)
         
-        forward_shortcut = QShortcut(QKeySequence("Alt+Right"), self)
-        forward_shortcut.activated.connect(self._on_nav_forward_shortcut)
+        # Instalar filtro de eventos en file_view_container y sus hijos
+        self._install_space_filter_recursive(self._file_view_container)
+        logger.debug("_setup_shortcuts: Space key filter installed on file_view_container")
+        
+        # Instalar filtro también en file_box_panel si está disponible
+        if self._current_file_box_panel:
+            self._install_space_filter_recursive(self._current_file_box_panel)
+            logger.debug("_setup_shortcuts: Space key filter installed on file_box_panel")
+    
+    def _install_space_filter_recursive(self, widget: QWidget) -> None:
+        """Instala el filtro de eventos de espacio en un widget y todos sus hijos."""
+        if widget is None:
+            return
+        widget.installEventFilter(self)
+        for child in widget.findChildren(QWidget):
+            child.installEventFilter(self)
+    
+    def eventFilter(self, watched: QObject, event) -> bool:
+        """Filtrar eventos para capturar barra espaciadora antes que widgets hijos."""
+        if event.type() == QEvent.Type.KeyPress:
+            key_event = event
+            key = key_event.key()
+            
+            if key == Qt.Key.Key_Space and not key_event.modifiers():
+                # Evitar si hay un campo de texto con foco
+                focus_widget = QApplication.focusWidget()
+                if focus_widget:
+                    focus_class = focus_widget.__class__.__name__
+                    if focus_class in ('QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'SearchLineEdit'):
+                        return False
+                
+                self._open_quick_preview()
+                return True  # Consumir el evento
+        
+        return False  # No consumir otros eventos
 
     def _open_quick_preview(self) -> None:
         """Toggle quick preview window (open/close)."""
-        if (hasattr(self, "_current_preview_window") and 
-            self._current_preview_window and 
-            self._current_preview_window.isVisible()):
-            self._current_preview_window.close()
+        # Verificar si hay un preview existente
+        try:
+            if self._current_preview_window and self._current_preview_window.isVisible():
+                self._current_preview_window.close()
+                self._current_preview_window = None
+                return
+        except RuntimeError:
             self._current_preview_window = None
-            return
+
+        # Limpiar referencia stale (existe pero no visible)
+        if self._current_preview_window:
+            self._current_preview_window = None
 
         selected = []
         if self._current_file_box_panel and self._current_file_box_panel.isVisible():
@@ -968,6 +1011,9 @@ class MainWindow(QWidget):
             
             self._current_file_box_panel.set_session(session)
             self._current_file_box_panel.setVisible(True)
+            # Instalar filtro de eventos para capturar barra espaciadora
+            self._install_space_filter_recursive(self._current_file_box_panel)
+            logger.debug("_on_file_box_button_clicked: Space key filter installed on file_box_panel")
             self._update_right_panel_layout("FILE_BOX")
             self._file_box_panel_minimized = False
             self._update_file_box_button_state()
@@ -1015,6 +1061,9 @@ class MainWindow(QWidget):
         self._ensure_only_one_panel_visible("file_box")
         
         self._current_file_box_panel.setVisible(True)
+        # Instalar filtro de eventos para capturar barra espaciadora
+        self._install_space_filter_recursive(self._current_file_box_panel)
+        logger.debug("_restore_file_box_panel: Space key filter installed on file_box_panel")
         self._file_box_panel_minimized = False
         self._update_right_panel_layout("FILE_BOX")
         self._update_file_box_button_state()

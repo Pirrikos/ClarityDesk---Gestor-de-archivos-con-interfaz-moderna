@@ -3,6 +3,8 @@ DOCX Converter - Converts DOCX files to PDF using docx2pdf.
 
 Handles conversion and caching of DOCX to PDF for preview rendering.
 Includes cache size management and auto-cleanup.
+
+Note: .doc (formato antiguo) NO está soportado porque docx2pdf solo acepta .docx.
 """
 
 import os

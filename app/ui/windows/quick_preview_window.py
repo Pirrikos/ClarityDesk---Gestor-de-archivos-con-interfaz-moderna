@@ -9,7 +9,7 @@ import uuid
 from typing import Optional
 
 from PySide6.QtCore import QSize, Qt, QTimer, QPoint
-from PySide6.QtGui import QMouseEvent, QPixmap
+from PySide6.QtGui import QMouseEvent, QPixmap, QKeyEvent
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget, QStackedLayout, QProgressBar, QApplication
 
 from app.services.preview_pdf_service import PreviewPdfService
@@ -62,6 +62,8 @@ class QuickPreviewWindow(QWidget):
         except (AttributeError, RuntimeError):
             # Attribute may not be available in all Qt versions
             pass
+        # Asegurar que la ventana pueda recibir eventos de teclado
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._preview_service = preview_service
         
         if file_paths is None:
@@ -84,6 +86,7 @@ class QuickPreviewWindow(QWidget):
         self._thumbs_loading = False
         self._current_request_id: Optional[str] = None  # R1: Track current request
         self._is_closing = False  # Flag para indicar que se está cerrando
+        self._content_rendered = False  # Flag para saber si el contenido principal ya se renderizó
         
         # Variables para arrastrar la ventana
         self._drag_position: Optional[QPoint] = None
@@ -200,39 +203,87 @@ class QuickPreviewWindow(QWidget):
 
     def _show_loading(self, show: bool, text: str = LOADING_PREVIEW) -> None:
         """Mostrar/ocultar overlay de carga."""
+        if self._is_closing:
+            return
         try:
             if show:
                 if hasattr(self, '_loading_label') and self._loading_label:
                     self._loading_label.setText(text)
-                self._stack.setCurrentIndex(1)
+                if hasattr(self, '_stack') and self._stack:
+                    self._stack.setCurrentIndex(1)
             else:
-                self._stack.setCurrentIndex(0)
+                if hasattr(self, '_stack') and self._stack:
+                    self._stack.setCurrentIndex(0)
+        except RuntimeError:
+            pass
         except Exception:
             pass
 
     def _set_loading_progress(self, percent: int, text: str = None) -> None:
-        """Actualizar porcentaje y texto del overlay."""
+        """Actualizar porcentaje y texto del overlay.
+        
+        IMPORTANTE: No muestra el overlay si el contenido principal ya se renderizó.
+        Solo actualiza el texto y la barra de progreso para thumbnails en segundo plano.
+        """
+        if self._is_closing:
+            return
         try:
-            if self._progress_bar:
+            if hasattr(self, '_progress_bar') and self._progress_bar:
                 if self._progress_bar.minimum() == 0 and self._progress_bar.maximum() == 0 and percent >= 1:
                     self._progress_bar.setRange(0, 100)
                 self._progress_bar.setValue(max(0, min(100, percent)))
             if text and hasattr(self, '_loading_label') and self._loading_label:
                 self._loading_label.setText(text)
-        except Exception:
+            # NO mostrar el overlay si el contenido principal ya se renderizó
+            # Las thumbnails cargan en segundo plano sin bloquear la vista
+            if not getattr(self, '_content_rendered', False):
+                # Solo mostrar overlay si el contenido principal aún no se ha renderizado
+                if getattr(self, '_thumbs_loading', False) and percent < 100:
+                    if hasattr(self, '_stack') and self._stack:
+                        self._stack.setCurrentIndex(1)
+                elif percent >= 100:
+                    if hasattr(self, '_stack') and self._stack:
+                        self._stack.setCurrentIndex(0)
+        except RuntimeError:
             pass
+        except Exception as e:
+            logger.warning(f"_set_loading_progress: Error: {e}", exc_info=True)
 
+    def _safe_widget_check(self, widget_name: str = '_image_label') -> bool:
+        """Verifica que widget existe y ventana no está cerrando.
+        
+        Returns:
+            True si es seguro acceder al widget, False en caso contrario.
+        """
+        if self._is_closing:
+            return False
+        if not self._current_request_id:
+            return False
+        try:
+            if not hasattr(self, widget_name) or not getattr(self, widget_name):
+                return False
+        except RuntimeError:
+            return False
+        return True
+    
     def _on_thumbnails_finished(self) -> None:
         """Callback cuando termina la generación de miniaturas."""
-        # Verificar si la ventana se está cerrando
-        if self._is_closing:
+        if not self._safe_widget_check():
             return
-        
-        self._thumbs_loading = False
-        self._show_loading(False)
+        try:
+            self._thumbs_loading = False
+            self._show_loading(False)
+        except RuntimeError:
+            pass
+        except Exception as e:
+            logger.warning(f"_on_thumbnails_finished: Unexpected error: {e}", exc_info=True)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        # Asegurar que la ventana tenga foco para recibir eventos de teclado
+        self.setFocus()
+        self.activateWindow()
+        self.raise_()
         if not getattr(self, '_initial_load_started', False):
             self._initial_load_started = True
             self._start_initial_load()
@@ -243,7 +294,6 @@ class QuickPreviewWindow(QWidget):
         if QuickPreviewPdfHandler.is_pdf_or_docx_file(current_path):
             self._show_loading(True, LOADING_DOCUMENT)
             def on_info_finished(is_new_file: bool) -> None:
-                # Verificar si la ventana se está cerrando
                 if self._is_closing:
                     return
                 
@@ -260,60 +310,77 @@ class QuickPreviewWindow(QWidget):
                         finished_cb=self._on_thumbnails_finished
                     )
                 max_size = self._effective_content_max_size()
-                # R1: Generate request_id for this load
-                request_id = str(uuid.uuid4())
-                self._current_request_id = request_id
                 
                 def on_page_finished(pixmap: QPixmap) -> None:
-                    # Verificar si la ventana se está cerrando
-                    if self._is_closing:
+                    if not self._safe_widget_check():
                         return
                     
-                    # R1: Validate request_id matches current request
-                    if self._current_request_id != request_id:
-                        logger.debug(f"R1: Ignoring stale result (current: {self._current_request_id}, received: {request_id})")
-                        return  # Stale result, ignore
-                    
-                    # R14: Validate pixmap before applying
-                    if not validate_pixmap(pixmap):
-                        logger.warning(f"R14: Pixmap validation failed (null: {pixmap.isNull() if pixmap else 'None'}, size: {pixmap.width()}x{pixmap.height() if pixmap else 'N/A'})")
-                        # R4: Fallback visual
-                        self._header.update_file(current_path, Path(current_path).name, self.close)
-                        self._image_label.setText(NO_PREVIEW)
-                        self._image_label.setStyleSheet(get_error_label_style())
-                        self._show_loading(False)  # Siempre ocultar loading
-                        return
-                    
-                    logger.debug(f"on_page_finished: Applying pixmap (size: {pixmap.width()}x{pixmap.height()})")
-                    
-                    header_text = self._pdf_handler.get_header_text(current_path)
-                    self._header.update_file(current_path, header_text, self.close)
-                    self._header.set_zoom_percent(int(self._zoom * 100))
-                    self._apply_pixmap(pixmap, use_crossfade=True)
-                    # Ocultar loading overlay siempre - el pixmap ya está aplicado
-                    # Las miniaturas pueden seguir cargando en segundo plano sin bloquear la vista
-                    self._show_loading(False)
+                    try:
+                        # R14: Validate pixmap before applying
+                        if not validate_pixmap(pixmap):
+                            logger.warning(f"Pixmap validation failed (null: {pixmap.isNull() if pixmap else 'None'})")
+                            # R4: Fallback visual
+                            try:
+                                if hasattr(self, '_header') and self._header:
+                                    self._header.update_file(current_path, Path(current_path).name, self.close)
+                                if hasattr(self, '_image_label') and self._image_label:
+                                    self._image_label.setText(NO_PREVIEW)
+                                    self._image_label.setStyleSheet(get_error_label_style())
+                                self._show_loading(False)
+                            except RuntimeError:
+                                pass
+                            return
+                        
+                        header_text = self._pdf_handler.get_header_text(current_path)
+                        try:
+                            self._header.update_file(current_path, header_text, self.close)
+                            self._header.set_zoom_percent(int(self._zoom * 100))
+                        except RuntimeError:
+                            pass
+                        
+                        self._apply_pixmap(pixmap, use_crossfade=True)
+                        # Marcar que el contenido principal ya se renderizó
+                        self._content_rendered = True
+                        # Ocultar loading overlay SIEMPRE cuando se muestra el contenido principal
+                        # Las miniaturas pueden seguir cargando en segundo plano sin bloquear la vista
+                        self._show_loading(False)
+                    except RuntimeError:
+                        pass
+                    except Exception as e:
+                        logger.error(f"Error in on_page_finished: {e}", exc_info=True)
                 
                 def on_page_error(msg: str) -> None:
-                    # Verificar si la ventana se está cerrando
-                    if self._is_closing:
+                    if not self._safe_widget_check():
                         return
                     
-                    # R1: Validate request_id matches current request
-                    if self._current_request_id != request_id:
-                        return  # Stale error, ignore
-                    
-                    # R4: Fallback visual
-                    self._header.update_file(current_path, Path(current_path).name, self.close)
-                    self._image_label.setText(NO_PREVIEW)
-                    self._image_label.setStyleSheet(get_error_label_style())
-                    self._show_loading(False)
+                    try:
+                        # R4: Fallback visual
+                        if hasattr(self, '_header') and self._header:
+                            self._header.update_file(current_path, Path(current_path).name, self.close)
+                        if hasattr(self, '_image_label') and self._image_label:
+                            self._image_label.setText(NO_PREVIEW)
+                            self._image_label.setStyleSheet(get_error_label_style())
+                        self._show_loading(False)
+                    except RuntimeError:
+                        pass
+                    except Exception as e:
+                        logger.warning(f"Error in on_page_error: {e}", exc_info=True)
                 
-                self._pdf_handler.render_page_async(
-                    max_size,
-                    on_finished=on_page_finished,
-                    on_error=on_page_error
-                )
+                try:
+                    service_request_id = self._pdf_handler.render_page_async(
+                        max_size,
+                        on_finished=on_page_finished,
+                        on_error=on_page_error
+                    )
+                except Exception as e:
+                    logger.error(f"Error calling render_page_async: {e}", exc_info=True)
+                    on_page_error(f"Error starting render: {e}")
+                    service_request_id = None
+                if service_request_id:
+                    self._current_request_id = service_request_id
+                else:
+                    logger.warning("Cannot start render - previous worker still active")
+                    on_page_error("Render busy, please wait")
             def on_info_error(err: str) -> None:
                 # Verificar si la ventana se está cerrando
                 if self._is_closing:
@@ -331,6 +398,7 @@ class QuickPreviewWindow(QWidget):
             self._header.update_file(current_path, header_text, self.close)
             self._header.set_zoom_percent(int(self._zoom * 100))
             self._apply_pixmap(pixmap, use_crossfade=False)
+            self._content_rendered = True
             self._show_loading(False)
 
     def _apply_pixmap(self, pixmap: QPixmap, use_crossfade: bool) -> None:
@@ -339,9 +407,17 @@ class QuickPreviewWindow(QWidget):
         R4: Always shows something - never blank screen or null pixmap.
         R14: Validates pixmap before applying (not null, minimum size, coherence).
         """
+        if self._is_closing:
+            return
+        
+        try:
+            if not hasattr(self, '_image_label') or not self._image_label:
+                return
+        except RuntimeError:
+            return
+        
         # R14: Validate pixmap before applying
         if validate_pixmap(pixmap):
-            logger.debug(f"_apply_pixmap: Valid pixmap (size: {pixmap.width()}x{pixmap.height()})")
             try:
                 self._image_label.setText("")
                 effective_size = self._effective_content_max_size()
@@ -357,7 +433,7 @@ class QuickPreviewWindow(QWidget):
                 # R14: Validate scaled result
                 if not validate_pixmap(scaled):
                     # R4: Fallback if scaling failed
-                    logger.warning(f"R14: Scaled pixmap invalid in _apply_pixmap (size: {scaled.width()}x{scaled.height() if scaled else 'N/A'})")
+                    logger.warning(f"Scaled pixmap invalid")
                     self._image_label.clear()
                     self._image_label.setText(NO_PREVIEW)
                     self._image_label.setStyleSheet(get_error_label_style())
@@ -368,14 +444,14 @@ class QuickPreviewWindow(QWidget):
                         self._image_label.setPixmap(scaled)
             except Exception as e:
                 # R5: Encapsulate any UI errors
-                logger.warning(f"R5: Error applying pixmap: {e}", exc_info=True)
+                logger.warning(f"Error applying pixmap: {e}", exc_info=True)
                 # R4: Fallback visual
                 self._image_label.clear()
                 self._image_label.setText(NO_PREVIEW)
                 self._image_label.setStyleSheet(get_error_label_style())
         else:
             # R4: Fallback visual - never show blank
-            logger.warning(f"_apply_pixmap: Invalid pixmap rejected (null: {pixmap.isNull() if pixmap else 'None'}, size: {pixmap.width()}x{pixmap.height() if pixmap else 'N/A'})")
+            logger.warning(f"Invalid pixmap rejected")
             self._image_label.clear()
             self._image_label.setText(NO_PREVIEW)
             self._image_label.setStyleSheet(get_error_label_style())
@@ -454,11 +530,9 @@ class QuickPreviewWindow(QWidget):
     
     def _load_preview(self, use_crossfade: bool = True) -> None:
         """Load and display the file preview."""
-        # Verificar si la ventana se está cerrando antes de cargar
         if self._is_closing:
             return
         
-        # Renderizar usando tamaño base; el escalado final usa el tamaño efectivo
         current_path = self._paths[self._index] if self._paths else ""
         
         # Hide thumbnails initially, will show if needed
@@ -469,58 +543,66 @@ class QuickPreviewWindow(QWidget):
             self._load_pdf_info(current_path)
             max_size = self._effective_content_max_size()
             
-            # R1: Generate request_id for this load
-            request_id = str(uuid.uuid4())
-            self._current_request_id = request_id
-            
             def on_page_finished(pixmap: QPixmap) -> None:
-                # Verificar si la ventana se está cerrando
-                if self._is_closing:
+                if not self._safe_widget_check():
                     return
                 
-                # R1: Validate request_id matches current request
-                if self._current_request_id != request_id:
-                    logger.debug(f"R1: Ignoring stale result in _load_preview (current: {self._current_request_id}, received: {request_id})")
-                    return  # Stale result, ignore
-                
-                # R14: Validate pixmap before applying
-                if not validate_pixmap(pixmap):
-                    logger.warning(f"R14: Pixmap validation failed in _load_preview (null: {pixmap.isNull() if pixmap else 'None'}, size: {pixmap.width()}x{pixmap.height() if pixmap else 'N/A'})")
-                    # R4: Fallback visual
-                    self._header.update_file(current_path, Path(current_path).name, self.close)
-                    self._image_label.setText(NO_PREVIEW)
-                    self._image_label.setStyleSheet(get_error_label_style())
-                    self._show_loading(False)  # Siempre ocultar loading
-                    return
-                
-                logger.debug(f"_load_preview on_page_finished: Applying pixmap (size: {pixmap.width()}x{pixmap.height()})")
-                
-                header_text = self._pdf_handler.get_header_text(current_path)
-                self._header.update_file(current_path, header_text, self.close)
-                self._header.set_zoom_percent(int(self._zoom * 100))
-                self._apply_pixmap(pixmap, use_crossfade)
-                self._show_loading(False)  # Siempre ocultar loading
+                try:
+                    # R14: Validate pixmap before applying
+                    if not validate_pixmap(pixmap):
+                        logger.warning(f"Pixmap validation failed in _load_preview")
+                        # R4: Fallback visual
+                        try:
+                            self._header.update_file(current_path, Path(current_path).name, self.close)
+                            self._image_label.setText(NO_PREVIEW)
+                            self._image_label.setStyleSheet(get_error_label_style())
+                            self._show_loading(False)
+                        except RuntimeError:
+                            pass
+                        return
+                    
+                    header_text = self._pdf_handler.get_header_text(current_path)
+                    try:
+                        self._header.update_file(current_path, header_text, self.close)
+                        self._header.set_zoom_percent(int(self._zoom * 100))
+                    except RuntimeError:
+                        pass
+                    self._apply_pixmap(pixmap, use_crossfade)
+                    # Marcar que el contenido principal ya se renderizó
+                    self._content_rendered = True
+                    self._show_loading(False)
+                except RuntimeError:
+                    pass
+                except Exception as e:
+                    logger.error(f"Error in _load_preview on_page_finished: {e}", exc_info=True)
             
             def on_page_error(msg: str) -> None:
-                # Verificar si la ventana se está cerrando
-                if self._is_closing:
+                if not self._safe_widget_check():
                     return
                 
-                # R1: Validate request_id matches current request
-                if self._current_request_id != request_id:
-                    return  # Stale error, ignore
-                
-                # R4: Fallback visual
-                self._header.update_file(current_path, Path(current_path).name, self.close)
-                self._image_label.setText(NO_PREVIEW)
-                self._image_label.setStyleSheet(get_error_label_style())
-                self._show_loading(False)
+                try:
+                    # R4: Fallback visual
+                    if hasattr(self, '_header') and self._header:
+                        self._header.update_file(current_path, Path(current_path).name, self.close)
+                    if hasattr(self, '_image_label') and self._image_label:
+                        self._image_label.setText(NO_PREVIEW)
+                        self._image_label.setStyleSheet(get_error_label_style())
+                    self._show_loading(False)
+                except RuntimeError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Error in _load_preview on_page_error: {e}", exc_info=True)
             
-            self._pdf_handler.render_page_async(
+            service_request_id = self._pdf_handler.render_page_async(
                 max_size,
                 on_finished=on_page_finished,
                 on_error=on_page_error
             )
+            if service_request_id:
+                self._current_request_id = service_request_id
+            else:
+                logger.warning("Cannot start render - previous worker still active")
+                on_page_error("Render busy, please wait")
             return
         else:
             self._pdf_handler.reset_for_new_file()
@@ -534,6 +616,9 @@ class QuickPreviewWindow(QWidget):
         
         self._header.update_file(current_path, header_text, self.close)
         self._header.set_zoom_percent(int(self._zoom * 100))
+        
+        # Marcar que el contenido principal ya se renderizó
+        self._content_rendered = True
         
         if pixmap and not pixmap.isNull():
             self._image_label.setText("")
@@ -621,6 +706,10 @@ class QuickPreviewWindow(QWidget):
     
     def keyPressEvent(self, event) -> None:
         """Handle key press events."""
+        if event.key() == Qt.Key.Key_Space:
+            event.accept()
+            self.close()
+            return
         if self._navigation and self._navigation.handle_key_press(event):
             return
         super().keyPressEvent(event)
@@ -673,57 +762,26 @@ class QuickPreviewWindow(QWidget):
     def _cancel_all_operations(self) -> None:
         """Cancel all ongoing operations (PDF rendering, thumbnails, DOCX conversion)."""
         self._is_closing = True
-        
-        # Invalidar el request_id actual para que los callbacks no se ejecuten
         self._current_request_id = None
-        
-        # Cancelar todos los workers del preview service sin esperar (cierre inmediato)
-        try:
-            if hasattr(self, '_preview_service') and self._preview_service:
-                # Cancelar workers sin esperar (cierre inmediato)
-                if hasattr(self._preview_service, '_active_pdf_worker') and self._preview_service._active_pdf_worker:
-                    try:
-                        self._preview_service._active_pdf_worker.cancel()
-                        self._preview_service._active_pdf_worker.quit()
-                        # No esperar - cierre inmediato
-                    except Exception:
-                        pass
-                
-                if hasattr(self._preview_service, '_active_docx_worker') and self._preview_service._active_docx_worker:
-                    try:
-                        self._preview_service._active_docx_worker.cancel()
-                        self._preview_service._active_docx_worker.quit()
-                        # No esperar - cierre inmediato
-                    except Exception:
-                        pass
-                
-                if hasattr(self._preview_service, '_active_thumbs_worker') and self._preview_service._active_thumbs_worker:
-                    try:
-                        self._preview_service._active_thumbs_worker.cancel()
-                        self._preview_service._active_thumbs_worker.quit()
-                        # No esperar - cierre inmediato
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+        if hasattr(self, '_preview_service') and self._preview_service:
+            self._preview_service.stop_workers()
     
     def close(self) -> bool:
         """Close the preview window, canceling all ongoing operations."""
-        # Marcar como cerrando primero para evitar que los callbacks se ejecuten
         self._is_closing = True
-        # Invalidar request_id inmediatamente
         self._current_request_id = None
-        # Ocultar la ventana inmediatamente para feedback visual instantáneo
+        self._initial_load_started = False
+        self._content_rendered = False
+        self._thumbs_loading = False
         self.hide()
-        # Cancelar operaciones en segundo plano (sin bloquear)
         QTimer.singleShot(0, self._cancel_all_operations)
-        # Cerrar la ventana inmediatamente
         return super().close()
     
     def closeEvent(self, event) -> None:
         """Handle window close event, canceling all ongoing operations."""
-        # Cancelar operaciones sin esperar
         self._cancel_all_operations()
-        # Aceptar el evento de cierre inmediatamente
+        self._initial_load_started = False
+        self._content_rendered = False
+        self._thumbs_loading = False
         event.accept()
         super().closeEvent(event)

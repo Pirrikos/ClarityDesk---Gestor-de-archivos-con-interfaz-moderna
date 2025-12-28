@@ -32,17 +32,32 @@ class DockBackgroundWidget(QWidget):
         self.setAcceptDrops(True)
         # Habilitar mouse tracking para recibir eventos de movimiento
         self.setMouseTracking(True)
+        
+        # Subscribe to AppSettings opacity changes
+        self._background_opacity: float = 1.0
+        # Import module to get updated reference
+        from app.managers import app_settings as app_settings_module
+        if app_settings_module.app_settings is not None:
+            self._background_opacity = app_settings_module.app_settings.dock_background_opacity
+            app_settings_module.app_settings.dock_background_opacity_changed.connect(self._on_opacity_changed)
+    
+    def _on_opacity_changed(self, opacity: float) -> None:
+        """Handle opacity change from AppSettings."""
+        self._background_opacity = opacity
+        self.update()
     
     def paintEvent(self, event) -> None:
         """Paint Raycast-style background with rounded corners - gris muy oscuro translúcido."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Estilo Raycast: gris muy oscuro con baja opacidad para reducir ruido visual
-        bg_color = QColor(self.BG_COLOR_R, self.BG_COLOR_G, self.BG_COLOR_B, self.BG_COLOR_ALPHA)
+        # Calcular alpha dinámico basado en opacidad de AppSettings
+        alpha = int(self.BG_COLOR_ALPHA * self._background_opacity)
+        bg_color = QColor(self.BG_COLOR_R, self.BG_COLOR_G, self.BG_COLOR_B, alpha)
         
-        # Borde muy sutil
-        border_color = QColor(self.BORDER_COLOR_R, self.BORDER_COLOR_G, self.BORDER_COLOR_B, self.BORDER_COLOR_ALPHA)
+        # Borde muy sutil con opacidad dinámica
+        border_alpha = int(self.BORDER_COLOR_ALPHA * self._background_opacity)
+        border_color = QColor(self.BORDER_COLOR_R, self.BORDER_COLOR_G, self.BORDER_COLOR_B, border_alpha)
         
         # Draw rounded rectangle
         rect = self.rect().adjusted(self.SHADOW_MARGIN, self.SHADOW_MARGIN, -self.SHADOW_MARGIN, -self.SHADOW_MARGIN)

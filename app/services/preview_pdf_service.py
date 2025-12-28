@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Callable
 
 from PySide6.QtCore import QSize, Qt, QThread
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QImage
 
 from app.core.logger import get_logger
 from app.services.docx_converter import DocxConverter
@@ -62,8 +62,8 @@ class PreviewPdfService:
         self._active_thumbs_worker: Optional[PdfThumbnailsWorker] = None
         self._current_request_id: Optional[str] = None  # R1: Track current request
 
-    def _cancel_worker(self, worker: Optional[QThread], timeout_ms: int = 1000) -> None:
-        """Cancel worker cooperatively (R2)."""
+    def _cancel_worker(self, worker: Optional[QThread], timeout_ms: int = 2000) -> None:
+        """Cancel worker cooperatively (R2) and wait for completion."""
         if not worker:
             return
         try:
@@ -73,7 +73,10 @@ class PreviewPdfService:
             pass
         try:
             worker.quit()
-            worker.wait(timeout_ms)
+            if not worker.wait(timeout_ms):
+                # Force termination if still running after timeout
+                worker.terminate()
+                worker.wait(500)
         except Exception:
             pass
     
@@ -113,7 +116,15 @@ class PreviewPdfService:
         Returns:
             request_id: Unique identifier for this request.
         """
-        self._cancel_worker(self._active_pdf_worker)
+        # Prioridad 0: Asegurar que solo hay un render activo
+        if self._active_pdf_worker and self._active_pdf_worker.isRunning():
+            # Invalidar request_id anterior antes de cancelar
+            old_request_id = self._current_request_id
+            self._current_request_id = None
+            self._cancel_worker(self._active_pdf_worker)
+            # Esperar a que termine completamente antes de continuar
+            if self._active_pdf_worker.isRunning():
+                return None  # Worker anterior aún activo, rechazar nuevo request
         
         # R1: Generate unique request_id
         request_id = str(uuid.uuid4())
@@ -122,39 +133,74 @@ class PreviewPdfService:
         worker = PdfRenderWorker(pdf_path, max_size, page_num, request_id)
         self._active_pdf_worker = worker
         
-        def handle_finished(pixmap: QPixmap, result_request_id: str) -> None:
-            if result_request_id != self._current_request_id:
-                logger.debug(f"Ignoring stale result (current: {self._current_request_id}, received: {result_request_id})")
-                return
-            
-            if not validate_pixmap(pixmap):
-                logger.warning(f"Received invalid pixmap, using fallback")
-                if on_error:
-                    on_error("Failed to render PDF page")
-                else:
-                    on_finished(QPixmap())
-                return
-            
-            self._active_pdf_worker = None
-            on_finished(pixmap)
+        def handle_finished(qimage: QImage, result_request_id: str) -> None:
+            try:
+                if result_request_id != self._current_request_id:
+                    return
+                
+                # Prioridad 1: Convertir QImage a QPixmap en el hilo GUI
+                if qimage.isNull():
+                    if on_error:
+                        try:
+                            on_error("Failed to render PDF page")
+                        except Exception as e:
+                            logger.warning(f"Error in on_error callback: {e}", exc_info=True)
+                    else:
+                        try:
+                            on_finished(QPixmap())
+                        except Exception as e:
+                            logger.warning(f"Error in on_finished callback: {e}", exc_info=True)
+                    return
+                
+                pixmap = QPixmap.fromImage(qimage)
+                if not validate_pixmap(pixmap):
+                    if on_error:
+                        try:
+                            on_error("Failed to render PDF page")
+                        except Exception as e:
+                            logger.warning(f"Error in on_error callback: {e}", exc_info=True)
+                    else:
+                        try:
+                            on_finished(QPixmap())
+                        except Exception as e:
+                            logger.warning(f"Error in on_finished callback: {e}", exc_info=True)
+                    return
+                
+                self._active_pdf_worker = None
+                try:
+                    on_finished(pixmap)
+                except Exception as e:
+                    logger.warning(f"Error in on_finished callback: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Exception in handle_finished: {e}", exc_info=True)
+                self._active_pdf_worker = None
         
         def handle_error(error_msg: str, result_request_id: str) -> None:
-            if result_request_id != self._current_request_id:
-                logger.debug("Ignoring stale error")
-                return
-            
-            self._active_pdf_worker = None
-            if on_error:
-                on_error(error_msg)
-            else:
-                on_finished(QPixmap())
+            try:
+                if result_request_id != self._current_request_id:
+                    return
+                
+                self._active_pdf_worker = None
+                if on_error:
+                    try:
+                        on_error(error_msg)
+                    except Exception as e:
+                        logger.warning(f"Error in on_error callback: {e}", exc_info=True)
+                else:
+                    try:
+                        on_finished(QPixmap())
+                    except Exception as e:
+                        logger.warning(f"Error in on_finished callback: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Exception in handle_error: {e}", exc_info=True)
+                self._active_pdf_worker = None
         
         worker.finished.connect(handle_finished)
         worker.error.connect(handle_error)
         worker.start()
         
         return request_id
-
+    
     def get_pdf_thumbnail(self, pdf_path: str, page_num: int, thumbnail_size: QSize) -> QPixmap:
         """Get thumbnail of a specific PDF page."""
         return self._pdf_renderer.render_thumbnail(pdf_path, page_num, thumbnail_size)
@@ -181,7 +227,14 @@ class PreviewPdfService:
         Returns:
             request_id: Unique identifier for this request.
         """
-        self._cancel_worker(self._active_thumbs_worker)
+        # Prioridad 0: Asegurar que solo hay un render activo
+        if self._active_thumbs_worker and self._active_thumbs_worker.isRunning():
+            # Invalidar request_id anterior antes de cancelar (thumbnails no usa _current_request_id del servicio)
+            self._cancel_worker(self._active_thumbs_worker)
+            # Esperar a que termine completamente antes de continuar
+            if self._active_thumbs_worker.isRunning():
+                return None  # Worker anterior aún activo, rechazar nuevo request
+        
         self._active_thumbs_worker = None
 
         # R1: Generate unique request_id
@@ -190,36 +243,54 @@ class PreviewPdfService:
         worker = PdfThumbnailsWorker(pdf_path, total_pages, thumbnail_size, request_id)
         self._active_thumbs_worker = worker
 
-        def _on_progress(page_num: int, pixmap: QPixmap, result_request_id: str):
-            if result_request_id != request_id:
-                logger.debug(f"Ignoring stale thumbnail progress (current: {request_id}, received: {result_request_id})")
-                return
+        def _on_progress(page_num: int, qimage: QImage, result_request_id: str):
             try:
+                if result_request_id != request_id:
+                    return
+                # Prioridad 1: Convertir QImage a QPixmap en el hilo GUI
+                if qimage.isNull():
+                    return
+                pixmap = QPixmap.fromImage(qimage)
                 if validate_pixmap(pixmap):
-                    on_progress(page_num, pixmap, result_request_id)
+                    try:
+                        on_progress(page_num, pixmap, result_request_id)
+                    except Exception as e:
+                        logger.warning(f"Error in on_progress callback: {e}", exc_info=True)
             except Exception as e:
                 logger.warning(f"Error in thumbnail progress callback: {e}", exc_info=True)
 
         def _on_finished(result_request_id: str):
-            if result_request_id != request_id:
-                logger.debug("Ignoring stale thumbnail finished")
-                return
-            self._active_thumbs_worker = None
             try:
-                on_finished()
-            except Exception:
-                pass
+                if result_request_id != request_id:
+                    return
+                self._active_thumbs_worker = None
+                try:
+                    # Pasar result_request_id al callback si lo acepta
+                    import inspect
+                    sig = inspect.signature(on_finished)
+                    if len(sig.parameters) > 0:
+                        on_finished(result_request_id)
+                    else:
+                        on_finished()
+                except Exception as e:
+                    logger.warning(f"Error in on_finished callback: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Exception in _on_finished: {e}", exc_info=True)
+                self._active_thumbs_worker = None
 
         def _on_error(msg: str, result_request_id: str):
-            if result_request_id != request_id:
-                logger.debug("Ignoring stale thumbnail error")
-                return
-            self._active_thumbs_worker = None
-            if on_error:
-                try:
-                    on_error(msg)
-                except Exception:
-                    pass
+            try:
+                if result_request_id != request_id:
+                    return
+                self._active_thumbs_worker = None
+                if on_error:
+                    try:
+                        on_error(msg)
+                    except Exception as e:
+                        logger.warning(f"Error in on_error callback: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Exception in _on_error: {e}", exc_info=True)
+                self._active_thumbs_worker = None
 
         worker.progress.connect(_on_progress)
         worker.finished.connect(_on_finished)
@@ -253,32 +324,57 @@ class PreviewPdfService:
         Returns:
             request_id: Unique identifier for this request.
         """
-        self._cancel_worker(self._active_docx_worker)
+        # Prioridad 0: Asegurar que solo hay un render activo
+        if self._active_docx_worker and self._active_docx_worker.isRunning():
+            self._cancel_worker(self._active_docx_worker)
+            if self._active_docx_worker.isRunning():
+                logger.warning(f"Previous worker still running, rejecting request")
+                return None
         
-        # R1: Generate unique request_id
         request_id = str(uuid.uuid4())
-        
         worker = DocxConvertWorker(docx_path, request_id)
         self._active_docx_worker = worker
         
         def handle_finished(pdf_path: str, result_request_id: str) -> None:
-            if not pdf_path or not os.path.exists(pdf_path):
-                logger.warning("Invalid PDF path result, using fallback")
-                if on_error:
-                    on_error("Failed to convert DOCX to PDF")
-                else:
-                    on_finished("")
-                return
-            
-            self._active_docx_worker = None
-            on_finished(pdf_path)
+            try:
+                if not pdf_path or not os.path.exists(pdf_path):
+                    if on_error:
+                        try:
+                            on_error("Failed to convert DOCX to PDF")
+                        except Exception as e:
+                            logger.warning(f"Error in on_error callback: {e}", exc_info=True)
+                    else:
+                        try:
+                            on_finished("")
+                        except Exception as e:
+                            logger.warning(f"Error in on_finished callback: {e}", exc_info=True)
+                    return
+                
+                self._active_docx_worker = None
+                try:
+                    on_finished(pdf_path)
+                except Exception as e:
+                    logger.warning(f"Error in on_finished callback: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Exception in handle_finished: {e}", exc_info=True)
+                self._active_docx_worker = None
         
         def handle_error(error_msg: str, result_request_id: str) -> None:
-            self._active_docx_worker = None
-            if on_error:
-                on_error(error_msg)
-            else:
-                on_finished("")
+            try:
+                self._active_docx_worker = None
+                if on_error:
+                    try:
+                        on_error(error_msg)
+                    except Exception as e:
+                        logger.warning(f"Error in on_error callback: {e}", exc_info=True)
+                else:
+                    try:
+                        on_finished("")
+                    except Exception as e:
+                        logger.warning(f"Error in on_finished callback: {e}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Exception in handle_error: {e}", exc_info=True)
+                self._active_docx_worker = None
         
         worker.finished.connect(handle_finished)
         worker.error.connect(handle_error)
@@ -415,7 +511,14 @@ class PreviewPdfService:
         self._docx_converter.clear_cache()
     
     def stop_workers(self) -> None:
+        """Stop all workers and disconnect signals (Prioridad 2: cierre robusto)."""
         if self._active_pdf_worker:
+            try:
+                # Prioridad 2: Desconectar señales antes de cancelar
+                self._active_pdf_worker.finished.disconnect()
+                self._active_pdf_worker.error.disconnect()
+            except (TypeError, RuntimeError):
+                pass  # Señales ya desconectadas o worker destruido
             try:
                 self._active_pdf_worker.cancel()
             except Exception:
@@ -425,6 +528,12 @@ class PreviewPdfService:
             self._active_pdf_worker = None
         if self._active_docx_worker:
             try:
+                # Prioridad 2: Desconectar señales antes de cancelar
+                self._active_docx_worker.finished.disconnect()
+                self._active_docx_worker.error.disconnect()
+            except (TypeError, RuntimeError):
+                pass  # Señales ya desconectadas o worker destruido
+            try:
                 self._active_docx_worker.cancel()
             except Exception:
                 pass
@@ -432,6 +541,13 @@ class PreviewPdfService:
             self._active_docx_worker.wait()
             self._active_docx_worker = None
         if self._active_thumbs_worker:
+            try:
+                # Prioridad 2: Desconectar señales antes de cancelar
+                self._active_thumbs_worker.progress.disconnect()
+                self._active_thumbs_worker.finished.disconnect()
+                self._active_thumbs_worker.error.disconnect()
+            except (TypeError, RuntimeError):
+                pass  # Señales ya desconectadas o worker destruido
             try:
                 self._active_thumbs_worker.cancel()
             except Exception:

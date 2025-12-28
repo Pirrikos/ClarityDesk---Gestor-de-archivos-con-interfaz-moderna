@@ -8,7 +8,7 @@ R2: Cooperative cancellation - marks request as invalid, ignores results.
 
 import os
 from PySide6.QtCore import QSize, QThread, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QImage
 
 from app.core.logger import get_logger
 from app.services.pdf_renderer import PdfRenderer
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class PdfThumbnailsWorker(QThread):
     """Genera miniaturas de páginas PDF en segundo plano."""
 
-    progress = Signal(int, object, object)  # (page_num, QPixmap, request_id)
+    progress = Signal(int, object, object)  # (page_num, QImage, request_id) - Prioridad 1: QImage es thread-safe
     finished = Signal(object)  # request_id
     error = Signal(str, object)  # (error_msg, request_id)
 
@@ -62,7 +62,10 @@ class PdfThumbnailsWorker(QThread):
                 try:
                     pixmap = PdfRenderer.render_thumbnail(self._pdf_path, page_num, self._size)
                     if validate_pixmap(pixmap):
-                        self.progress.emit(page_num, pixmap, self.request_id)
+                        # Prioridad 1: Convertir QPixmap a QImage (thread-safe) antes de emitir
+                        qimage = pixmap.toImage()
+                        if not qimage.isNull():
+                            self.progress.emit(page_num, qimage, self.request_id)
                 except Exception as e:
                     logger.warning(f"Error rendering thumbnail page {page_num}: {e}")
             

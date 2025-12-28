@@ -9,7 +9,7 @@ import os
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, QPropertyAnimation, QEasingCurve, QRect, QUrl, QTimer, QPoint
-from PySide6.QtGui import QDesktopServices, QMouseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent
+from PySide6.QtGui import QDesktopServices, QMouseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -23,6 +23,12 @@ from app.services.path_utils import normalize_path
 from app.services.trash_storage import TRASH_FOCUS_PATH
 from app.ui.widgets.file_view_container import FileViewContainer
 from app.ui.widgets.dock_background_widget import DockBackgroundWidget
+from app.ui.widgets.file_view_sync import get_selected_files
+from app.ui.windows.main_window_file_handler import filter_previewable_files
+from app.ui.windows.quick_preview_window import QuickPreviewWindow
+from app.services.preview_pdf_service import PreviewPdfService
+
+logger = get_logger(__name__)
 
 
 class DesktopWindow(QWidget):
@@ -67,6 +73,9 @@ class DesktopWindow(QWidget):
         self._trash_tab_manager: Optional[TabManager] = None
         self._icon_service: Optional[IconService] = None
         self._desktop_container: Optional[FileViewContainer] = None
+        self._preview_service: Optional[PreviewPdfService] = None
+        self._current_preview_window: Optional[QuickPreviewWindow] = None
+        self._preview_shortcut: Optional[QShortcut] = None
         
         # Placeholder widget for desktop container (will be replaced after init)
         self._desktop_placeholder: Optional[QWidget] = None
@@ -100,13 +109,13 @@ class DesktopWindow(QWidget):
         # Habilitar drops en la ventana principal
         self.setAcceptDrops(True)
         
-        # Position window at TOP of screen, centered horizontally
-        screen = self.screen().availableGeometry()
-        window_height = self.BASE_WINDOW_HEIGHT
-        window_width = int(screen.width() * self.INITIAL_WINDOW_WIDTH_RATIO)
-        window_x = (screen.width() - window_width) // 2
-        window_y = self.WINDOW_TOP_MARGIN
-        self.setGeometry(window_x, window_y, window_width, window_height)
+        # Position window according to dock_anchor setting
+        self._position_window_by_anchor()
+        
+        # Subscribe to anchor changes
+        from app.managers import app_settings as app_settings_module
+        if app_settings_module.app_settings is not None:
+            app_settings_module.app_settings.dock_anchor_changed.connect(self._on_anchor_changed)
         # Minimum size will be set dynamically based on stacks count
         # Only set minimum height, width will be adjusted by _adjust_window_width
         self.setMinimumHeight(self.MIN_WINDOW_HEIGHT)
@@ -193,6 +202,12 @@ class DesktopWindow(QWidget):
         
         # Create IconService
         self._icon_service = IconService()
+        
+        # Create PreviewPdfService for quick preview
+        self._preview_service = PreviewPdfService(self._icon_service)
+        
+        # Setup shortcuts for preview
+        self._setup_shortcuts()
         
         # Get parent widget for FileViewContainer (usar referencia directa)
         central_widget = self._central_widget
@@ -356,9 +371,42 @@ class DesktopWindow(QWidget):
         target_height = min(target_height, max_screen_height)
         target_height = max(target_height, self.MIN_WINDOW_HEIGHT)
         
-        # Posición en la parte superior de la pantalla
-        target_y = self.WINDOW_TOP_MARGIN
+        # Calculate Y position based on anchor
+        target_y = self._calculate_y_position(target_height)
         return target_height, target_y
+    
+    def _calculate_y_position(self, window_height: int) -> int:
+        """Calculate Y position based on dock_anchor setting."""
+        from app.managers import app_settings as app_settings_module
+        screen = self.screen().availableGeometry()
+        
+        if app_settings_module.app_settings is not None:
+            anchor = app_settings_module.app_settings.dock_anchor
+            if anchor == "bottom":
+                # Bottom: y = screen bottom - window height - margin
+                return screen.height() - window_height - self.WINDOW_TOP_MARGIN
+        
+        # Default: top
+        return self.WINDOW_TOP_MARGIN
+    
+    def _position_window_by_anchor(self) -> None:
+        """Position window according to dock_anchor setting."""
+        screen = self.screen().availableGeometry()
+        window_height = self.BASE_WINDOW_HEIGHT
+        window_width = int(screen.width() * self.INITIAL_WINDOW_WIDTH_RATIO)
+        window_x = (screen.width() - window_width) // 2
+        window_y = self._calculate_y_position(window_height)
+        self.setGeometry(window_x, window_y, window_width, window_height)
+    
+    def _on_anchor_changed(self, anchor: str) -> None:
+        """Handle dock anchor change - reposition window once."""
+        current_geometry = self.geometry()
+        window_height = current_geometry.height()
+        window_width = current_geometry.width()
+        screen = self.screen().availableGeometry()
+        window_x = (screen.width() - window_width) // 2
+        window_y = self._calculate_y_position(window_height)
+        self.setGeometry(window_x, window_y, window_width, window_height)
     
     def _force_grid_relayout(self) -> None:
         """Force grid layout recalculation after geometry animation finishes."""
@@ -506,11 +554,101 @@ class DesktopWindow(QWidget):
         )
         self._apply_geometry_animation(current_geometry, target_geometry, '_width_animation')
     
+    def _setup_shortcuts(self) -> None:
+        """Setup keyboard shortcuts for preview."""
+        logger.debug("_setup_shortcuts: Setting up spacebar shortcut for preview")
+        self._preview_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Space), self)
+        self._preview_shortcut.activated.connect(self._open_quick_preview)
+        logger.debug("_setup_shortcuts: Spacebar shortcut connected")
+    
+    def _open_quick_preview(self) -> None:
+        """Open quick preview for selected files."""
+        logger.debug("_open_quick_preview: STARTED")
+        try:
+            # Si hay un preview abierto, cerrarlo (toggle behavior)
+            if self._current_preview_window and self._current_preview_window.isVisible():
+                logger.debug("_open_quick_preview: Preview already open, closing it (toggle)")
+                self._current_preview_window.close()
+                self._current_preview_window = None
+                return  # Solo cerrar, no abrir otro
+            
+            # Obtener archivos seleccionados
+            if not self._desktop_container:
+                logger.warning("_open_quick_preview: No desktop_container available")
+                return
+            
+            selected_files = get_selected_files(self._desktop_container)
+            logger.debug(f"_open_quick_preview: Selected files count={len(selected_files) if selected_files else 0}")
+            
+            if not selected_files:
+                logger.debug("_open_quick_preview: No files selected")
+                return
+            
+            # Filtrar archivos previewables
+            previewable_files = filter_previewable_files(selected_files)
+            logger.debug(f"_open_quick_preview: Previewable files count={len(previewable_files) if previewable_files else 0}")
+            
+            if not previewable_files:
+                logger.debug("_open_quick_preview: No previewable files")
+                return
+            
+            # Crear y mostrar preview window
+            logger.debug(f"_open_quick_preview: Creating QuickPreviewWindow with {len(previewable_files)} files")
+            self._current_preview_window = QuickPreviewWindow(
+                self._preview_service,
+                file_paths=previewable_files,
+                start_index=0,
+                parent=self  # Pasar parent para poder acceder al desktop window
+            )
+            # NO deshabilitar shortcut - el preview maneja el cierre con espacio directamente
+            # El shortcut del desktop solo abre preview si no hay uno abierto
+            logger.debug("_open_quick_preview: QuickPreviewWindow created, showing...")
+            self._current_preview_window.show()
+            logger.debug("_open_quick_preview: QuickPreviewWindow shown")
+        except Exception as e:
+            logger.error(f"_open_quick_preview: Error opening preview: {e}", exc_info=True)
+    
+    
     def _open_file(self, file_path: str) -> None:
-        """Open file with default system application."""
-        if os.path.exists(file_path):
-            url = QUrl.fromLocalFile(file_path)
-            QDesktopServices.openUrl(url)
+        """Open file with default system application or preview if previewable."""
+        logger.debug(f"_open_file: file_path={file_path}")
+        
+        # Verificar si el archivo está en un stack (si está en un stack, abrir con sistema)
+        # Si no está en un stack y es previewable, abrir preview
+        if not self._desktop_container:
+            logger.debug("_open_file: No desktop_container, opening with system")
+            if os.path.exists(file_path):
+                url = QUrl.fromLocalFile(file_path)
+                QDesktopServices.openUrl(url)
+            return
+        
+        # Verificar si es previewable
+        previewable_files = filter_previewable_files([file_path])
+        if previewable_files and file_path in previewable_files:
+            logger.debug(f"_open_file: File is previewable, opening preview")
+            # Cerrar preview anterior si existe
+            if self._current_preview_window:
+                self._current_preview_window.close()
+                self._current_preview_window = None
+            
+            # Crear y mostrar preview window
+            if not self._preview_service:
+                logger.warning("_open_file: No preview_service available")
+                if os.path.exists(file_path):
+                    url = QUrl.fromLocalFile(file_path)
+                    QDesktopServices.openUrl(url)
+                return
+            
+            self._current_preview_window = QuickPreviewWindow(
+                self._preview_service,
+                file_path=file_path
+            )
+            self._current_preview_window.show()
+        else:
+            logger.debug(f"_open_file: File not previewable or in stack, opening with system")
+            if os.path.exists(file_path):
+                url = QUrl.fromLocalFile(file_path)
+                QDesktopServices.openUrl(url)
     
     def _handle_drag_event(
         self, 

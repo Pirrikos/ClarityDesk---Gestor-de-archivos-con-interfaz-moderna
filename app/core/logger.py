@@ -90,7 +90,7 @@ def get_logger(name: Optional[str] = None, level: Optional[int] = None) -> loggi
     
     Args:
         name: Optional logger name. If None, uses caller's __name__.
-        level: Optional logging level. If None, uses default (INFO).
+        level: Optional logging level. If None, uses default (DEBUG for preview modules, INFO otherwise).
                Use logging.DEBUG for debug messages.
     
     Returns:
@@ -106,7 +106,11 @@ def get_logger(name: Optional[str] = None, level: Optional[int] = None) -> loggi
             name = 'claritydesk'
     
     if level is None:
-        level = logging.INFO
+        # Usar DEBUG para módulos de preview y main_window para diagnóstico
+        if 'preview' in name.lower() or 'quick_preview' in name.lower() or 'main_window' in name.lower():
+            level = logging.DEBUG
+        else:
+            level = logging.INFO
     
     return setup_logger(name, level=level)
 

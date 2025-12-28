@@ -106,56 +106,85 @@ class QuickPreviewThumbnails:
         request_id_holder = {"value": None}
         
         def on_progress(page_num: int, pixmap: QPixmap, result_request_id: str):
-            if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
-                logger.debug(f"Ignoring stale thumbnail (current: {request_id_holder['value']}, received: {result_request_id})")
-                return
-            
-            if validate_pixmap(pixmap):
-                try:
-                    thumb_container = QuickPreviewThumbnailWidget.create(
-                        pixmap, page_num, current_page, on_click_callback
-                    )
-                    self._layout.insertWidget(page_num, thumb_container)
-                except Exception as e:
-                    logger.warning(f"Error creating thumbnail widget: {e}")
-            
-            if progress_cb:
-                try:
-                    pct = int(((page_num + 1) / max(1, total_pages)) * 100)
-                    progress_cb(pct, GENERATING_THUMBNAILS)
-                except Exception:
-                    pass
+            try:
+                if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
+                    logger.debug(f"Ignoring stale thumbnail (current: {request_id_holder['value']}, received: {result_request_id})")
+                    return
+                
+                # Verificar que el layout aún existe antes de acceder
+                if not hasattr(self, '_layout') or not self._layout:
+                    logger.debug("on_progress: Layout destroyed, ignoring")
+                    return
+                
+                if validate_pixmap(pixmap):
+                    try:
+                        thumb_container = QuickPreviewThumbnailWidget.create(
+                            pixmap, page_num, current_page, on_click_callback
+                        )
+                        self._layout.insertWidget(page_num, thumb_container)
+                    except RuntimeError:
+                        logger.debug("on_progress: Widget destroyed during thumbnail creation, ignoring")
+                    except Exception as e:
+                        logger.warning(f"Error creating thumbnail widget: {e}")
+                
+                if progress_cb:
+                    try:
+                        pct = int(((page_num + 1) / max(1, total_pages)) * 100)
+                        progress_cb(pct, GENERATING_THUMBNAILS)
+                    except RuntimeError:
+                        logger.debug("on_progress: Widget destroyed during progress callback, ignoring")
+                    except Exception:
+                        pass
+            except RuntimeError:
+                logger.debug("on_progress: Widget destroyed, ignoring")
+            except Exception as e:
+                logger.warning(f"Unexpected error in on_progress: {e}", exc_info=True)
         
         def on_finished(result_request_id: str):
-            if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
-                logger.debug(f"Ignoring stale thumbnail finished (current: {request_id_holder['value']}, received: {result_request_id})")
-                return
-            
-            logger.debug(f"Thumbnails finished loading, total widgets: {self._layout.count() - 1}")
-            
-            if finished_cb:
-                try:
-                    finished_cb()
-                except Exception:
-                    pass
-            if progress_cb:
-                try:
-                    progress_cb(100, DOCUMENT_READY)
-                except Exception:
-                    pass
+            try:
+                if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
+                    return
+                
+                if not hasattr(self, '_layout') or not self._layout:
+                    return
+                
+                if finished_cb:
+                    try:
+                        finished_cb()
+                    except RuntimeError:
+                        pass
+                    except Exception:
+                        pass
+                if progress_cb:
+                    try:
+                        progress_cb(100, DOCUMENT_READY)
+                    except RuntimeError:
+                        pass
+                    except Exception:
+                        pass
+            except RuntimeError:
+                pass
+            except Exception as e:
+                logger.warning(f"Unexpected error in on_finished: {e}", exc_info=True)
         
         def on_error(msg: str, result_request_id: str):
-            if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
-                logger.debug("Ignoring stale thumbnail error")
-                return
-            
-            logger.warning(f"Thumbnails error: {msg}")
-            
-            if finished_cb:
-                try:
-                    finished_cb()
-                except Exception:
-                    pass
+            try:
+                if request_id_holder["value"] and result_request_id != request_id_holder["value"]:
+                    return
+                
+                logger.warning(f"Thumbnails error: {msg}")
+                
+                if finished_cb:
+                    try:
+                        finished_cb()
+                    except RuntimeError:
+                        pass
+                    except Exception:
+                        pass
+            except RuntimeError:
+                pass
+            except Exception as e:
+                logger.warning(f"Unexpected error in on_error: {e}", exc_info=True)
         
         request_id_holder["value"] = self._preview_service.render_thumbnails_async(
             pdf_path,

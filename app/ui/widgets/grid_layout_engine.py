@@ -51,6 +51,12 @@ def _connect_desktop_tile_signals(desktop_tile: DesktopStackTile, view) -> None:
         parent = parent.parent()
 
 
+def _connect_settings_tile_signals(settings_tile: SettingsStackTile, view) -> None:
+    """Connect settings tile click to open SettingsWindow."""
+    from app.ui.windows.settings_window import get_settings_window
+    settings_tile.clicked.connect(lambda: get_settings_window().show())
+
+
 def build_dock_layout(
     view,
     items_to_render: list,
@@ -437,6 +443,7 @@ def _build_stack_tiles(view, items_to_render: list, grid_layout: QGridLayout) ->
         
         if not settings_tile:
             settings_tile = SettingsStackTile(view)
+            _connect_settings_tile_signals(settings_tile, view)
             grid_layout.addWidget(settings_tile, stack_row, 1)
         
         if not separator:

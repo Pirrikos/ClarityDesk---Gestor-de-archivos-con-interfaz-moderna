@@ -8,7 +8,7 @@ R2: Cooperative cancellation - marks request as invalid, ignores results.
 
 import os
 from PySide6.QtCore import QSize, QThread, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QImage
 
 from app.core.logger import get_logger
 from app.services.pdf_renderer import PdfRenderer
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class PdfRenderWorker(QThread):
     """Worker thread for rendering PDF pages."""
     
-    finished = Signal(object, object)  # (QPixmap, request_id)
+    finished = Signal(object, object)  # (QImage, request_id) - Prioridad 1: QImage es thread-safe
     error = Signal(str, object)  # (error_msg, request_id)
     
     def __init__(self, pdf_path: str, max_size: QSize, page_num: int = 0, request_id: str = None):
@@ -46,10 +46,13 @@ class PdfRenderWorker(QThread):
     
     def run(self) -> None:
         """Execute PDF rendering in background thread."""
+        logger.debug(f"PdfRenderWorker.run: STARTED, request_id={self.request_id}, pdf_path={self.pdf_path}, cancel_requested={self._cancel_requested}")
         if self._cancel_requested:
+            logger.debug(f"PdfRenderWorker.run: CANCELLED before start, request_id={self.request_id}")
             return
         
         is_valid, error_msg = validate_file_for_preview(self.pdf_path)
+        logger.debug(f"PdfRenderWorker.run: File validation, is_valid={is_valid}, error_msg={error_msg}")
         if not is_valid:
             logger.warning(f"Cannot render {self.pdf_path}: {error_msg}")
             self.error.emit(error_msg, self.request_id)
@@ -66,9 +69,12 @@ class PdfRenderWorker(QThread):
             if self._cancel_requested:
                 return
             
+            logger.debug(f"PdfRenderWorker.run: Calling PdfRenderer.render_page, request_id={self.request_id}")
             result = PdfRenderer.render_page(self.pdf_path, self.max_size, self.page_num)
+            logger.debug(f"PdfRenderWorker.run: PdfRenderer.render_page returned, null={result.isNull() if result else 'None'}, size={result.width()}x{result.height() if result and not result.isNull() else 'N/A'}, request_id={self.request_id}")
             
             if self._cancel_requested:
+                logger.debug(f"PdfRenderWorker.run: CANCELLED after render, request_id={self.request_id}")
                 return
             
             try:
@@ -79,9 +85,18 @@ class PdfRenderWorker(QThread):
                 pass
             
             if not validate_pixmap(result):
+                logger.warning(f"PdfRenderWorker: Invalid pixmap, emitting error")
                 self.error.emit("Failed to render PDF page", self.request_id)
             else:
-                self.finished.emit(result, self.request_id)
+                # Prioridad 1: Convertir QPixmap a QImage (thread-safe) antes de emitir
+                qimage = result.toImage()
+                logger.debug(f"PdfRenderWorker: Converted pixmap to QImage, null={qimage.isNull()}, size={qimage.width()}x{qimage.height() if not qimage.isNull() else 'N/A'}, request_id={self.request_id}")
+                if qimage.isNull():
+                    logger.warning(f"PdfRenderWorker: QImage is null after conversion, emitting error")
+                    self.error.emit("Failed to convert pixmap to image", self.request_id)
+                else:
+                    logger.debug(f"PdfRenderWorker: Emitting finished signal with QImage, request_id={self.request_id}")
+                    self.finished.emit(qimage, self.request_id)
         except Exception as e:
             logger.error(f"Exception in PDF render worker: {e}", exc_info=True)
             self.error.emit("Render error", self.request_id)

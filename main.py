@@ -12,6 +12,7 @@ from PySide6.QtCore import QtMsgType, QTimer, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication
 
 from app.core.top_level_detector import TopLevelDetector
+from app.managers import app_settings
 from app.ui.windows.desktop_window import DesktopWindow
 from app.ui.windows.main_window import MainWindow
 
@@ -46,6 +47,10 @@ def main() -> int:
     app.installEventFilter(detector)
     # Store detector reference for activation during workspace switch
     app._top_level_detector = detector
+
+    # Initialize global AppSettings (must be before creating windows)
+    from app.managers.app_settings import AppSettings
+    app_settings.app_settings = AppSettings()
 
     # Create DesktopWindow (auto-start)
     desktop_window = DesktopWindow()
