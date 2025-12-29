@@ -2,7 +2,56 @@
 
 Gestor de archivos moderno con interfaz profesional desarrollado con PySide6 (Qt). Sistema de tabs (Focus) para organización eficiente de archivos y carpetas.
 
-## 🚀 Características
+## Estado del proyecto
+
+A partir de este commit (4cccf35), ClarityDesk Pro entra en congelación funcional.
+No se añaden nuevas funcionalidades ni cambios de UX hasta completar la Fase B (Estabilidad).
+Cualquier idea nueva se registra y se pospone.
+
+## Contratos de arquitectura
+
+### Contrato de Arquitectura (capas)
+
+- Models
+  - Datos puros.
+  - Sin lógica de negocio.
+  - Sin dependencias de UI ni Qt.
+- Services
+  - Lógica de negocio.
+  - Acceden a filesystem, base de datos y sistema.
+  - No crean UI, no muestran diálogos, no conocen ventanas.
+- Managers
+  - Orquestan servicios.
+  - Mantienen estado de alto nivel.
+  - No crean ventanas ni diálogos.
+  - Solo emiten señales o invocan a la UI.
+- UI (widgets / windows / dialogs)
+  - Única capa que crea ventanas.
+  - Única capa que crea diálogos.
+  - Responsable del ciclo de vida visual.
+
+Si una capa rompe este contrato, el bug es prácticamente seguro.
+
+### Contrato de Diálogos
+
+- Todo diálogo se crea solo en la UI.
+- Debe tener parent explícito.
+- Su ciclo de vida está controlado (se guarda referencia, p. ej. self.dialog).
+- Se cierra explícitamente.
+- Nunca se crea “al vuelo” dentro de services o managers.
+
+Este contrato evita ventanas huérfanas, parpadeos, robos de foco y bugs fantasma.
+
+### Contrato de Threads
+
+- Threads/Workers:
+  - No tocan la UI.
+  - No crean QPixmap “vivos” para la UI.
+- UI:
+  - Recibe datos ya preparados.
+  - Decide cuándo y cómo pintar.
+
+## �� Características
 
 - **Sistema de Tabs (Focus)**: Organiza tus archivos en tabs para un acceso rápido
 - **Vista de Escritorio**: Interfaz moderna con diseño glass-morphism

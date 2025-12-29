@@ -40,3 +40,6 @@ storage/dock_files/
 storage/trash/
 storage/*.db
 storage/tabs.json
+backups/
+arbol.txt
+output.log
