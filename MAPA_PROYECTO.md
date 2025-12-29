@@ -1,8 +1,8 @@
 # MAPA ARQUITECTÓNICO EXHAUSTIVO - ClarityDesk Pro
 
-**Fecha:** 2025-01-29 (Actualizado después de limpieza P0)  
+**Fecha:** 2025-12-29 (Actualizado despues de escaneo estructural)
 **Objetivo:** Mapa completo del proyecto  
-**Última actualización:** Limpieza arquitectónica P0 aplicada
+**Ultima actualizacion:** Escaneo estructural y recuento de modulos
 
 ---
 
@@ -51,11 +51,12 @@ ClarityDesk_29-11-25/
 │   │   ├── __init__.py
 │   │   ├── constants.py             # Constantes globales (timers, debounce, límites)
 │   │   └── logger.py                # Configuración centralizada de logging
+│   │   └── top_level_detector.py    # Deteccion de ventanas top-level
 │   │
 │   ├── data/                        # 📁 Datos de configuración
 │   │   └── rename_templates.json    # Plantillas de renombrado masivo
 │   │
-│   ├── models/                      # 📁 Models - Datos puros (4 archivos)
+│   ├── models/                      # 📁 Models - Datos puros (5 archivos)
 │   │   ├── __init__.py
 │   │   ├── file_operation_result.py # Resultado de operaciones (success/error)
 │   │   ├── file_stack.py            # Agrupación de archivos por tipo
@@ -89,7 +90,7 @@ ClarityDesk_29-11-25/
 │   │   │   ├── file_creation_service.py    # Creación de archivos (text, markdown, docx)
 │   │   │   └── folder_creation_service.py  # Creación de carpetas
 │   │   │
-│   │   ├── Icons & Preview (24 archivos)
+│   │   ├── Icons & Preview (25 archivos)
 │   │   │   ├── icon_service.py             # Servicio principal de iconos Windows (373 líneas)
 │   │   │   ├── icon_render_service.py      # Renderizado con normalización
 │   │   │   ├── preview_service.py          # ✅ Utilidades de preview (get_file_preview, get_windows_shell_icon)
@@ -106,6 +107,7 @@ ClarityDesk_29-11-25/
 │   │   │   ├── docx_convert_worker.py      # Worker para conversión DOCX
 │   │   │   ├── icon_normalizer.py          # Normalización visual
 │   │   │   ├── icon_processor.py           # Procesamiento de iconos
+│   │   │   ├── icon_path_utils.py          # Utilidades de rutas de iconos
 │   │   │   ├── icon_fallback_helper.py     # Fallbacks de iconos
 │   │   │   ├── icon_conversion_helper.py   # Conversión de iconos
 │   │   │   ├── icon_extraction_fallbacks.py # Fallbacks de extracción
@@ -113,15 +115,17 @@ ClarityDesk_29-11-25/
 │   │   │   ├── pixel_analyzer.py           # Análisis de píxeles
 │   │   │   ├── windows_icon_extractor.py   # Extracción de iconos Windows
 │   │   │   ├── windows_icon_converter.py   # Conversión HICON
+│   │   │   ├── windows_recycle_bin_utils.py # Utilidades Recycle Bin Windows
 │   │   │   ├── pdf_renderer.py             # Renderizado PDFs
 │   │   │   └── docx_converter.py           # Conversión DOCX
 │   │   │
-│   │   ├── File State Storage (6 archivos)
+│   │   ├── File State Storage (7 archivos)
 │   │   │   ├── file_state_storage.py       # Módulo principal (re-exporta APIs)
 │   │   │   ├── file_state_storage_helpers.py # Helpers (DB path, conexión, file ID)
 │   │   │   ├── file_state_storage_init.py  # Inicialización y schema SQLite
 │   │   │   ├── file_state_storage_crud.py # Operaciones CRUD individuales
 │   │   │   ├── file_state_storage_batch.py # Operaciones batch
+│   │   │   ├── file_state_storage_query.py # Consultas y lectura
 │   │   │   └── file_state_storage_rename.py # Operaciones de renombrado
 │   │   │
 │   │   ├── Trash (3 archivos)
@@ -151,17 +155,20 @@ ClarityDesk_29-11-25/
 │   │   ├── Rename (1 archivo)
 │   │   │   └── rename_service.py           # Servicio de renombrado masivo
 │   │   │
-│   │   ├── System Services (4 archivos)
+│   │   ├── System Services (6 archivos)
 │   │   │   ├── filesystem_watcher_service.py # Observador de cambios del sistema de archivos
 │   │   │   ├── workspace_service.py        # Servicio de workspace
 │   │   │   ├── workspace_storage_service.py # Persistencia de workspaces
 │   │   │   └── settings_service.py         # Gestión de configuración
+│   │   │   └── state_label_storage.py       # Persistencia de etiquetas de estado
+│   │   │   └── state_view_mode_storage.py   # Persistencia de modos de vista
+│   │   │   └── search_service.py            # Busqueda y filtrado
 │   │   │
 │   │   └── Utils (2 archivos)
 │   │       ├── path_utils.py               # Utilidades de rutas (normalización)
 │   │       └── preview_file_extensions.py # Extensiones para preview
 │   │
-│   ├── managers/                    # 📁 Managers - Orquestación (10 archivos)
+│   ├── managers/                    # 📁 Managers - Orquestación (15 archivos)
 │   │   ├── __init__.py
 │   │   ├── tab_manager.py                  # Gestor central de tabs (358 líneas)
 │   │   ├── tab_manager_actions.py         # Acciones de tabs (254 líneas)
@@ -169,9 +176,13 @@ ClarityDesk_29-11-25/
 │   │   ├── tab_manager_restore.py         # Restauración de estado
 │   │   ├── tab_manager_signals.py         # Manejo de señales
 │   │   ├── tab_manager_state.py           # Gestión de estado persistente
+│   │   ├── app_settings.py                # Orquestacion de settings
+│   │   ├── file_clipboard_manager.py      # Clipboard de archivos
 │   │   ├── files_manager.py               # Orquestador de operaciones de archivos
 │   │   ├── focus_manager.py               # Orquestador de Focus (wrapper ligero)
 │   │   ├── file_state_manager.py           # Gestor de estados con caché SQLite
+│   │   ├── search_manager.py              # Orquestador de busqueda
+│   │   ├── state_label_manager.py         # Orquestador de etiquetas de estado
 │   │   └── workspace_manager.py            # Gestor de workspaces
 │   │
 │   ├── storage/                     # 📁 Estado simple (JSON)
@@ -189,8 +200,9 @@ ClarityDesk_29-11-25/
 │       │   ├── __init__.py
 │       │   ├── file_box_ui_utils.py # Utilidades UI de FileBox
 │       │   └── font_manager.py     # Gestión de fuentes
+│       │   └── rounded_background_painter.py # Pintado de fondos redondeados
 │       │
-│       ├── widgets/                 # 📁 Componentes reutilizables (83 archivos)
+│       ├── widgets/                 # 📁 Componentes reutilizables (98 archivos)
 │       │   ├── __init__.py
 │       │   │
 │       │   ├── FileGridView (9 archivos)
@@ -304,7 +316,7 @@ ClarityDesk_29-11-25/
 │       │       ├── toolbar_navigation_buttons.py # Botones de navegación
 │       │       └── toolbar_state_buttons.py # Botones de estado
 │       │
-│       └── windows/                 # 📁 Ventanas principales (21 archivos)
+│       └── windows/                 # 📁 Ventanas principales (28 archivos)
 │           ├── __init__.py
 │           │
 │           ├── MainWindow (5 archivos)
@@ -385,8 +397,7 @@ ClarityDesk_29-11-25/
     ├── test_files_controller.py
     ├── test_focus_controller.py
     ├── test_tabs_controller.py
-    └── test_workspace_switching.py
-```
+    └── test_workspace_switching.py```
 
 ---
 
@@ -401,6 +412,7 @@ ClarityDesk_29-11-25/
 **Archivos:**
 - `constants.py` - ✅ **NECESARIO** - Centraliza valores mágicos (timers, debounce, límites). Bien diseñado.
 - `logger.py` - ✅ **NECESARIO** - Configuración centralizada de logging. Buen diseño.
+- `top_level_detector.py` - ? **NECESARIO** - Deteccion de ventanas top-level.
 
 **Evaluación:** ✅ **BUEN DISEÑO** - Capa limpia, sin dependencias circulares.
 
@@ -428,7 +440,7 @@ ClarityDesk_29-11-25/
 
 **Tipo de capa:** Service (Lógica de Negocio)
 
-**Total:** 72 archivos organizados en dominios.
+**Total:** 77 archivos organizados en dominios.
 
 #### Tab Management (9 archivos)
 - `tab_state_manager.py` - ✅ **NECESARIO** - Gestión de estado de tabs.
@@ -454,7 +466,7 @@ ClarityDesk_29-11-25/
 - `file_creation_service.py` - ✅ **NECESARIO** - Creación de archivos (text, markdown, docx).
 - `folder_creation_service.py` - ✅ **NECESARIO** - Creación de carpetas.
 
-#### Icons & Preview (24 archivos)
+#### Icons & Preview (25 archivos)
 - `icon_service.py` - ✅ **NECESARIO** - Servicio principal (373 líneas). Bien estructurado.
 - `icon_render_service.py` - ✅ **NECESARIO** - Renderizado con normalización.
 - `preview_service.py` - ✅ **NECESARIO** - Utilidades de preview (`get_file_preview`, `get_windows_shell_icon`). Alias eliminado.
@@ -471,6 +483,7 @@ ClarityDesk_29-11-25/
 - `docx_convert_worker.py` - ✅ **NECESARIO** - Worker DOCX.
 - `icon_normalizer.py` - ✅ **NECESARIO** - Normalización visual.
 - `icon_processor.py` - ✅ **NECESARIO** - Procesamiento.
+- `icon_path_utils.py` - ? **NECESARIO** - Utilidades de rutas para iconos.
 - `icon_fallback_helper.py` - ✅ **NECESARIO** - Fallbacks.
 - `icon_conversion_helper.py` - ✅ **NECESARIO** - Conversión.
 - `icon_extraction_fallbacks.py` - ✅ **NECESARIO** - Fallbacks de extracción.
@@ -478,17 +491,19 @@ ClarityDesk_29-11-25/
 - `pixel_analyzer.py` - ✅ **NECESARIO** - Análisis de píxeles.
 - `windows_icon_extractor.py` - ✅ **NECESARIO** - Extracción Windows.
 - `windows_icon_converter.py` - ✅ **NECESARIO** - Conversión HICON.
+- `windows_recycle_bin_utils.py` - ? **NECESARIO** - Utilidades de Recycle Bin.
 - `pdf_renderer.py` - ✅ **NECESARIO** - Renderizado PDFs.
 - `docx_converter.py` - ✅ **NECESARIO** - Conversión DOCX.
 
 **Evaluación Icons & Preview:** ✅ **BUEN DISEÑO** - Bien separado por responsabilidades. Alias confuso eliminado.
 
-#### File State Storage (6 archivos)
+#### File State Storage (7 archivos)
 - `file_state_storage.py` - ✅ **NECESARIO** - Módulo principal (re-exporta APIs).
 - `file_state_storage_helpers.py` - ✅ **NECESARIO** - Helpers (DB path, conexión).
 - `file_state_storage_init.py` - ✅ **NECESARIO** - Inicialización y schema.
 - `file_state_storage_crud.py` - ✅ **NECESARIO** - CRUD individual.
 - `file_state_storage_batch.py` - ✅ **NECESARIO** - Operaciones batch.
+- `file_state_storage_query.py` - ? **NECESARIO** - Consultas y lectura.
 - `file_state_storage_rename.py` - ✅ **NECESARIO** - Renombrado.
 
 **Evaluación File State:** ✅ **BUEN DISEÑO** - Separación clara por operaciones.
@@ -519,6 +534,9 @@ ClarityDesk_29-11-25/
 - `workspace_service.py` - ✅ **NECESARIO** - Servicio de workspace.
 - `workspace_storage_service.py` - ✅ **NECESARIO** - Persistencia.
 - `settings_service.py` - ✅ **NECESARIO** - Configuración.
+- `state_label_storage.py` - ? **NECESARIO** - Persistencia de etiquetas de estado.
+- `state_view_mode_storage.py` - ? **NECESARIO** - Persistencia de modos de vista.
+- `search_service.py` - ? **NECESARIO** - Busqueda y filtrado.
 - `path_utils.py` - ✅ **NECESARIO** - Utilidades de rutas.
 - `preview_file_extensions.py` - ✅ **NECESARIO** - Constantes de extensiones.
 
@@ -533,7 +551,7 @@ ClarityDesk_29-11-25/
 
 **Tipo de capa:** Manager (Orquestación)
 
-**Total:** 10 archivos.
+**Total:** 15 archivos.
 
 **Archivos:**
 - `tab_manager.py` - ✅ **NECESARIO** - Gestor central (358 líneas). Bien estructurado, usa módulos auxiliares.
@@ -542,9 +560,13 @@ ClarityDesk_29-11-25/
 - `tab_manager_restore.py` - ✅ **NECESARIO** - Restauración de estado.
 - `tab_manager_signals.py` - ✅ **NECESARIO** - Manejo de señales.
 - `tab_manager_state.py` - ✅ **NECESARIO** - Gestión de estado persistente.
+- `app_settings.py` - ? **NECESARIO** - Orquesta settings de app.
+- `file_clipboard_manager.py` - ? **NECESARIO** - Clipboard de archivos.
 - `files_manager.py` - ✅ **NECESARIO** - Orquestador de operaciones de archivos. Wrapper ligero pero necesario.
 - `focus_manager.py` - ⚠️ **WRAPPER LIGERO** - Solo delega a `TabManager`. Podría eliminarse si no agrega valor.
 - `file_state_manager.py` - ✅ **NECESARIO** - Gestor de estados con caché.
+- `search_manager.py` - ? **NECESARIO** - Orquesta busqueda.
+- `state_label_manager.py` - ? **NECESARIO** - Orquesta etiquetas de estado.
 - `workspace_manager.py` - ✅ **NECESARIO** - Gestor de workspaces.
 
 **Evaluación:** ✅ **BUEN DISEÑO** - Separación clara. Problemas:
@@ -559,9 +581,10 @@ ClarityDesk_29-11-25/
 
 **Tipo de capa:** UI (Presentación)
 
-#### `app/ui/utils/` (2 archivos)
+#### `app/ui/utils/` (3 archivos)
 - `file_box_ui_utils.py` - ✅ **NECESARIO** - Utilidades UI de FileBox.
 - `font_manager.py` - ✅ **NECESARIO** - Gestión de fuentes.
+- `rounded_background_painter.py` - ? **NECESARIO** - Pintado de fondos redondeados.
 
 #### `app/ui/widgets/` (83 archivos)
 
@@ -585,7 +608,7 @@ ClarityDesk_29-11-25/
 - ⚠️ Duplicación de `grid_layout_engine.py` y `grid_layout_config.py`.
 - ⚠️ FolderTreeSidebar muy fragmentado (11 archivos).
 
-#### `app/ui/windows/` (21 archivos)
+#### `app/ui/windows/` (28 archivos)
 
 **MainWindow (5 archivos)** - ✅ **BUEN DISEÑO** - Separación clara por responsabilidades.
 
@@ -651,6 +674,10 @@ ClarityDesk_29-11-25/
 - **Problema:** Solo usado en FileBox. Podría ser parte de `file_box_service.py`.
 - **Solución:** Evaluar si debe ser modelo o parte del servicio.
 
+#### `file_list_view.py.backup`
+- **Problema:** Backup dentro de `app/ui/widgets/` mezclado con codigo activo.
+- **Solucion:** Mover a `backups/` o eliminar si ya no se usa.
+
 #### ⚠️ `arbol.txt`
 - **Problema:** Documentación antigua duplicada. Este mapa lo sustituye.
 - **Solución:** Eliminar o mover a INFORMES/.
@@ -684,13 +711,13 @@ ClarityDesk_29-11-25/
 
 ## 📊 ESTADÍSTICAS FINALES
 
-- **Total archivos Python:** ~180 archivos
-- **Models:** 4 archivos
-- **Services:** 71 archivos (reducción: función redundante eliminada)
-- **Managers:** 10 archivos
-- **UI Widgets:** 83 archivos
-- **UI Windows:** 21 archivos
-- **Core:** 2 archivos
+- **Total archivos Python (repo, excluye backups/build/dist):** 339 archivos
+- **Models:** 5 archivos
+- **Services:** 77 archivos (incluye query/state/search a?adidos)
+- **Managers:** 15 archivos
+- **UI Widgets:** 98 archivos
+- **UI Windows:** 28 archivos
+- **Core:** 4 archivos
 
 ### **Problemas Detectados:**
 - ⚠️ Duplicados: 1 archivo (`tab_manager_init.py` en services/ y managers/ - responsabilidades distintas)
@@ -746,4 +773,3 @@ ClarityDesk_29-11-25/
 ---
 
 **FIN DEL MAPA**
-

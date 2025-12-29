@@ -77,10 +77,10 @@ class BulkRenameDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
         
-        self._file_paths = file_paths
+        self._file_paths = list(file_paths)
         self._rename_service = RenameService()
-        self._base_dir = os.path.dirname(file_paths[0]) if file_paths else ""
-        self._is_single_file = len(file_paths) == 1
+        self._base_dir = os.path.dirname(self._file_paths[0]) if self._file_paths else ""
+        self._is_single_file = len(self._file_paths) == 1
         self._drag_start: Optional[QPoint] = None
         self._header_widget: Optional[QWidget] = None
         self._modify_existing_mode = True  # Predeterminada: Modificar existente

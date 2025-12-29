@@ -84,6 +84,9 @@ class FileListView(QTableWidget):
 
     def _refresh_table(self) -> None:
         """Rebuild table rows from file list."""
+        # Remove checked paths that no longer exist in the current file list
+        self._checked_paths = {path for path in self._checked_paths if path in self._files}
+
         refresh_table(
             self, self._files, self._icon_service,
             self._state_manager, self._checked_paths, self._on_checkbox_changed,
@@ -302,6 +305,15 @@ class FileListView(QTableWidget):
                 if path:
                     return [path]
         return []
+
+    def clear_selection(self) -> None:
+        """Compatibility alias: call Qt's `clearSelection()` for consistency with grid view."""
+        # QTableWidget already exposes clearSelection(); provide snake_case alias
+        self.clearSelection()
+        # Clear checkbox selection to prevent accumulation of old paths
+        self._checked_paths.clear()
+        # Update header checkbox state to reflect cleared selection
+        self._update_header_checkbox_state()
 
     def set_selected_states(self, state) -> None:
         """

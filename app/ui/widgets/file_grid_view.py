@@ -357,6 +357,11 @@ class FileGridView(QWidget):
         QTimer.singleShot(0, lambda: container.adjustSize())
         QTimer.singleShot(0, lambda: container.updateGeometry())
 
+    def clearSelection(self) -> None:
+        """Compatibility alias: delegate to grid selection helper."""
+        # Use the shared selection helper to ensure consistent behavior
+        clear_selection(self)
+
     def _on_stack_clicked(self, file_stack: FileStack) -> None:
         """Handle stack click - toggle expansion horizontally below stack."""
         on_stack_clicked(self, file_stack)

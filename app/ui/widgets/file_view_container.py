@@ -8,6 +8,7 @@ Subscribes to TabManager to update files when active tab changes.
 import os
 from time import perf_counter
 from typing import TYPE_CHECKING, Optional, List
+from app.ui.windows.error_dialog import ErrorDialog
 
 from PySide6.QtCore import QPropertyAnimation, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPaintEvent
@@ -320,6 +321,10 @@ class FileViewContainer(QWidget):
                 migrate_states_on_rename(self._state_manager, old_paths, new_names)
             
             self._process_renames_with_progress(old_paths, new_names)
+
+            # 🔴 MUY IMPORTANTE: invalidar selección y estado previo
+            self._clear_selection_after_rename()
+
             self._refresh_after_rename()
         except RuntimeError as e:
             self._show_rename_error(str(e))
@@ -327,25 +332,26 @@ class FileViewContainer(QWidget):
     def _process_renames_with_progress(self, old_paths: list[str], new_names: list[str]) -> None:
         """Process renames with progress feedback for multiple files."""
         progress = self._create_progress_dialog_if_needed(len(old_paths))
-        
+
         for i, (old_path, new_name) in enumerate(zip(old_paths, new_names)):
             if progress and progress.wasCanceled():
                 break
             self._update_progress(progress, i, old_path)
             self._rename_single_file(old_path, new_name)
-        
+
         if progress:
             progress.setValue(len(old_paths))
+            progress.close()  # Close explicitly to prevent orphan window flash
     
     def _create_progress_dialog_if_needed(self, file_count: int) -> Optional[QProgressDialog]:
         """Create progress dialog if file count exceeds threshold."""
         if file_count <= PROGRESS_DIALOG_THRESHOLD:
             return None
-        
+
         progress = QProgressDialog("Renombrando archivos...", "Cancelar", 0, file_count, self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setMinimumDuration(0)  # Show immediately
-        progress.show()
+        progress.setMinimumDuration(500)  # Only show if operation takes >500ms
+        # Don't call show() - let QProgressDialog decide based on minimumDuration
         return progress
     
     def _update_progress(self, progress: Optional[QProgressDialog], index: int, file_path: str) -> None:
@@ -361,6 +367,21 @@ class FileViewContainer(QWidget):
         if not success:
             raise RuntimeError(f"No se pudo renombrar '{os.path.basename(old_path)}'")
     
+    def _clear_selection_after_rename(self) -> None:
+        """Clear selection and invalidate rename-related UI state.
+
+        Use the stable `clearSelection()` API on views — we added minimal aliases
+        so FileViewContainer can call the same method on both views.
+        """
+        # Llamar siempre a la API estable `clearSelection()` cuando esté disponible
+        if self._grid_view and hasattr(self._grid_view, "clearSelection"):
+            self._grid_view.clearSelection()
+        if self._list_view and hasattr(self._list_view, "clearSelection"):
+            self._list_view.clearSelection()
+
+        # Resetear contador de selección
+        self._last_selection_count = 0
+
     def _refresh_after_rename(self) -> None:
         """Refresh file views after rename operation."""
         update_files(self)
