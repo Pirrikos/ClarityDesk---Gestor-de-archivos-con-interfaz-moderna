@@ -19,7 +19,8 @@ from PySide6.QtWidgets import (
 
 from app.core.constants import (
     SIDEBAR_BG, ROUNDED_BG_TOP_OFFSET, ROUNDED_BG_RADIUS, SEPARATOR_LINE_COLOR,
-    WORKSPACE_HEADER_HEIGHT, WORKSPACE_BUTTON_HEIGHT, CENTRAL_AREA_BG, CENTRAL_AREA_BG_LIGHT
+    WORKSPACE_HEADER_HEIGHT, WORKSPACE_BUTTON_HEIGHT, CENTRAL_AREA_BG, CENTRAL_AREA_BG_LIGHT,
+    CONTENT_LEFT_MARGIN, SIDEBAR_DEFAULT_WIDTH
 )
 from app.core.logger import get_logger
 from app.ui.widgets.folder_tree_icon_utils import load_folder_icon_with_fallback
@@ -50,6 +51,7 @@ TRUNCATE_TO_LENGTH = 12
 # Constantes de layout
 LAYOUT_LEFT_MARGIN = 12
 LAYOUT_SPACING = 6
+NAV_VISUAL_OFFSET = 27  # Ajuste visual adicional para botones de navegación
 
 
 class WorkspaceSelector(QWidget):
@@ -172,8 +174,8 @@ class WorkspaceSelector(QWidget):
         bottom_margin = vertical_centering
         layout.setContentsMargins(LAYOUT_LEFT_MARGIN, top_margin, LAYOUT_LEFT_MARGIN, bottom_margin)
         layout.setSpacing(LAYOUT_SPACING)
-        
-        # === IZQUIERDA: Botones ===
+
+        # === IZQUIERDA: Workspace button ===
         self._workspace_button = QPushButton()
         self._workspace_button.setObjectName("WorkspaceButton")
         self._workspace_button.setFixedHeight(WORKSPACE_BUTTON_HEIGHT)
@@ -181,38 +183,38 @@ class WorkspaceSelector(QWidget):
         self._workspace_button.setStyleSheet(get_workspace_button_dark_stylesheet())
         self._workspace_button.clicked.connect(self._on_workspace_button_clicked)
         layout.addWidget(self._workspace_button, 0)
-        
-        # Espacio entre workspace y los botones
+
+        # Espacio entre workspace y botones
         layout.addSpacing(8)
-        
+
         # Focus button
         self._focus_button = QPushButton()
         self._focus_button.setObjectName("HeaderButton")
-        self._focus_button.setFixedSize(28, 28)
-        self._focus_button.setToolTip("Nuevo Focus")
-        
+        self._focus_button.setFixedSize(75, 28)
+        self._focus_button.setToolTip("Nueva Carpeta")
+
         # Cargar icono de carpeta (tamaño pequeño para botón de 28x28)
-        icon_loaded = False
+        small_icon_size = QSize(20, 20)
+        folder_icon = None
+
         try:
-            small_icon_size = QSize(20, 20)
             folder_icon = load_folder_icon_with_fallback(small_icon_size)
-            if not folder_icon.isNull():
-                self._focus_button.setIcon(folder_icon)
-                self._focus_button.setIconSize(small_icon_size)
-                icon_loaded = True
         except Exception as e:
             logger.warning(f"No se pudo cargar icono de carpeta para botón Focus: {e}")
-        
-        if not icon_loaded:
+
+        if folder_icon and not folder_icon.isNull():
+            self._focus_button.setIcon(folder_icon)
+            self._focus_button.setIconSize(small_icon_size)
+        else:
             self._focus_button.setText("📁")
-        
+
         self._focus_button.clicked.connect(self._on_focus_button_clicked)
         layout.addWidget(self._focus_button, 0)
-        
-        # Separador entre focus y navegación
-        layout.addWidget(self._create_separator(), 0)
-        
-        # Navigation buttons (back/forward)
+
+        # Offset para alinear navegación con contenido central + ajuste visual
+        layout.addSpacing(SIDEBAR_DEFAULT_WIDTH + CONTENT_LEFT_MARGIN - LAYOUT_LEFT_MARGIN + NAV_VISUAL_OFFSET)
+
+        # Navigation buttons (back/forward) alineados con contenido central
         self._back_button, self._forward_button = create_navigation_buttons(
             self, size=(28, 28), use_default_style=False
         )
@@ -222,11 +224,7 @@ class WorkspaceSelector(QWidget):
         self._forward_button.clicked.connect(self.navigation_forward.emit)
         layout.addWidget(self._back_button, 0)
         layout.addWidget(self._forward_button, 0)
-        
-        # === CENTRO: Espacio libre ===
-        layout.addStretch(1)
-        
-        # === DERECHA: Botones de vista y acciones ===
+
         # Separador visual
         layout.addWidget(self._create_separator(), 0)
         
@@ -266,18 +264,18 @@ class WorkspaceSelector(QWidget):
         self._list_button.toggled.connect(lambda checked: self._update_view_button_icon_and_style(self._list_button, "lista.svg", checked))
         self._update_view_button_style(self._list_button, False)
         layout.addWidget(self._list_button, 0)
-        
-        # Separador visual
-        layout.addWidget(self._create_separator(), 0)
-        
+
+        # Stretch para empujar los botones finales a la derecha
+        layout.addStretch(1)
+
         # File box button
         self._file_box_button = QPushButton("📦")
         self._file_box_button.setObjectName("HeaderButton")
-        self._file_box_button.setFixedSize(28, 28)
+        self._file_box_button.setFixedSize(75, 28)
         self._file_box_button.setToolTip("Caja de archivos")
         self._file_box_button.clicked.connect(self.file_box_requested.emit)
         layout.addWidget(self._file_box_button, 0)
-        
+
         # Rename button
         self._rename_button = QPushButton("Renombrar")
         self._rename_button.setObjectName("WorkspaceButton")
@@ -288,26 +286,26 @@ class WorkspaceSelector(QWidget):
         self._rename_button.setEnabled(False)
         self._rename_button.clicked.connect(self.rename_clicked.emit)
         layout.addWidget(self._rename_button, 0)
-        
+
         # State button
         self._state_button = QPushButton("🏷️")
         self._state_button.setObjectName("StateButton")
         self._state_button.setFixedHeight(WORKSPACE_BUTTON_HEIGHT)
-        self._state_button.setFixedWidth(28)
+        self._state_button.setFixedWidth(75)
         self._state_button.setToolTip("Estados")
         self._attach_state_menu(self._state_button)
         layout.addWidget(self._state_button, 0)
-        
+
         # Set fixed height for the entire widget
         self.setFixedHeight(WORKSPACE_HEADER_HEIGHT)
     
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
+
         widget_rect = self.rect().adjusted(0, 0, -1, -1)
         bg_color = QColor(self._theme_color)  # Usar color del tema dinámico
-        
+
         paint_rounded_background(painter, widget_rect, bg_color)
         
         # Pintar offset visual para el botón de workspace

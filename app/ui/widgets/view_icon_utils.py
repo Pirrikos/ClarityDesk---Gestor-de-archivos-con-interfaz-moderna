@@ -52,9 +52,17 @@ def load_view_icon(svg_name: str, size: QSize, checked: bool) -> QIcon:
             svg_content = svg_content.replace('fill="rgb(255,255,255)"', 'fill="rgb(220, 220, 220)"')  # Gris claro sólido (no transparente)
             svg_content = svg_content.replace('stroke="rgb(255,255,255)"', 'stroke="rgb(220, 220, 220)"')  # Gris claro sólido (no transparente)
         else:
+            # Evitar rgba() porque QSvgRenderer (SVG 1.1) no lo soporta correctamente.
+            # Usamos rgb() + fill-opacity/stroke-opacity para semitransparencia.
             svg_content = svg_content.replace('fill="rgb(245,245,245)"', 'fill="transparent"')
-            svg_content = svg_content.replace('fill="rgb(255,255,255)"', 'fill="rgba(255, 255, 255, 0.7)"')
-            svg_content = svg_content.replace('stroke="rgb(255,255,255)"', 'stroke="rgba(255, 255, 255, 0.7)"')
+            # Variantes de blanco en fill
+            for white_fill in ('fill="rgb(255,255,255)"', 'fill="#FFFFFF"', 'fill="#ffffff"', 'fill="#fff"', 'fill="white"'):
+                if white_fill in svg_content:
+                    svg_content = svg_content.replace(white_fill, 'fill="rgb(255,255,255)" fill-opacity="0.7"')
+            # Variantes de blanco en stroke
+            for white_stroke in ('stroke="rgb(255,255,255)"', 'stroke="#FFFFFF"', 'stroke="#ffffff"', 'stroke="#fff"', 'stroke="white"'):
+                if white_stroke in svg_content:
+                    svg_content = svg_content.replace(white_stroke, 'stroke="rgb(255,255,255)" stroke-opacity="0.7"')
         
         svg_bytes = QByteArray(svg_content.encode('utf-8'))
         renderer = QSvgRenderer(svg_bytes)
@@ -76,4 +84,3 @@ def load_view_icon(svg_name: str, size: QSize, checked: bool) -> QIcon:
     except Exception as e:
         logger.warning(f"No se pudo cargar icono {svg_name}: {e}")
         return QIcon()
-

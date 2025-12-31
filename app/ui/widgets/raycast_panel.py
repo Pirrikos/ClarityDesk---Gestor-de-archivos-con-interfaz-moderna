@@ -16,8 +16,13 @@ class RaycastPanel(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         # Asegurar que el widget ocupe todo el espacio disponible sin márgenes
         self.setContentsMargins(0, 0, 0, 0)
-        # Desactivar auto-fill background para control total del pintado
+        
+        # Configuración de transparencia total para optimización
         self.setAutoFillBackground(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False) 
+        # NOTA: WA_OpaquePaintEvent=False es correcto aquí porque es transparente
+
 
     def paintEvent(self, event):
         """

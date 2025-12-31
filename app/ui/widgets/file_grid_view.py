@@ -74,6 +74,7 @@ class FileGridView(QWidget):
     stack_expand_requested = Signal(FileStack)
     expansion_height_changed = Signal(int)
     stacks_count_changed = Signal(int)
+    selection_changed = Signal()  # Emitted when selection changes
 
     def __init__(
         self,

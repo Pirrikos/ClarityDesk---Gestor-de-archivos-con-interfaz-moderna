@@ -7,19 +7,20 @@ Handles initial UI construction and widget connections.
 from typing import TYPE_CHECKING, Optional
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QSizePolicy, QStackedWidget, QVBoxLayout
+from PySide6.QtGui import QColor
 
 from app.core.constants import CENTRAL_AREA_BG, FILE_VIEW_LEFT_MARGIN
+from app.core.logger import get_logger
 
 from app.ui.widgets.file_grid_view import FileGridView
 from app.ui.widgets.file_list_view import FileListView
 from app.ui.widgets.focus_header_panel import FocusHeaderPanel
 from app.ui.widgets.path_footer_widget import PathFooterWidget
 
-if TYPE_CHECKING:
-    from app.ui.windows.desktop_window import DesktopWindow
-    from app.ui.widgets.file_view_container import FileViewContainer
-
+logger = get_logger(__name__)
+logger.debug("🚀 Loading file_view_setup.py")
 
 def setup_ui(container: "FileViewContainer") -> None:
     """Build the UI layout with view switcher."""
@@ -71,6 +72,10 @@ def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
     
     container._stacked = QStackedWidget()
     container._stacked.setAutoFillBackground(False)
+    # Asegurar que el stacked expanda para rellenar el alto disponible
+    from PySide6.QtWidgets import QSizePolicy
+    container._stacked.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    container._stacked.setContentsMargins(0, 0, 0, 0)
     if container._is_desktop:
         container._stacked.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         container._stacked.setStyleSheet("""
@@ -85,16 +90,16 @@ def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
         """)
     else:
         container._stacked.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-        container._stacked.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
-        container._stacked.setStyleSheet("""
-            QStackedWidget { 
-                background-color: transparent;
+        container._stacked.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        container._stacked.setAutoFillBackground(True)
+        palette = container._stacked.palette()
+        palette.setColor(container._stacked.backgroundRole(), QColor(CENTRAL_AREA_BG))
+        container._stacked.setPalette(palette)
+        container._stacked.setStyleSheet(f"""
+            QStackedWidget {{ 
+                background-color: {CENTRAL_AREA_BG};
                 border: none;
-                border-left: none;
-                border-right: none;
-                border-top: none;
-                border-bottom: none;
-            }
+            }}
         """)
     container._grid_view = FileGridView(
         container._icon_service,
@@ -165,4 +170,3 @@ def _connect_view_signals(container: "FileViewContainer") -> None:
     
     container._grid_view.expansion_height_changed.connect(container._on_expansion_height_changed)
     container._grid_view.stacks_count_changed.connect(container._on_stacks_count_changed)
-

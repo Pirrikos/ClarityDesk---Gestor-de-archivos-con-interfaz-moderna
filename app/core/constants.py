@@ -4,6 +4,7 @@ Application-wide constants.
 Centralizes magic numbers and configuration values for better maintainability.
 """
 
+from pickle import TRUE
 from PySide6.QtGui import QColor
 
 # Timer intervals (milliseconds)
@@ -17,8 +18,10 @@ FILE_SYSTEM_DEBOUNCE_MS = 500
 
 # UI dimensions (pixels)
 SIDEBAR_MAX_WIDTH = 400
+SIDEBAR_DEFAULT_WIDTH = 200  # Ancho inicial del sidebar en splitter
 FILE_VIEW_LEFT_MARGIN = 8
-RESIZE_EDGE_DETECTION_MARGIN = 8
+RESIZE_EDGE_DETECTION_MARGIN = 15
+CONTENT_LEFT_MARGIN = 20  # Margen izquierdo del grid/contenido principal
 
 # Workspace selector dimensions
 WORKSPACE_HEADER_HEIGHT = 52
@@ -27,6 +30,23 @@ WORKSPACE_BUTTON_HEIGHT = 28
 # Rounded background styling (Finder-like)
 ROUNDED_BG_TOP_OFFSET = 0  # Sin offset para alineación perfecta con FileViewContainer
 ROUNDED_BG_RADIUS = 12
+
+# Feature flags
+# =============================================================================
+# FEATURE FLAG: Sistema de esquinas redondeadas en MainWindow
+#
+# True  = Sistema ANTIGUO (paintEvent en MainWindow raíz, sin BackgroundContainer)
+#         ✅ Esquinas redondeadas visibles
+#         ✅ Mejor rendimiento
+#         ⚠️ Requiere WA_OpaquePaintEvent=False
+#
+# False = Sistema ACTUAL (BackgroundContainer hijo, paintEvent rectangular en MainWindow)
+#         ❌ Esquinas NO visibles (rectángulo sólido)
+#         ✅ Optimización anti-flicker
+#
+# Para revertir al sistema actual, cambiar a False
+# =============================================================================
+USE_ROUNDED_CORNERS_IN_ROOT = True  # ← Cambiar a False para revertir
 
 # UI colors
 CENTRAL_AREA_BG = "#202326"
@@ -43,9 +63,9 @@ FILE_BOX_LIST_BG = "#1A1E25"
 FILE_BOX_HOVER_BG = "#252A31"
 FILE_BOX_TEXT = "#e6edf3"
 FILE_BOX_BUTTON_TEXT = "#888888"
-FILE_BOX_BUTTON_PRIMARY = "#007AFF"
-FILE_BOX_BUTTON_PRIMARY_HOVER = "#0056CC"
-FILE_BOX_BUTTON_PRIMARY_PRESSED = "#004499"
+FILE_BOX_BUTTON_PRIMARY = "#7B2CBF"
+FILE_BOX_BUTTON_PRIMARY_HOVER = "#7B2CBF"
+FILE_BOX_BUTTON_PRIMARY_PRESSED = "#7B2CBF"
 
 # Header and menu colors
 APP_HEADER_BG = "#1A1D22"
@@ -91,19 +111,19 @@ BUTTON_TEXT_HEADER_DISABLED = "rgba(255, 255, 255, 0.35)"
 
 # Text colors
 TEXT_SUBFOLDER = "#B0B5BA"
-CHEVRON_COLOR = "#9CA3AF"
+CHEVRON_COLOR = "#7B2CBF"
 TEXT_LIST = "#E8E8E8"  # Color del texto en lista
 
 # List view colors
 CHECKBOX_BORDER = "rgba(255, 255, 255, 0.3)"
-CHECKBOX_BORDER_HOVER = "#80C5FF"
-CHECKBOX_BG_CHECKED = "#80C5FF"
-CHECKBOX_BG_CHECKED_HOVER = "#66B3FF"
+CHECKBOX_BORDER_HOVER = "#7B2CBF"
+CHECKBOX_BG_CHECKED = "#7B2CBF"
+CHECKBOX_BG_CHECKED_HOVER = "#7B2CBF"
 
 # Selection colors (list and grid views)
 from PySide6.QtGui import QColor
-SELECTION_BORDER_COLOR = QColor(100, 150, 255)  # Azul suave para borde de selección
-SELECTION_BG_COLOR = QColor(100, 150, 255, 15)  # Azul suave semitransparente para fondo de selección
+SELECTION_BORDER_COLOR = QColor("#9D4EDD")
+SELECTION_BG_COLOR = QColor(157, 78, 221, 25)   # Morado suave semitransparente para fondo de selección
 
 # Header colors (list view)
 HEADER_BG = "#1A1D22"  # Gris más oscuro que CENTRAL_AREA_BG (#202326)
@@ -151,4 +171,3 @@ PROGRESS_DIALOG_THRESHOLD = 5  # Show progress for >N files
 # Útil para detectar solapamientos, desbordes y errores de jerarquía de layout.
 # No modifica tamaños, posiciones ni comportamiento de los widgets.
 DEBUG_LAYOUT = False
-

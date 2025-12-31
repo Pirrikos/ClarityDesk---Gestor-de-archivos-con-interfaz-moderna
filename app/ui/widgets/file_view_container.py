@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Optional, List
 from app.ui.windows.error_dialog import ErrorDialog
 
 from PySide6.QtCore import QPropertyAnimation, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QPainter, QPaintEvent
+from PySide6.QtGui import QColor, QPainter, QPaintEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QGraphicsOpacityEffect,
@@ -50,7 +50,7 @@ from app.ui.widgets.file_state_migration import migrate_states_on_rename
 from app.ui.widgets.file_view_handlers import FileViewHandlers
 from app.ui.widgets.file_view_setup import setup_ui
 from app.ui.widgets.file_view_sync import (
-    update_files, switch_view, get_selected_files, set_selected_states
+    update_files, switch_view, get_selected_files, set_selected_states, clear_selection
 )
 from app.ui.widgets.file_view_tabs import (
     connect_tab_signals, on_active_tab_changed, on_files_changed,
@@ -121,7 +121,7 @@ class FileViewContainer(QWidget):
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
             self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
         self.setAutoFillBackground(False)
-        
+
         # Inicializar color del tema desde AppSettings
         from app.managers import app_settings as app_settings_module
         if app_settings_module.app_settings is not None:
@@ -163,11 +163,15 @@ class FileViewContainer(QWidget):
         self.setVisible(True)
     
     def _setup_selection_timer(self) -> None:
-        """Setup timer to periodically update selection count."""
-        self._selection_timer = QTimer(self)
-        self._selection_timer.timeout.connect(self._update_selection_count)
+        """Setup selection change handlers (event-based, not timer-based)."""
         self._last_selection_count = 0
-        self._selection_timer.start(SELECTION_UPDATE_INTERVAL_MS)
+
+        # Conectar señales de selección de las vistas para actualizar solo cuando cambie
+        # Esto reemplaza el timer periódico que causaba repintados innecesarios
+        if self._list_view:
+            self._list_view.itemSelectionChanged.connect(self._update_selection_count)
+        if self._grid_view and hasattr(self._grid_view, 'selection_changed'):
+            self._grid_view.selection_changed.connect(self._update_selection_count)
     
     def _update_selection_count(self) -> None:
         """Update focus panel with current selection count."""
@@ -229,6 +233,9 @@ class FileViewContainer(QWidget):
             skip_render: Si True, solo limpia los datos sin renderizar (útil cuando
                         inmediatamente se van a cargar nuevos datos).
         """
+        # Limpiar selección visual en ambas vistas
+        clear_selection(self)
+        
         # Limpiar datos pero no renderizar si skip_render=True
         if skip_render:
             # Solo limpiar datos internos sin disparar render
@@ -279,7 +286,13 @@ class FileViewContainer(QWidget):
         self.open_file.emit(file_path)
     
     def _animate_content_transition(self) -> None:
-        """Aplicar animación de opacidad breve al área de contenido."""
+        """
+        Aplicar animación de opacidad breve al área de contenido.
+        
+        NOTA: Desactivado temporalmente para evitar transparencias hacia el escritorio
+        en ventanas translúcidas durante la navegación.
+        """
+        return
         try:
             target = self._stacked
             if not isinstance(target, QWidget):
@@ -309,7 +322,13 @@ class FileViewContainer(QWidget):
         selected_files = get_selected_files(self)
         if len(selected_files) < 1:
             return
-        
+
+        # Sort files Finder-style: folders first, then files, both alphabetically (case-insensitive)
+        selected_files = sorted(
+            selected_files,
+            key=lambda p: (not os.path.isdir(p), os.path.basename(p).lower())
+        )
+
         dialog = BulkRenameDialog(selected_files, self)
         dialog.rename_applied.connect(self._on_rename_applied)
         dialog.exec()
@@ -600,8 +619,12 @@ class FileViewContainer(QWidget):
         if self._list_view:
             self._list_view.refresh_state_labels(state_id)
     
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Propagar resize."""
+        super().resizeEvent(event)
+
     def paintEvent(self, event: QPaintEvent) -> None:
-        """Pintar fondo redondeado estilo sidebar cuando no es desktop window."""
+        """Pintar fondo redondeado y refuerzo sólido."""
         if self._is_desktop:
             super().paintEvent(event)
             return
@@ -609,10 +632,14 @@ class FileViewContainer(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        widget_rect = self.rect().adjusted(0, 0, -1, -1)
-        bg_color = QColor(self._theme_color)  # Usar color del tema (claro u oscuro)
+        bg_color = QColor(self._theme_color)
         
-        # Pintar fondo redondeado sin offset superior para cubrir completamente el área
+        # REFUERZO: Llenar todo el rect con color sólido para evitar parpadeos
+        painter.fillRect(self.rect(), bg_color)
+        
+        widget_rect = self.rect().adjusted(0, 0, -1, -1)
+        
+        # Pintar el redondeado
         painter.setBrush(bg_color)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(widget_rect, ROUNDED_BG_RADIUS, ROUNDED_BG_RADIUS)
@@ -627,9 +654,7 @@ class FileViewContainer(QWidget):
         self.update()  # Forzar repintado
     
     def closeEvent(self, event) -> None:
-        """Cleanup timers before closing."""
-        if hasattr(self, '_selection_timer') and self._selection_timer.isActive():
-            self._selection_timer.stop()
+        """Cleanup handlers before closing."""
         if hasattr(self, '_handlers') and hasattr(self._handlers, 'cleanup'):
             self._handlers.cleanup()
         super().closeEvent(event)

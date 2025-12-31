@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QSpinBox,
     QPushButton,
     QRadioButton,
     QTableWidget,
@@ -234,13 +235,14 @@ class BulkRenameDialog(QDialog):
         self._pattern_input.textChanged.connect(self._update_preview)
         self._pattern_input.returnPressed.connect(self._on_apply)
         
-        # Pre-llenar con nombre actual si es modo modificar existente (solo para un archivo)
-        if self._modify_existing_mode and self._is_single_file:
-            current_name = os.path.basename(self._file_paths[0])
-            self._current_name_label.setText(f"Archivo actual: {current_name}")
-            self._current_name_label.show()
-            name_without_ext = os.path.splitext(current_name)[0]
-            self._pattern_input.setText(name_without_ext)
+        # Pre-llenar con nombre actual si es modo modificar existente
+        if self._modify_existing_mode:
+            current_name = os.path.basename(self._file_paths[0]) if self._file_paths else ""
+            if current_name:
+                self._current_name_label.setText(f"Archivo actual: {current_name}")
+                self._current_name_label.show()
+                name_without_ext = os.path.splitext(current_name)[0]
+                self._pattern_input.setText(name_without_ext)
         
         left_column.addWidget(self._pattern_input)
         
@@ -255,6 +257,7 @@ class BulkRenameDialog(QDialog):
         # Opción de posición del número (solo para múltiples archivos) - va a la columna derecha
         if not self._is_single_file:
             self._setup_number_position_option(right_column)
+            self._setup_start_number_option(right_column)
         
         # Búsqueda y reemplazo - va a la columna derecha
         self._setup_search_replace(right_column)
@@ -576,6 +579,44 @@ class BulkRenameDialog(QDialog):
         format_layout.addStretch()
         layout.addLayout(format_layout)
     
+    def _setup_start_number_option(self, layout: QVBoxLayout) -> None:
+        start_label = QLabel("Número inicial:")
+        start_label.setStyleSheet(f"""
+            QLabel {{
+                font-weight: 600;
+                color: {FILE_BOX_TEXT};
+                margin-top: 8px;
+            }}
+        """)
+        layout.addWidget(start_label)
+        
+        self._start_from_spin = QSpinBox()
+        self._start_from_spin.setMinimum(1)
+        self._start_from_spin.setMaximum(9999)
+        self._start_from_spin.setValue(1)
+        self._start_from_spin.valueChanged.connect(self._update_preview)
+        layout.addWidget(self._start_from_spin)
+        self._start_from_spin.setStyleSheet(self._get_spinbox_stylesheet())
+    
+    def _get_spinbox_stylesheet(self) -> str:
+        return f"""
+            QSpinBox {{
+                background-color: {FILE_BOX_LIST_BG};
+                color: {FILE_BOX_TEXT};
+                border: 1px solid {FILE_BOX_BORDER};
+                border-radius: 6px;
+                padding: 6px;
+            }}
+            QSpinBox:focus {{
+                border-color: {FILE_BOX_BUTTON_PRIMARY};
+            }}
+            QSpinBox::up-button, QSpinBox::down-button {{
+                width: 16px;
+                border: none;
+                background: transparent;
+            }}
+        """
+    
     def _setup_mode_selector(self, layout: QVBoxLayout) -> None:
         """Setup mode selector: Nuevo or Modificar existente."""
         mode_label = QLabel("Modo:")
@@ -600,15 +641,12 @@ class BulkRenameDialog(QDialog):
         self._modify_mode_radio = QRadioButton("Modificar existente")
         self._modify_mode_radio.setStyleSheet(radio_stylesheet)
         
-        # Si hay múltiples archivos, deshabilitar "Modificar existente" y forzar "Nuevo"
         if self._is_single_file:
-            self._modify_mode_radio.setChecked(True)  # Predeterminada solo para un archivo
+            self._modify_mode_radio.setChecked(True)
             self._modify_existing_mode = True
         else:
-            # Múltiples archivos: deshabilitar "Modificar existente" y forzar "Nuevo"
-            self._modify_mode_radio.setEnabled(False)
-            self._modify_mode_radio.setToolTip("No disponible para múltiples archivos")
-            self._new_mode_radio.setChecked(True)  # Forzar "Nuevo"
+            self._modify_mode_radio.setEnabled(True)
+            self._new_mode_radio.setChecked(True)
             self._modify_existing_mode = False
         
         self._modify_mode_radio.toggled.connect(self._on_mode_changed)
@@ -646,21 +684,15 @@ class BulkRenameDialog(QDialog):
     
     def _on_mode_changed(self) -> None:
         """Handle mode change between Nuevo and Modificar existente."""
-        # Solo permitir cambiar modo si es un solo archivo
-        if not self._is_single_file:
-            return
-        
         self._modify_existing_mode = self._modify_mode_radio.isChecked()
         
         if self._modify_existing_mode:
-            # Modo: Modificar existente (solo disponible para un archivo)
-            current_name = os.path.basename(self._file_paths[0])
-            self._current_name_label.setText(f"Archivo actual: {current_name}")
-            self._current_name_label.show()
-            
-            # Pre-llenar con nombre sin extensión
-            name_without_ext = os.path.splitext(current_name)[0]
-            self._pattern_input.setText(name_without_ext)
+            current_name = os.path.basename(self._file_paths[0]) if self._file_paths else ""
+            if current_name:
+                self._current_name_label.setText(f"Archivo actual: {current_name}")
+                self._current_name_label.show()
+                name_without_ext = os.path.splitext(current_name)[0]
+                self._pattern_input.setText(name_without_ext)
         else:
             # Modo: Nuevo
             self._current_name_label.hide()
@@ -755,7 +787,8 @@ class BulkRenameDialog(QDialog):
             use_uppercase=use_uppercase,
             use_lowercase=use_lowercase,
             use_title_case=use_title_case,
-            number_position=number_position
+            number_position=number_position,
+            start_from=(self._start_from_spin.value() if hasattr(self, "_start_from_spin") else 1)
         )
         
         self._preview_table.setRowCount(len(self._file_paths))
@@ -809,7 +842,8 @@ class BulkRenameDialog(QDialog):
             replace_text=replace_text,
             use_uppercase=use_uppercase,
             use_lowercase=use_lowercase,
-            use_title_case=use_title_case
+            use_title_case=use_title_case,
+            start_from=(self._start_from_spin.value() if hasattr(self, "_start_from_spin") else 1)
         )
         
         is_valid, error_msg = self._rename_service.validate_names(
@@ -951,4 +985,3 @@ class BulkRenameDialog(QDialog):
                 screen_geometry.left() + (screen_geometry.width() - dialog_geometry.width()) // 2,
                 screen_geometry.top() + (screen_geometry.height() - dialog_geometry.height()) // 2
             )
-

@@ -36,6 +36,7 @@ class RenameService:
         use_lowercase: bool = False,
         use_title_case: bool = False,
         number_position: str = "suffix",
+        start_from: int = 1,
     ) -> list[str]:
         print("PREVIEW PATHS:", paths)
         print("TOTAL PATHS:", len(paths))
@@ -51,13 +52,13 @@ class RenameService:
 
         preview: list[str] = []
 
-        for i, path in enumerate(paths):
+        for i, path in enumerate(paths, start=start_from):
             _, original_ext = os.path.splitext(path)
 
             new_name = self._apply_pattern(
                 path,
                 pattern,
-                index=i + 1,
+                index=i,
                 is_single_file=is_single_file,
             )
 
@@ -97,7 +98,7 @@ class RenameService:
         )
 
         if not is_single_file:
-            new_name = new_name.replace("{n}", f"{index:02d}")
+            new_name = new_name.replace("{n}", f"{index}")
         else:
             new_name = new_name.replace("{n}", "")
 
@@ -207,4 +208,3 @@ class RenameService:
                 json.dump(templates, f, ensure_ascii=False, indent=2)
         except OSError:
             pass
-

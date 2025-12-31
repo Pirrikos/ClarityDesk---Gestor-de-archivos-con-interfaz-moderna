@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPen, QPaintEvent
 
+from app.core.constants import SELECTION_BORDER_COLOR, SELECTION_BG_COLOR
+
 if TYPE_CHECKING:
     from app.ui.widgets.file_tile import FileTile
 
@@ -34,10 +36,10 @@ def paint_dock_style(tile: 'FileTile', event: QPaintEvent) -> None:
     border_width = 1
     
     if is_selected:
-        # Cuando está seleccionado, azul suave y sutil
-        border_color = QColor(100, 150, 255)  # Azul más suave y claro
+        # Cuando está seleccionado, usar colores de constants.py
+        border_color = QColor(SELECTION_BORDER_COLOR)
         border_width = 2
-        bg_color = QColor(100, 150, 255, 15)  # Azul suave semitransparente
+        bg_color = QColor(SELECTION_BG_COLOR)
     
     # Pintar fondo del contenedor
     painter.setBrush(QBrush(bg_color))

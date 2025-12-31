@@ -18,6 +18,9 @@ def clear_selection(view) -> None:
         except RuntimeError:
             pass
     view._selected_tiles.clear()
+    # Emitir señal para actualizar contador de selección
+    if hasattr(view, 'selection_changed'):
+        view.selection_changed.emit()
 
 
 def select_tile(view, tile: FileTile, modifiers: Qt.KeyboardModifiers) -> None:
@@ -28,6 +31,9 @@ def select_tile(view, tile: FileTile, modifiers: Qt.KeyboardModifiers) -> None:
         view._selected_tiles,
         lambda: clear_selection(view)
     )
+    # Emitir señal para actualizar contador de selección
+    if hasattr(view, 'selection_changed'):
+        view.selection_changed.emit()
 
 
 def get_selected_paths(view) -> list[str]:

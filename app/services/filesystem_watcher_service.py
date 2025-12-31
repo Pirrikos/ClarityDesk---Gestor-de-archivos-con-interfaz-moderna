@@ -102,33 +102,34 @@ class FileSystemWatcherService(QObject):
         """
         Set flag to ignore filesystem events.
         
-        DEPRECATED: Watcher blocking is no longer needed.
-        Debounce and snapshot comparison prevent refresh loops automatically.
-        This method is kept for backward compatibility but does nothing.
-        
-        Args:
-            ignore: Ignored (kept for compatibility).
+        Temporarily ignore filesystem events during controlled operations.
+        Se usa para evitar tormentas de eventos mientras se renombra una carpeta.
         """
-        # No-op: debounce and snapshot comparison handle everything
-        pass
+        self._ignore_events = bool(ignore)
+        if ignore and self._debounce_timer.isActive():
+            self._debounce_timer.stop()
 
     def _take_snapshot(self, folder_path: str) -> list[tuple[str, float, bool, int]]:
         """
         Take lightweight snapshot of folder contents.
-        
+
         Returns list of (filename, mtime, is_dir, size) tuples.
-        
+
         Args:
             folder_path: Path to folder.
-            
+
         Returns:
             List of (filename, mtime, is_dir, size) tuples.
         """
+        from app.core.logger import get_logger
+        logger = get_logger(__name__)
+
         snapshot = []
         try:
             if not os.path.isdir(folder_path):
+                logger.debug(f"Watcher snapshot: path is not a directory: {folder_path}")
                 return snapshot
-            
+
             for item in os.listdir(folder_path):
                 item_path = os.path.join(folder_path, item)
                 try:
@@ -143,9 +144,12 @@ class FileSystemWatcherService(QObject):
         except (OSError, PermissionError):
             # Folder doesn't exist or no permission
             pass
-        
+
         # Sort for consistent comparison
         snapshot.sort()
+
+        logger.debug(f"Watcher snapshot: {len(snapshot)} items in '{folder_path}'")
+
         return snapshot
 
     def _snapshots_equal(self, snapshot1: list[tuple], snapshot2: list[tuple]) -> bool:
@@ -327,7 +331,16 @@ class FileSystemWatcherService(QObject):
         Only emits filesystem_changed if snapshot actually changed.
         Detects folder rename/move and emits folder_renamed signal.
         """
+        from app.core.logger import get_logger
+        logger = get_logger(__name__)
+
+        logger.debug(f"Watcher debounce timeout: ignore_events={self._ignore_events}, watched_folder={self._watched_folder}")
+
+        if self._ignore_events:
+            logger.debug("Watcher: skipping, events are being ignored")
+            return
         if not self._watched_folder:
+            logger.debug("Watcher: skipping, no watched folder")
             return
 
         # Take new snapshot
@@ -335,15 +348,17 @@ class FileSystemWatcherService(QObject):
 
         # Only process if snapshot changed (and we have a previous snapshot)
         if self._previous_snapshot is not None and not self._snapshots_equal(self._previous_snapshot, current_snapshot):
+            logger.debug("Watcher: snapshot changed, processing changes")
             # Try to detect folder rename/move (simple rename in same directory)
             rename_info = self._detect_folder_rename(
                 self._previous_snapshot,
                 current_snapshot,
                 self._watched_folder
             )
-            
+
             if rename_info:
                 old_path, new_path = rename_info
+                logger.info(f"Watcher detected folder rename: '{old_path}' -> '{new_path}'")
                 self.folder_renamed.emit(old_path, new_path)
             else:
                 # Detect folders that disappeared without replacement (moved outside watched directory)

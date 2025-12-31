@@ -7,9 +7,9 @@ Emits signal on double-click to open file.
 
 from typing import Optional
 
-from PySide6.QtCore import QModelIndex, Qt, Signal
-from PySide6.QtGui import QContextMenuEvent, QMouseEvent
-from PySide6.QtWidgets import QCheckBox, QTableWidget, QTableWidgetItem
+from PySide6.QtCore import Qt, Signal, QEvent, QTimer, QElapsedTimer
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent, QResizeEvent
+from PySide6.QtWidgets import QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView
 
 try:
     from app.managers.file_state_manager import FileStateManager
@@ -27,6 +27,10 @@ from app.ui.widgets.file_list_renderer import (
 )
 from app.ui.widgets.file_view_context_menu import show_background_menu, show_item_menu
 from app.ui.widgets.file_view_utils import create_refresh_callback
+from app.core.constants import DEBUG_LAYOUT
+from app.core.logger import get_logger
+logger = get_logger(__name__)
+logger.debug("🚀 Loading file_list_view.py")
 
 
 class FileListView(QTableWidget):
@@ -47,7 +51,7 @@ class FileListView(QTableWidget):
     ):
         """
         Initialize FileListView with empty file list.
-        
+
         Args:
             icon_service: Optional IconService instance.
             parent: Parent widget.
@@ -64,7 +68,17 @@ class FileListView(QTableWidget):
         self._state_manager = state_manager or (FileStateManager() if FileStateManager else None)
         self._get_label_callback = get_label_callback
         self._header_checkbox: Optional[QCheckBox] = None
-        self._hovered_row: int = -1  # Fila bajo el mouse para efecto hover tipo Finder
+        self._hovered_row: int = -1
+        self._resize_in_progress: bool = False
+        self._last_resize_size = None
+
+        # Timer para restaurar el layout automático una vez estabilizado el resize (coalesce)
+        self._finalize_resize_timer: QTimer = QTimer(self)
+        self._finalize_resize_timer.setSingleShot(True)
+        self._finalize_resize_timer.setInterval(150)
+        self._finalize_resize_timer.timeout.connect(self._finalize_resize)
+
+        self._resize_timer: QElapsedTimer = QElapsedTimer()
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -92,6 +106,16 @@ class FileListView(QTableWidget):
             self._state_manager, self._checked_paths, self._on_checkbox_changed,
             self._get_label_callback
         )
+        try:
+            from app.core.logger import get_logger
+            logger = get_logger(__name__)
+            vp = self.viewport()
+            if DEBUG_LAYOUT:
+                logger.info(
+                    f"📏 [List] rows={self.rowCount()} | table_h={self.height()} | vp_h={vp.height()} | vp_rect={vp.rect()}"
+                )
+        except Exception:
+            pass
     
     def update_item_state_visual(self, file_path: str, new_state: Optional[str]) -> bool:
         """
@@ -158,48 +182,121 @@ class FileListView(QTableWidget):
         """Handle mouse press - toggle checkbox with Ctrl+click."""
         mouse_press_event(self, event)
     
+    def resizeEvent(self, event) -> None:
+        """Manejar resize SIN ajustar columnas (para evitar parpadeo)."""
+        super().resizeEvent(event)
+        # Las columnas solo se ajustan cuando se usan los botones de tamaño de ventana
+        # NO durante resize continuo (drag), porque causa parpadeo
+
+    def _adjust_columns_to_viewport_width(self) -> None:
+        """
+        Ajustar anchos de columnas para usar el ancho disponible del viewport.
+
+        - Ventana pequeña (< 1000px): Anchos fijos mínimos
+        - Ventana mediana/grande (>= 1000px): Distribuir espacio disponible
+        """
+        viewport_width = self.viewport().width()
+        header = self.horizontalHeader()
+
+        # Ancho fijo de columna checkbox
+        checkbox_width = 16
+
+        if viewport_width < 1000:
+            # Ventana pequeña: usar anchos mínimos fijos
+            header.resizeSection(1, 300)  # Nombre (mínimo)
+            header.resizeSection(2, 100)  # Tipo
+            header.resizeSection(3, 150)  # Fecha
+            header.resizeSection(4, 120)  # Estado
+        else:
+            # Ventana mediana/grande: distribuir espacio disponible
+            # Dejar más margen: scrollbar (20px) + margen derecho (40px) = 60px total
+            available_width = viewport_width - checkbox_width - 60
+
+            # Distribución proporcional:
+            # Nombre: 50% del espacio
+            # Tipo: 13%
+            # Fecha: 20%
+            # Estado: 17%
+            nombre_width = max(300, int(available_width * 0.50))
+            tipo_width = max(100, int(available_width * 0.13))
+            fecha_width = max(150, int(available_width * 0.20))
+            estado_width = max(120, int(available_width * 0.17))
+
+            header.resizeSection(1, nombre_width)
+            header.resizeSection(2, tipo_width)
+            header.resizeSection(3, fecha_width)
+            header.resizeSection(4, estado_width)
+
+    def _finalize_resize(self) -> None:
+        """Obsoleto - no ajustamos columnas para evitar parpadeo."""
+        pass
+
+    def _on_resize_paint_tick(self) -> None:
+        """Obsolete."""
+        pass
+
+    def _set_row_widgets_visible(self, visible: bool) -> None:
+        try:
+            for row in range(self.rowCount()):
+                for col in (0, 4):
+                    w = self.cellWidget(row, col)
+                    if w:
+                        w.setVisible(visible)
+        except RuntimeError:
+            pass
+
+    def viewportEvent(self, event: QEvent) -> bool:
+        et = event.type()
+        if DEBUG_LAYOUT:
+            if et == QEvent.Paint:
+                rect = self.viewport().rect()
+                logger.warning(f"🎯 Viewport.Paint rect: {rect}")
+            elif et == QEvent.Resize:
+                sz = self.viewport().size()
+                logger.warning(f"📐 Viewport.Resize size: {sz.width()}x{sz.height()}")
+            elif et == QEvent.UpdateRequest:
+                logger.info("🔄 Viewport.UpdateRequest")
+        return super().viewportEvent(event)
+
+    def showEvent(self, event) -> None:
+        """Propagar evento de mostrar."""
+        super().showEvent(event)
+
+
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse move - update hovered row for Finder-like hover effect."""
         super().mouseMoveEvent(event)
         item = self.itemAt(event.pos())
         new_hovered_row = item.row() if item else -1
-        
-        # Si el mouse está fuera de cualquier item, limpiar hover
         if new_hovered_row < 0:
             if self._hovered_row >= 0:
                 old_row = self._hovered_row
                 self._hovered_row = -1
                 self._update_row_visual(old_row)
+                self.viewport().update()
             return
-        
-        # Actualizar solo si cambió la fila en hover
         if new_hovered_row != self._hovered_row:
             old_row = self._hovered_row
             self._hovered_row = new_hovered_row
-            
-            # Actualizar visualización de ambas filas
             if old_row >= 0:
                 self._update_row_visual(old_row)
             if new_hovered_row >= 0:
                 self._update_row_visual(new_hovered_row)
-    
+            self.viewport().update()
+
     def leaveEvent(self, event) -> None:
-        """Handle mouse leave - clear hover effect."""
         if self._hovered_row >= 0:
             old_row = self._hovered_row
             self._hovered_row = -1
             self._update_row_visual(old_row)
+        self.viewport().update()
         super().leaveEvent(event)
-    
+
     def _update_row_visual(self, row: int) -> None:
-        """Actualizar visualización de una fila completa."""
         if row < 0 or row >= self.rowCount():
             return
-        # Actualizar toda la fila usando visualRect
         index = self.model().index(row, 0)
         if index.isValid():
             rect = self.visualRect(index)
-            # Expandir rectángulo para cubrir todas las columnas
             if self.columnCount() > 0:
                 last_index = self.model().index(row, self.columnCount() - 1)
                 if last_index.isValid():

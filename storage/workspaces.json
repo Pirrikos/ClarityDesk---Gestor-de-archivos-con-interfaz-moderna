@@ -1,15 +1,40 @@
 {
   "workspaces": [
     {
-      "id": "4964504a-d921-42e0-9f11-bd811b7c572a",
-      "name": "DEDI",
-      "created_at": "2025-12-29T21:15:55.349988"
+      "id": "8dddac16-4b22-403a-b5ce-fb9865aa227c",
+      "name": "6 PRIMARIA",
+      "created_at": "2025-12-31T12:34:37.764035"
     },
     {
       "id": "5712baef-72fb-44f9-bcd2-4ff1edf5b9a2",
       "name": "1 ESO",
-      "created_at": "2025-12-29T21:15:55.349998"
+      "created_at": "2025-12-31T12:34:37.764041"
+    },
+    {
+      "id": "6bec15d5-5e76-438d-87d4-1b3b71dac7fb",
+      "name": "2 ESO",
+      "created_at": "2025-12-31T12:34:37.764043"
+    },
+    {
+      "id": "aceb30bb-0b5e-4d3d-be46-46cdf876f35c",
+      "name": "3 ESO",
+      "created_at": "2025-12-31T12:34:37.764044"
+    },
+    {
+      "id": "beb5bc9f-39f8-4c04-ada4-f79f411f567e",
+      "name": "4 ESO",
+      "created_at": "2025-12-31T12:34:37.764046"
+    },
+    {
+      "id": "1d751792-bd1b-4401-847c-b19b76815f5f",
+      "name": "5 PRIMARIA",
+      "created_at": "2025-12-31T12:34:37.764047"
+    },
+    {
+      "id": "e7ab18fe-7ec0-4c5f-8529-5df1be9808d9",
+      "name": "PRUEBA DE CAMBIOS",
+      "created_at": "2025-12-31T12:34:37.764048"
     }
   ],
-  "active_workspace_id": "4964504a-d921-42e0-9f11-bd811b7c572a"
+  "active_workspace_id": "5712baef-72fb-44f9-bcd2-4ff1edf5b9a2"
 }

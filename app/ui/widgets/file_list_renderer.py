@@ -3,6 +3,7 @@ Rendering helpers for FileListView.
 
 Handles UI setup and table row creation.
 """
+import os
 
 from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QFont, QPalette, QColor
@@ -92,13 +93,20 @@ def setup_header_checkbox(view, header: QHeaderView) -> None:
     layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
     checkbox.setFixedSize(15, 15)
     
-    # Conectar señal de cambio de tamaño del header
-    def on_section_resized(logical_index: int, old_size: int, new_size: int) -> None:
-        if logical_index == 0:
-            _update_header_checkbox_position(container, header)
-    
-    header.sectionResized.connect(on_section_resized)
-    header.geometriesChanged.connect(lambda: _update_header_checkbox_position(container, header))
+    # Coalescer reposición para evitar repintados por píxel durante resize
+    repos_timer = QTimer(container)
+    repos_timer.setSingleShot(True)
+    repos_timer.setInterval(80)  # Comentario: coalesce suave durante drag
+    def schedule_reposition(*_args) -> None:
+        # Bloquear señales durante el resize para evitar cascada de eventos
+        header.blockSignals(True)
+        repos_timer.stop()
+        repos_timer.start()
+        header.blockSignals(False)
+        
+    repos_timer.timeout.connect(lambda: _update_header_checkbox_position(container, header))
+    # header.sectionResized.connect(schedule_reposition)
+    # header.geometriesChanged.connect(schedule_reposition)
     
     # Conectar scroll horizontal para mostrar/ocultar checkbox
     scrollbar = view.horizontalScrollBar()
@@ -123,19 +131,41 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     header = view.horizontalHeader()
     header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
     header.resizeSection(0, 16)  # Ancho mínimo: 15px widget + 1px margen de seguridad
-    
+
     # Agregar checkbox en el header de la primera columna
     setup_header_checkbox(view, header)
-    # Columna "Nombre" se expande para ocupar el espacio disponible
-    header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+    # CONFIRMADO DEFINITIVO: Stretch causa parpadeo SIEMPRE en PySide6/Qt
+    # Probado en columnas 1 (Nombre) y 4 (Estado) - ambas causan parpadeo
+    # SOLUCIÓN FINAL: Todas las columnas Interactive (ancho fijo manual)
+    header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+    header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+    header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+    header.setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)
+
     header.setMinimumSectionSize(100)  # Ancho mínimo para evitar que se haga muy pequeña
-    header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-    header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-    header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-    
+
+    # Establecer anchos iniciales razonables
+    header.resizeSection(1, 300)  # Nombre - ancho generoso (mínimo, puede expandirse)
+    header.resizeSection(2, 100)  # Tipo
+    header.resizeSection(3, 150)  # Fecha
+    header.resizeSection(4, 120)  # Estado
+
+    # Evitar que la columna Nombre se haga más pequeña que su ancho inicial
+    MIN_NAME_COLUMN_WIDTH = 300
+
+    def on_section_resized(logical_index: int, old_size: int, new_size: int) -> None:
+        """Prevent Name column from shrinking below minimum width."""
+        if logical_index == 1 and new_size < MIN_NAME_COLUMN_WIDTH:
+            # Restaurar ancho mínimo sin disparar señal recursiva
+            header.blockSignals(True)
+            header.resizeSection(1, MIN_NAME_COLUMN_WIDTH)
+            header.blockSignals(False)
+
+    header.sectionResized.connect(on_section_resized)
+
     header.setDefaultSectionSize(100)
     header.setHighlightSections(False)
-    # No estirar la última columna - la columna "Nombre" asume la expansión
+    # Todas las columnas tienen ancho fijo manual - sin expansión automática
     header.setSectionsMovable(False)
     
     _ensure_column_count(view, 5)
@@ -170,7 +200,7 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
     view.setFrameShape(QTableWidget.Shape.NoFrame)
     view.setFrameShadow(QTableWidget.Shadow.Plain)
     
-    view.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+    # Respetar atributos del view definidos por FileListView
     
     # La paleta ya no se usa, el delegate obtiene el color directamente desde AppSettings
     
@@ -190,16 +220,7 @@ def setup_ui(view, checkbox_changed_callback, double_click_callback) -> None:
         QFont.Weight.DemiBold
     )
     
-    view.viewport().setStyleSheet("""
-        QWidget {
-            background-color: transparent;
-            border: none;
-            border-left: none;
-            border-right: none;
-            border-top: none;
-            border-bottom: none;
-        }}
-    """)
+    # Mantener estilo del viewport definido por FileListView
     view.itemDoubleClicked.connect(double_click_callback)
     view.setDragEnabled(True)
     view.setAcceptDrops(True)
@@ -220,20 +241,22 @@ def expand_stacks_to_files(file_list: list) -> list[str]:
 def refresh_table(view, files: list[str], icon_service, state_manager, checked_paths: set, checkbox_changed_callback, get_label_callback=None) -> None:
     """Rebuild table rows from file list."""
     _ensure_column_count(view, 5)
-    
-    # Soft reveal: ocultar viewport inicialmente durante construcción
-    viewport_was_visible = view.viewport().isVisible()
-    if viewport_was_visible and len(files) > 0:
-        view.viewport().setVisible(False)
-    
+
+    # Eliminado el "Soft reveal" que ocultaba el viewport.
+    # Esto evita que se vea el escritorio a través de la transparencia del padre durante la navegación.
+
     view.setRowCount(len(files))
     for row, file_path in enumerate(files):
         create_row(view, row, file_path, icon_service, state_manager, checked_paths, checkbox_changed_callback, get_label_callback)
-    
-    # Revelar viewport en siguiente ciclo con micro-fade
-    if len(files) > 0:
-        QTimer.singleShot(0, lambda: _reveal_viewport_with_fade(view))
-    
+
+    # OPTIMIZACIÓN: No ajustar columnas automáticamente para evitar recálculos costosos
+    # Los anchos iniciales ya están definidos en setup_ui() (líneas 147-150)
+    # El modo Interactive permite al usuario ajustar manualmente si lo necesita
+    # Esto elimina un punto de recálculo costoso durante cada navegación
+
+    # Solo asegurar que la columna 0 (checkbox) mantenga su ancho mínimo fijo
+    view.setColumnWidth(0, 16)
+
     # Actualizar estado del checkbox del header después de refrescar
     if hasattr(view, '_update_header_checkbox_state'):
         view._update_header_checkbox_state()
@@ -255,27 +278,3 @@ def create_row(view, row: int, file_path: str, icon_service, state_manager, chec
     state_widget = create_state_cell(state, font, view, get_label_callback)
     view.setCellWidget(row, 4, state_widget)
     view.setRowHeight(row, 56)
-
-
-def _reveal_viewport_with_fade(view: QTableWidget) -> None:
-    """Revelar viewport con micro-fade ≤120ms."""
-    try:
-        viewport = view.viewport()
-        viewport.setVisible(True)
-        viewport.setWindowOpacity(0.0)
-        
-        fade_anim = QPropertyAnimation(viewport, b"windowOpacity", viewport)
-        fade_anim.setDuration(100)  # ≤120ms para rapidez percibida
-        fade_anim.setStartValue(0.0)
-        fade_anim.setEndValue(1.0)
-        fade_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
-        fade_anim.start()
-    except RuntimeError:
-        # Widget fue destruido, simplemente mostrar
-        try:
-            viewport = view.viewport()
-            viewport.setVisible(True)
-            viewport.setWindowOpacity(1.0)
-        except RuntimeError:
-            pass
-

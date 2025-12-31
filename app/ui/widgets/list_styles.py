@@ -13,7 +13,7 @@ from app.core.constants import (
 
 LIST_VIEW_STYLESHEET = f"""
     QTableWidget {{
-        background-color: transparent;
+        background-color: {CENTRAL_AREA_BG};
         border: none;
         border-left: none;
         border-right: none;
@@ -29,7 +29,7 @@ LIST_VIEW_STYLESHEET = f"""
         show-decoration-selected: 0;
     }}
     QTableView {{
-        background-color: transparent;
+        background-color: {CENTRAL_AREA_BG};
         border: none;
         gridline-color: rgba(0, 0, 0, 0) !important;
         outline: none;
@@ -40,11 +40,11 @@ LIST_VIEW_STYLESHEET = f"""
         border-right: none;
         border-top: none;
         border-bottom: none;
-        background-color: transparent;
+        background-color: {CENTRAL_AREA_BG};
     }}
     QTableView::viewport {{
         border: none;
-        background-color: transparent;
+        background-color: {CENTRAL_AREA_BG};
     }}
     QTableWidget::item,
     QTableView::item {{
@@ -85,7 +85,6 @@ LIST_VIEW_STYLESHEET = f"""
         border-top: none;
         border-bottom: none;
     }}
-    }}
     /* Checkboxes estilo Finder claro */
     QCheckBox {{
         spacing: 0px;
@@ -120,7 +119,7 @@ LIST_VIEW_STYLESHEET = f"""
         margin-top: 4px;
     }}
     QHeaderView::section {{
-        background-color: transparent;
+        background-color: {HEADER_BG};
         color: {HEADER_TEXT_COLOR};
         border: none !important;
         border-right: none !important;
@@ -155,4 +154,3 @@ LIST_VIEW_STYLESHEET = f"""
         border-bottom: 1px solid {HEADER_BORDER_CORNER};
     }}
 """
-

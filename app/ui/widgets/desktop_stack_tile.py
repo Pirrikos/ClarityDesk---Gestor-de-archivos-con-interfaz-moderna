@@ -173,7 +173,7 @@ class DesktopStackTile(QWidget, HoverAnimationMixin):
         text_shadow.setColor(QColor(0, 0, 0, 180))
         name_label.setGraphicsEffect(text_shadow)
         
-        display_name = "Escritorio"
+        display_name = "Área de Trabajo"
         metrics = QFontMetrics(name_label.font())
         max_width = 68
         elided_text = elide_middle_manual(display_name, metrics, max_width)

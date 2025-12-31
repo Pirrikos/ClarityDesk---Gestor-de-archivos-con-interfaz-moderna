@@ -94,11 +94,10 @@ class DesktopWindow(QWidget):
         """Build Dock-style layout - exactly like macOS Dock."""
         self.setWindowTitle("ClarityDesk - Dock")
         
-        # Set window flags: frameless, always on top, stay on desktop
+        # Set window flags: frameless, respeta Z-order normal del sistema
         self.setWindowFlags(
             Qt.WindowType.Window |
             Qt.WindowType.FramelessWindowHint |
-            Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.Tool  # Don't show in taskbar
         )
         # Enable full transparency and prevent border flashing

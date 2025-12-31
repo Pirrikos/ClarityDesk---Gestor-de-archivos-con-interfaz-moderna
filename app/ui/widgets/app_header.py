@@ -12,6 +12,9 @@ from PySide6.QtWidgets import QWidget, QHBoxLayout, QSizePolicy, QLabel, QGraphi
 
 from app.core.constants import DEBUG_LAYOUT, ROUNDED_BG_RADIUS, SEPARATOR_LINE_COLOR
 from app.services.icon_renderer import render_svg_icon
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ClickableIconLabel(QLabel):
@@ -35,6 +38,7 @@ class AppHeader(QWidget):
 
     show_desktop_requested = Signal()  # Emitido cuando se hace clic en el icono de escritorio
     show_settings_requested = Signal()  # Emitido cuando se hace clic en el icono de ajustes
+    window_size_changed = Signal()  # Emitido cuando se cambia el tamaño de ventana con botones
 
     _HEADER_STYLESHEET = """
         QWidget#AppHeader {
@@ -81,7 +85,7 @@ class AppHeader(QWidget):
         layout = self._create_main_layout()
         self._add_dock_icons(layout)
         self._add_window_size_buttons(layout)
-        layout.addStretch(1)
+        layout.addStretch(1)  # Stretch para empujar el botón de cerrar a la derecha
         self._add_close_button(layout)
 
     def _setup_base_configuration(self) -> None:
@@ -301,6 +305,8 @@ class AppHeader(QWidget):
             else:
                 window.showMaximized()
             QTimer.singleShot(100, self._update_maximize_button_state)
+            # Emitir señal para ajustar columnas después de cambiar tamaño
+            QTimer.singleShot(150, self.window_size_changed.emit)
     
     def _update_maximize_button_state(self) -> None:
         """Update maximize button icon and tooltip based on window state."""
@@ -319,24 +325,27 @@ class AppHeader(QWidget):
         window = self.window()
         if not window:
             return
-        
+
         screen = QApplication.primaryScreen()
         if not screen:
             return
-        
+
         screen_geometry = screen.availableGeometry()
-        
+
         width = int(screen_geometry.width() * 0.75)
         height = int(screen_geometry.height() * 0.75)
-        
+
         x = screen_geometry.x() + (screen_geometry.width() - width) // 2
         y = screen_geometry.y() + (screen_geometry.height() - height) // 2
-        
+
         if window.isMaximized():
             window.showNormal()
             QTimer.singleShot(50, lambda: window.setGeometry(QRect(x, y, width, height)))
         else:
             window.setGeometry(QRect(x, y, width, height))
+
+        # Emitir señal para ajustar columnas después de cambiar tamaño
+        QTimer.singleShot(150, self.window_size_changed.emit)
     
     def _capture_initial_size(self) -> None:
         """Capture initial window size when first shown."""
@@ -354,7 +363,7 @@ class AppHeader(QWidget):
         window = self.window()
         if not window:
             return
-        
+
         if not self._original_geometry:
             screen = QApplication.primaryScreen()
             if screen:
@@ -366,12 +375,15 @@ class AppHeader(QWidget):
                 self._original_geometry = QRect(x, y, default_width, default_height)
             else:
                 self._original_geometry = QRect(100, 100, 1200, 800)
-        
+
         if window.isMaximized():
             window.showNormal()
             QTimer.singleShot(50, lambda: window.setGeometry(self._original_geometry))
         else:
             window.setGeometry(self._original_geometry)
+
+        # Emitir señal para ajustar columnas después de cambiar tamaño
+        QTimer.singleShot(150, self.window_size_changed.emit)
 
     def _add_close_button(self, layout: QHBoxLayout) -> None:
         """Agregar botón de cerrar aplicación a la derecha del header."""
@@ -454,12 +466,12 @@ class AppHeader(QWidget):
         if DEBUG_LAYOUT:
             super().paintEvent(event)
             return
-        
+
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         rect = self.rect()
         radius = ROUNDED_BG_RADIUS
-        
+
         # Crear path con esquinas redondeadas solo superiores (sin redondeo inferior para juntar con SecondaryHeader)
         path = QPainterPath()
         path.moveTo(rect.left() + radius, rect.top())
@@ -470,9 +482,9 @@ class AppHeader(QWidget):
         path.lineTo(rect.left(), rect.top() + radius)
         path.arcTo(rect.left(), rect.top(), 2 * radius, 2 * radius, 180, -90)
         path.closeSubpath()
-        
+
         p.fillPath(path, QColor("#1A1D22"))
-        
+
         p.end()
         super().paintEvent(event)
 

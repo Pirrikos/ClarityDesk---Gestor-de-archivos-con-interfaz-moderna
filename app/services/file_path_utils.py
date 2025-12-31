@@ -81,6 +81,47 @@ def validate_path(path: str) -> bool:
         return False
 
 
+def is_office_temp_file(file_path: str) -> bool:
+    """
+    Check if a file is a Microsoft Office temporary file.
+
+    Office creates temporary lock files when documents are opened:
+    - ~$*.docx, ~$*.xlsx, ~$*.pptx (lock files for Word, Excel, PowerPoint)
+    - ~WRL*.tmp (Word recovery files)
+    - *.tmp in general Office temp files
+
+    These should be hidden from the UI but are legitimate filesystem files.
+
+    Args:
+        file_path: Path to check.
+
+    Returns:
+        True if file is an Office temporary file, False otherwise.
+    """
+    if not file_path or not isinstance(file_path, str):
+        return False
+
+    try:
+        filename = os.path.basename(file_path)
+
+        # Lock files: ~$documento.docx, ~$hoja.xlsx, ~$presentacion.pptx
+        if filename.startswith('~$'):
+            return True
+
+        # Word recovery files: ~WRL0001.tmp, ~WRL0002.tmp, etc.
+        if filename.startswith('~WRL') and filename.endswith('.tmp'):
+            return True
+
+        # General Office temp files (be more specific to avoid false positives)
+        # Check for ~*.tmp pattern (tilde prefix + .tmp extension)
+        if filename.startswith('~') and filename.endswith('.tmp'):
+            return True
+
+        return False
+    except Exception:
+        return False
+
+
 def resolve_conflict(target_path: Path) -> Path:
     """
     Resolve filename/foldername conflicts by appending a number.
@@ -99,7 +140,7 @@ def resolve_conflict(target_path: Path) -> Path:
     else:
         stem = target_path.stem
         suffix = target_path.suffix
-    
+
     parent = target_path.parent
 
     counter = 1

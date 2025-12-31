@@ -490,6 +490,8 @@ class QuickPreviewWindow(QWidget):
                         self._animations.apply_crossfade(self._image_label, scaled)
                     else:
                         self._image_label.setPixmap(scaled)
+                    # Actualizar tamaño lógico del QLabel para activar scrollbars automáticamente
+                    self._image_label.setFixedSize(scaled.size())
             except Exception as e:
                 # R5: Encapsulate any UI errors
                 logger.warning(f"Error applying pixmap: {e}", exc_info=True)
@@ -714,6 +716,8 @@ class QuickPreviewWindow(QWidget):
                 self._animations.apply_crossfade(self._image_label, scaled)
             else:
                 self._image_label.setPixmap(scaled)
+            # Actualizar tamaño lógico del QLabel para activar scrollbars automáticamente
+            self._image_label.setFixedSize(scaled.size())
             # Mantener overlay visible si seguimos generando miniaturas
             if not self._thumbs_loading:
                 self._show_loading(False)

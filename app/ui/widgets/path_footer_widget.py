@@ -4,10 +4,16 @@ PathFooterWidget - Footer widget that displays file path with button to open con
 Shows the full path of the selected file and a button to open the containing folder.
 """
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QElapsedTimer
+from PySide6.QtGui import QPainter, QColor
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
 
 from app.services.file_open_service import open_containing_folder
+from app.core.constants import DEBUG_LAYOUT, CENTRAL_AREA_BG
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
+logger.debug("🚀 Loading path_footer_widget.py")
 
 
 class PathFooterWidget(QWidget):
@@ -22,7 +28,7 @@ class PathFooterWidget(QWidget):
     def _setup_ui(self) -> None:
         """Setup UI layout and styling."""
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setContentsMargins(12, 0, 12, 6)
         layout.setSpacing(8)
         
         self._open_folder_button = QPushButton("Abrir carpeta contenedora", self)
@@ -63,7 +69,23 @@ class PathFooterWidget(QWidget):
         """)
         
         layout.addWidget(self._label, 1)
-    
+
+    def paintEvent(self, event) -> None:
+        """Pintar fondo sólido de refuerzo con instrumentación."""
+        if not hasattr(self, '_paint_count_debug'): self._paint_count_debug = 0
+        self._paint_count_debug += 1
+        t = QElapsedTimer()
+        t.start()
+
+        from app.core.constants import CENTRAL_AREA_BG
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(CENTRAL_AREA_BG))
+        painter.end()
+
+        elapsed = t.nsecsElapsed() / 1000000.0
+        if DEBUG_LAYOUT:
+            logger.info(f"🎨 [Footer] Paint #{self._paint_count_debug} | dur={elapsed:.2f}ms")
+
     def _on_open_folder_clicked(self) -> None:
         """Handle click on open folder button."""
         if self._current_path:
@@ -80,4 +102,3 @@ class PathFooterWidget(QWidget):
             self._label.setText("")
             self._label.setVisible(False)
             self._open_folder_button.setVisible(False)
-

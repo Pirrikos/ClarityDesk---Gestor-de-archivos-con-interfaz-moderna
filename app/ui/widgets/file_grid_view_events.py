@@ -68,7 +68,7 @@ def resize_event(view, event) -> None:
     
     # Reiniciar el timer para coalescer múltiples eventos dentro de un único ciclo
     view._resize_finalize_timer.stop()
-    view._resize_finalize_timer.start(180)
+    view._resize_finalize_timer.start(150)
 
 
 def on_stack_clicked(view, file_stack: FileStack) -> None:

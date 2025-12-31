@@ -5,23 +5,25 @@ Handles window layout and widget creation.
 Focus Dock is now integrated directly in FileViewContainer.
 """
 
-from PySide6.QtCore import Qt
+import os
+from PySide6.QtCore import Qt, QObject, QEvent, QTimer
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QSplitter, QVBoxLayout, QWidget, QSizePolicy
 
 from app.core.constants import (
     SEPARATOR_LINE_COLOR, SIDEBAR_BG,
     BUTTON_BG_DARK, BUTTON_BORDER_DARK, BUTTON_BG_DARK_HOVER, BUTTON_BORDER_DARK_HOVER,
-    APP_HEADER_BG, APP_HEADER_BORDER
+    APP_HEADER_BG, APP_HEADER_BORDER, USE_ROUNDED_CORNERS_IN_ROOT
 )
 from app.core.logger import get_logger
 from app.ui.widgets.app_header import AppHeader
+from app.ui.widgets.background_container import BackgroundContainer
 from app.ui.widgets.secondary_header import SecondaryHeader
 from app.ui.widgets.file_box_history_panel import FileBoxHistoryPanel
 from app.ui.widgets.file_view_container import FileViewContainer
 from app.ui.widgets.file_view_sync import switch_view
 from app.ui.widgets.file_view_tabs import on_nav_back, on_nav_forward
 from app.ui.widgets.folder_tree_sidebar import FolderTreeSidebar
-from app.ui.widgets.raycast_panel import RaycastPanel
+# from app.ui.widgets.raycast_panel import RaycastPanel  # Ya no se usa
 from app.ui.widgets.window_header import WindowHeader
 from app.ui.widgets.workspace_selector import WorkspaceSelector
 
@@ -47,7 +49,7 @@ def _apply_visual_separation(window_header, app_header, secondary_header, worksp
             background-color: rgba(0, 0, 0, 0.08) !important;
         }
     """)
-    
+
     app_header.setStyleSheet("""
         QWidget#AppHeader {
             /* Tinte azul sutil para coherencia con workspace */
@@ -55,7 +57,7 @@ def _apply_visual_separation(window_header, app_header, secondary_header, worksp
             border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
         }
     """)
-    
+
     secondary_header.setStyleSheet(f"""
         QWidget#SecondaryHeader {{
             /* Mismo estilo que AppHeader para continuidad visual */
@@ -63,7 +65,7 @@ def _apply_visual_separation(window_header, app_header, secondary_header, worksp
             border-bottom: 1px solid {APP_HEADER_BORDER} !important;
         }}
     """)
-    
+
     workspace_selector.setStyleSheet(f"""
         QWidget#WorkspaceSelector {{
             border-bottom: 1px solid {APP_HEADER_BORDER} !important;
@@ -85,30 +87,55 @@ def _apply_visual_separation(window_header, app_header, secondary_header, worksp
 def setup_ui(window, tab_manager, icon_service, workspace_manager, state_label_manager=None) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, SecondaryHeader, WorkspaceSelector, FileBoxHistoryPanel, QSplitter, 'FileBoxPanel']:
     try:
         root_layout = QVBoxLayout(window)
-        # Margen invisible de 3px alrededor para permitir detección de bordes por el sistema
-        # Este margen es necesario para que el resize nativo funcione correctamente en ventanas frameless
-        root_layout.setContentsMargins(3, 3, 3, 3)
+
+        # Márgenes según feature flag
+        if USE_ROUNDED_CORNERS_IN_ROOT:
+            # SISTEMA ANTIGUO: Margen de 3px para detección de bordes en resize
+            root_layout.setContentsMargins(3, 3, 3, 3)
+        else:
+            # SISTEMA ACTUAL: Sin margen (overlay maneja detección de bordes)
+            root_layout.setContentsMargins(0, 0, 0, 0)
+
         root_layout.setSpacing(0)
-        
-        window_header = WindowHeader(window)
+
+        # Parent widget para headers según feature flag
+        if USE_ROUNDED_CORNERS_IN_ROOT:
+            # SISTEMA ANTIGUO: Widgets directos en window (sin BackgroundContainer)
+            parent_widget = window
+            main_layout = root_layout  # Layout directamente en window
+        else:
+            # SISTEMA ACTUAL: Usar BackgroundContainer como intermediario
+            background_container = BackgroundContainer(window)
+            background_container.set_background_color(SIDEBAR_BG)
+            background_container.set_corner_radius(12)
+
+            container_layout = QVBoxLayout(background_container)
+            container_layout.setContentsMargins(0, 0, 0, 0)
+            container_layout.setSpacing(0)
+
+            parent_widget = background_container
+            main_layout = container_layout
+
+        # Crear headers (parent depende del feature flag)
+        window_header = WindowHeader(parent_widget)
         window_header.hide()  # Ocultar visualmente temporalmente
-        root_layout.addWidget(window_header, 0)
-        
-        app_header = AppHeader(window)
+        main_layout.addWidget(window_header, 0)
+
+        app_header = AppHeader(parent_widget)
         app_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        root_layout.addWidget(app_header, 0)
-        
-        secondary_header = SecondaryHeader(window)
+        main_layout.addWidget(app_header, 0)
+
+        secondary_header = SecondaryHeader(parent_widget)
         secondary_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        root_layout.addWidget(secondary_header, 0)
-        
-        workspace_selector = WorkspaceSelector(window)
+        main_layout.addWidget(secondary_header, 0)
+
+        workspace_selector = WorkspaceSelector(parent_widget)
         workspace_selector.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         workspace_selector.set_workspace_manager(workspace_manager)
-        root_layout.addWidget(workspace_selector, 0)
-        
+        main_layout.addWidget(workspace_selector, 0)
+
         # Línea horizontal separadora (invisible)
-        separator_line = QFrame(window)
+        separator_line = QFrame(parent_widget)
         separator_line.setFrameShape(QFrame.Shape.HLine)
         separator_line.setFrameShadow(QFrame.Shadow.Plain)
         separator_line.setFixedHeight(1)
@@ -119,17 +146,11 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager, state_label_m
                 margin: 0px;
             }}
         """)
-        root_layout.addWidget(separator_line, 0)
-        
-        central_widget = RaycastPanel(window)
-        central_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        
-        central_layout = QVBoxLayout(central_widget)
-        central_layout.setContentsMargins(0, 0, 0, 0)
-        central_layout.setSpacing(0)
-        
+        main_layout.addWidget(separator_line, 0)
+
         # Main splitter: sidebar | content | history panel
-        main_splitter = QSplitter(Qt.Orientation.Horizontal, central_widget)
+        # Parent depende del feature flag (window o background_container)
+        main_splitter = QSplitter(Qt.Orientation.Horizontal, parent_widget)
         main_splitter.setChildrenCollapsible(False)
         main_splitter.setHandleWidth(4)
         main_splitter.setStyleSheet("""
@@ -202,13 +223,16 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager, state_label_m
         main_splitter.addWidget(content_splitter)
         main_splitter.setStretchFactor(0, 1)
         main_splitter.setSizes([1100])
-        
-        central_layout.addWidget(main_splitter, 1)
-        
-        root_layout.addWidget(central_widget, 1)
+
+        # Añadir splitter al layout (main_layout ya apunta al correcto según flag)
+        main_layout.addWidget(main_splitter, 1)
+
+        # Si estamos usando BackgroundContainer, agregarlo al root_layout
+        if not USE_ROUNDED_CORNERS_IN_ROOT:
+            root_layout.addWidget(background_container, 1)
 
         window.setStyleSheet("""
-            QWidget { 
+            QWidget {
                 margin: 0px;
                 padding: 0px;
             }
@@ -237,8 +261,24 @@ def setup_ui(window, tab_manager, icon_service, workspace_manager, state_label_m
         # Asignar referencias para que switch_view() pueda actualizar el estado
         file_view_container._workspace_grid_button = workspace_selector._grid_button
         file_view_container._workspace_list_button = workspace_selector._list_button
+        # Configurar headers para que sean estables pero permitan ver el fondo en las esquinas
+        for widget in [window_header, app_header, secondary_header, workspace_selector, sidebar]:
+            # NO usar WA_OpaquePaintEvent ni setAutoFillBackground(True) en widgets con
+            # esquinas redondeadas, ya que dejarían de mostrar el fondo el BackgroundContainer
+            # debajo de sus curvas, causando parpadeos transparentes durante el resize.
+            widget.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+            widget.setAutoFillBackground(False)
+
+            # Asegurar que tengan un estilo definido para consistencia
+            if not widget.styleSheet():
+                 widget.setStyleSheet(f"background-color: {HEADER_BG};")
 
         _apply_visual_separation(window_header, app_header, secondary_header, workspace_selector)
+
+        # Configuración de splitters profesional (sin opaque resize para evitar flicker)
+        # Esto elimina el "storm" de eventos durante el arrastre
+        main_splitter.setOpaqueResize(False)
+        content_splitter.setOpaqueResize(False)
 
         return file_view_container, sidebar, window_header, app_header, secondary_header, workspace_selector, history_panel, content_splitter, file_box_panel
         

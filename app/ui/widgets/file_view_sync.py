@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt
 from app.core.constants import SELECTION_RESTORE_DELAY_MS
 from app.models.file_stack import FileStack
 from app.services.path_utils import normalize_path
+from app.services.file_path_utils import is_office_temp_file
 
 if TYPE_CHECKING:
     from app.ui.widgets.file_grid_view import FileGridView
@@ -26,22 +27,27 @@ def update_files(container: 'FileViewContainer') -> None:
         container._is_search_mode = False
         container._search_results = []
         container._file_to_workspace = {}
-    
+
     if hasattr(container, '_is_search_mode') and container._is_search_mode:
         file_paths = [result.file_path for result in container._search_results]
+        # Filter Office temporary files from search results
+        file_paths = _filter_office_temp_files(file_paths)
         container._grid_view.update_files(file_paths)
         container._list_view.update_files(file_paths)
         return
-    
+
     if not hasattr(container, '_cached_is_desktop'):
         container._cached_is_desktop = _check_if_desktop_window(container)
     use_stacks = container._cached_is_desktop
-    
+
     items = container._tab_manager.get_files(use_stacks=use_stacks)
-    
+
+    # Filter Office temporary files from regular file lists
+    items = _filter_office_temp_files_from_items(items)
+
     container._grid_view.update_files(items)
     container._list_view.update_files(items)
-    
+
     if container._state_manager:
         file_paths = []
         for item in items:
@@ -156,7 +162,7 @@ def _restore_selection(container, view_type: str, paths: list[str]) -> None:
 def _restore_grid_selection(view, paths: list[str]) -> None:
     """Restore selection in grid view by finding tiles matching paths."""
     path_set = {normalize_path(p) for p in paths}
-    
+
     for tile in view._selected_tiles.copy():
         try:
             tile_path = normalize_path(tile.get_file_path())
@@ -165,7 +171,7 @@ def _restore_grid_selection(view, paths: list[str]) -> None:
                 view._selected_tiles.discard(tile)
         except (RuntimeError, AttributeError):
             view._selected_tiles.discard(tile)
-    
+
     for i in range(view._grid_layout.count()):
         item = view._grid_layout.itemAt(i)
         if item:
@@ -178,6 +184,10 @@ def _restore_grid_selection(view, paths: list[str]) -> None:
                         view._selected_tiles.add(widget)
                 except (RuntimeError, AttributeError):
                     pass
+
+    # Emitir señal para actualizar contador de selección
+    if hasattr(view, 'selection_changed'):
+        view.selection_changed.emit()
 
 
 def _restore_list_selection(view, paths: list[str]) -> None:
@@ -202,4 +212,50 @@ def _restore_list_selection(view, paths: list[str]) -> None:
 def _check_if_desktop_window(container) -> bool:
     """Check if this container is inside a DesktopWindow."""
     return getattr(container, '_is_desktop', False)
+
+
+def _filter_office_temp_files(file_paths: list[str]) -> list[str]:
+    """
+    Filter out Microsoft Office temporary files from a list of file paths.
+
+    Args:
+        file_paths: List of file paths to filter.
+
+    Returns:
+        Filtered list without Office temporary files.
+    """
+    return [path for path in file_paths if not is_office_temp_file(path)]
+
+
+def _filter_office_temp_files_from_items(items: list) -> list:
+    """
+    Filter Office temporary files from a list that may contain FileStacks or file paths.
+
+    Args:
+        items: List of FileStack objects or file path strings.
+
+    Returns:
+        Filtered list with Office temp files removed from both stacks and regular files.
+    """
+    if not items:
+        return items
+
+    # Check if items are FileStack objects
+    if hasattr(items[0], 'files'):
+        # Filter files within each FileStack
+        filtered_items = []
+        for stack in items:
+            filtered_files = [f for f in stack.files if not is_office_temp_file(f)]
+            # Only include stack if it has files after filtering
+            if filtered_files:
+                # Create new FileStack with filtered files
+                filtered_stack = FileStack(
+                    stack_type=stack.stack_type,
+                    files=filtered_files
+                )
+                filtered_items.append(filtered_stack)
+        return filtered_items
+    else:
+        # Simple list of file paths
+        return _filter_office_temp_files(items)
 

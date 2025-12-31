@@ -1,0 +1,435 @@
+"""
+UI setup helpers for MainWindow.
+
+Handles window layout and widget creation.
+Focus Dock is now integrated directly in FileViewContainer.
+"""
+
+import os
+from PySide6.QtCore import Qt, QObject, QEvent, QTimer
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QSplitter, QVBoxLayout, QWidget, QSizePolicy
+
+from app.core.constants import (
+    SEPARATOR_LINE_COLOR, SIDEBAR_BG,
+    BUTTON_BG_DARK, BUTTON_BORDER_DARK, BUTTON_BG_DARK_HOVER, BUTTON_BORDER_DARK_HOVER,
+    APP_HEADER_BG, APP_HEADER_BORDER
+)
+from app.core.logger import get_logger
+from app.ui.widgets.app_header import AppHeader
+from app.ui.widgets.background_container import BackgroundContainer
+from app.ui.widgets.secondary_header import SecondaryHeader
+from app.ui.widgets.file_box_history_panel import FileBoxHistoryPanel
+from app.ui.widgets.file_view_container import FileViewContainer
+from app.ui.widgets.file_view_sync import switch_view
+from app.ui.widgets.file_view_tabs import on_nav_back, on_nav_forward
+from app.ui.widgets.folder_tree_sidebar import FolderTreeSidebar
+from app.ui.widgets.raycast_panel import RaycastPanel
+from app.ui.widgets.window_header import WindowHeader
+from app.ui.widgets.workspace_selector import WorkspaceSelector
+
+HEADER_BG = "#F5F5F7"
+HEADER_BORDER = "rgba(0, 0, 0, 0.1)"
+
+
+class _ResizeDiagnostics(QObject):
+    """Filtro de eventos para diagnóstico de repintados y resizes durante drag horizontal."""
+    def __init__(self, logger):
+        super().__init__()
+        self._log = logger
+        self._counts = {}  # {(target, kind): int}
+        self._report_timer = QTimer(self)
+        self._report_timer.setSingleShot(True)
+        self._report_timer.timeout.connect(self._report)
+        self._pending = False
+
+    def watch_widget(self, target_name: str, widget: QWidget) -> None:
+        """Instalar filtro sobre widget objetivo para contar Paint/Resize."""
+        widget.installEventFilter(self)
+        # Comentario: registrar nombre amigable para el target en logs
+        if not widget.objectName():
+            widget.setObjectName(target_name)
+
+    def connect_header_signals(self, header) -> None:
+        """Conectar señales del header para contar eventos de geometría."""
+        try:
+            header.sectionResized.connect(lambda *_: self._inc("ListHeader", "sectionResized"))
+            header.geometriesChanged.connect(lambda: self._inc("ListHeader", "geometriesChanged"))
+        except Exception:
+            pass  # Comentario: en caso de falta de señales compatibles, omitimos
+
+    def connect_splitter_signals(self, splitter: QSplitter, name: str) -> None:
+        """Conectar movimiento de splitter para detectar actividad de resize continuo."""
+        try:
+            splitter.splitterMoved.connect(lambda *_: self._inc(name, "splitterMoved"))
+        except Exception:
+            pass
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        t = event.type()
+        name = getattr(obj, "objectName", lambda: "")() or obj.__class__.__name__
+        # Comentario: contamos eventos clave que suelen causar parpadeo
+        if t == QEvent.Type.Paint:
+            self._inc(name, "paint")
+        elif t == QEvent.Type.Resize:
+            self._inc(name, "resize")
+        elif t == QEvent.Type.UpdateRequest:
+            self._inc(name, "updateRequest")
+        return False
+
+    def _inc(self, target: str, kind: str) -> None:
+        key = (target, kind)
+        self._counts[key] = self._counts.get(key, 0) + 1
+        # Comentario: coalesce de reportes para evitar spam en consola
+        self._schedule_report()
+
+    def _schedule_report(self) -> None:
+        self._report_timer.stop()
+        self._report_timer.start(400)  # 400ms de silencio antes de informar
+
+    def _report(self) -> None:
+        if not self._counts:
+            return
+        # Comentario: salida compacta para análisis rápido de repintados
+        lines = []
+        for (target, kind), count in sorted(self._counts.items()):
+            lines.append(f"{target}:{kind}={count}")
+        self._log.info("[DIAG-RESIZE] " + " | ".join(lines))
+        self._counts.clear()
+
+
+class _SplitterDragSuppressor(QObject):
+    """Suprime repintados visibles durante drag de splitter."""
+    def __init__(self, targets: list[QWidget], enable_opaque_bg: bool = True):
+        super().__init__()
+        self._targets = targets
+        self._enable_opaque_bg = enable_opaque_bg
+        self._backups: dict[int, tuple[str, bool]] = {}  # widget_id -> (stylesheet, autofill)
+
+    def install_on_splitter(self, splitter: QSplitter) -> None:
+        # Comentario: escuchamos eventos del handle para detectar inicio/fin de drag
+        for i in range(splitter.count() - 1):
+            handle = splitter.handle(i)
+            if handle:
+                handle.installEventFilter(self)
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        t = event.type()
+        if t == QEvent.Type.MouseButtonPress:
+            for w in self._targets:
+                if w:
+                    w.setUpdatesEnabled(False)
+                    if self._enable_opaque_bg:
+                        # Comentario: fondo opaco temporal para evitar invalidaciones amplias
+                        wid = id(w)
+                        if wid not in self._backups:
+                            self._backups[wid] = (w.styleSheet(), w.autoFillBackground())
+                        w.setAutoFillBackground(True)
+                        w.setStyleSheet("QWidget { background-color: #F5F5F7; }")
+                        w.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        elif t == QEvent.Type.MouseButtonRelease:
+            for w in self._targets:
+                if w:
+                    w.setUpdatesEnabled(True)
+                    if self._enable_opaque_bg:
+                        wid = id(w)
+                        if wid in self._backups:
+                            old_ss, old_af = self._backups.pop(wid)
+                            w.setStyleSheet(old_ss)
+                            w.setAutoFillBackground(old_af)
+                        w.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+        return False
+
+
+def _apply_visual_separation(window_header, app_header, secondary_header, workspace_selector) -> None:
+    """Apply visual styling to header components."""
+    # Comentario: diagnóstico, permitir desactivar QSS de headers por env
+    disable_qss = os.environ.get("CLARITY_DIAG_DISABLE_HEADER_QSS", "0") == "1"
+    if disable_qss:
+        window_header.setStyleSheet("")
+        app_header.setStyleSheet("")
+        secondary_header.setStyleSheet("")
+        workspace_selector.setStyleSheet("")
+        return
+    window_header.setStyleSheet("""
+        QWidget {
+            background-color: """ + HEADER_BG + """ !important;
+            border-bottom: 1px solid """ + HEADER_BORDER + """ !important;
+        }
+        QPushButton {
+            border: none !important;
+            border-radius: 6px;
+            padding: 4px 6px;
+            /* font-size: establecido explícitamente */
+            color: rgba(0, 0, 0, 0.7) !important;
+        }
+        QPushButton:hover {
+            background-color: rgba(0, 0, 0, 0.08) !important;
+        }
+    """)
+    
+    app_header.setStyleSheet("""
+        QWidget#AppHeader {
+            /* Tinte azul sutil para coherencia con workspace */
+            background-color: """ + APP_HEADER_BG + """ !important;
+            border-bottom: 1px solid """ + APP_HEADER_BORDER + """ !important;
+        }
+    """)
+    
+    secondary_header.setStyleSheet(f"""
+        QWidget#SecondaryHeader {{
+            /* Mismo estilo que AppHeader para continuidad visual */
+            background-color: {APP_HEADER_BG} !important;
+            border-bottom: 1px solid {APP_HEADER_BORDER} !important;
+        }}
+    """)
+    
+    workspace_selector.setStyleSheet(f"""
+        QWidget#WorkspaceSelector {{
+            border-bottom: 1px solid {APP_HEADER_BORDER} !important;
+        }}
+        QPushButton#WorkspaceButton {{
+            background-color: {BUTTON_BG_DARK} !important;
+            border: 1px solid {BUTTON_BORDER_DARK} !important;
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.88) !important;
+            padding: 6px 12px;
+        }}
+        QPushButton#WorkspaceButton:hover {{
+            background-color: {BUTTON_BG_DARK_HOVER} !important;
+            border-color: {BUTTON_BORDER_DARK_HOVER} !important;
+        }}
+    """)
+
+
+def setup_ui(window, tab_manager, icon_service, workspace_manager, state_label_manager=None) -> tuple[FileViewContainer, FolderTreeSidebar, WindowHeader, AppHeader, SecondaryHeader, WorkspaceSelector, FileBoxHistoryPanel, QSplitter, 'FileBoxPanel']:
+    try:
+        root_layout = QVBoxLayout(window)
+        # Margen invisible alrededor para permitir detección de bordes por el sistema
+        # Este margen es necesario para que el resize nativo funcione correctamente en ventanas frameless
+        # Usamos 0px porque MainWindow tiene setMouseTracking(True) y maneja eventos globalmente
+        # El área de detección se define por RESIZE_EDGE_DETECTION_MARGIN (15px)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        # Contenedor para la pintura de fondo con esquinas redondeadas
+        # Esto optimiza el rendimiento al evitar repintar toda la ventana raíz
+        background_container = BackgroundContainer(window)
+        background_container.set_background_color(SIDEBAR_BG)
+        background_container.set_corner_radius(12)
+
+        # Layout interno del contenedor de fondo
+        container_layout = QVBoxLayout(background_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+        
+        window_header = WindowHeader(background_container)
+        window_header.hide()  # Ocultar visualmente temporalmente
+        container_layout.addWidget(window_header, 0)
+
+        app_header = AppHeader(background_container)
+        app_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        container_layout.addWidget(app_header, 0)
+        app_header.hide()
+
+        secondary_header = SecondaryHeader(background_container)
+        secondary_header.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        container_layout.addWidget(secondary_header, 0)
+        secondary_header.hide()
+
+        workspace_selector = WorkspaceSelector(background_container)
+        workspace_selector.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        workspace_selector.set_workspace_manager(workspace_manager)
+        container_layout.addWidget(workspace_selector, 0)
+        workspace_selector.hide()
+
+        # Línea horizontal separadora (invisible)
+        separator_line = QFrame(background_container)
+        separator_line.setFrameShape(QFrame.Shape.HLine)
+        separator_line.setFrameShadow(QFrame.Shadow.Plain)
+        separator_line.setFixedHeight(1)
+        separator_line.setStyleSheet(f"""
+            QFrame {{
+                background-color: transparent;
+                border: none;
+                margin: 0px;
+            }}
+        """)
+        container_layout.addWidget(separator_line, 0)
+
+        central_widget = RaycastPanel(background_container)
+        central_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        central_layout = QVBoxLayout(central_widget)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        
+        # Main splitter: sidebar | content | history panel
+        main_splitter = QSplitter(Qt.Orientation.Horizontal, central_widget)
+        main_splitter.setChildrenCollapsible(False)
+        main_splitter.setHandleWidth(4)
+        main_splitter.setStyleSheet("""
+            QSplitter {
+                background-color: transparent;
+            }
+            QSplitter::handle {
+                background-color: transparent;
+                border: none;
+            }
+            QSplitter::handle:hover {
+                background-color: transparent;
+                border: none;
+            }
+            QSplitter::handle:horizontal {
+                width: 4px;
+                margin: 0px;
+            }
+        """)
+        
+        # Content splitter: sidebar | file view | file box panel
+        content_splitter = QSplitter(Qt.Orientation.Horizontal, main_splitter)
+        content_splitter.setChildrenCollapsible(False)
+        content_splitter.setHandleWidth(4)
+        content_splitter.setStyleSheet(main_splitter.styleSheet())
+        
+        sidebar = FolderTreeSidebar(
+            content_splitter,
+            state_label_manager=state_label_manager,
+            tab_manager=tab_manager
+        )
+        sidebar.hide()
+        file_view_container = FileViewContainer(
+            tab_manager,
+            icon_service,
+            None,
+            content_splitter
+        )
+        
+        from app.ui.widgets.file_box_panel import FileBoxPanel
+        from app.ui.widgets.file_box_history_panel import FileBoxHistoryPanel
+        from app.services.file_box_history_service import FileBoxHistoryService
+        
+        history_service = FileBoxHistoryService()
+        
+        file_box_panel = FileBoxPanel(
+            current_session=None,
+            history_service=history_service,
+            parent=content_splitter,
+            icon_service=icon_service
+        )
+        file_box_panel.hide()
+        
+        history_panel = FileBoxHistoryPanel(
+            history_service,
+            content_splitter,
+            icon_service=icon_service
+        )
+        history_panel.hide()
+        
+        content_splitter.addWidget(sidebar)
+        content_splitter.addWidget(file_view_container)
+        content_splitter.addWidget(file_box_panel)
+        content_splitter.addWidget(history_panel)
+        content_splitter.setStretchFactor(0, 0)
+        content_splitter.setStretchFactor(1, 1)
+        content_splitter.setStretchFactor(2, 0)
+        content_splitter.setStretchFactor(3, 0)
+        content_splitter.setSizes([200, 900, 0, 0])  # Both panels start with 0 width (hidden)
+        
+        main_splitter.addWidget(content_splitter)
+        main_splitter.setStretchFactor(0, 1)
+        main_splitter.setSizes([1100])
+        
+        central_layout.addWidget(main_splitter, 1)
+
+        container_layout.addWidget(central_widget, 1)
+
+        # Agregar el contenedor de fondo al layout raíz de la ventana
+        root_layout.addWidget(background_container, 1)
+
+        window.setStyleSheet("""
+            QWidget {
+                margin: 0px;
+                padding: 0px;
+            }
+        """)
+        
+        file_view_container.set_header(app_header)
+        file_view_container.set_workspace_selector(workspace_selector)
+        
+        # Mover botón de workspace al SecondaryHeader (solo posición visual)
+        if workspace_selector._workspace_button:
+            # Remover el botón del layout del WorkspaceSelector
+            workspace_selector.layout().removeWidget(workspace_selector._workspace_button)
+            # Cambiar el parent al SecondaryHeader
+            workspace_selector._workspace_button.setParent(secondary_header)
+            # Agregar al SecondaryHeader
+            secondary_header.set_workspace_button(workspace_selector._workspace_button)
+        
+        # Navigation buttons ahora están en WorkspaceSelector
+        workspace_selector.navigation_back.connect(lambda: on_nav_back(file_view_container))
+        workspace_selector.navigation_forward.connect(lambda: on_nav_forward(file_view_container))
+        
+        # Conectar botones Grid/List del WorkspaceSelector
+        workspace_selector.view_grid_requested.connect(lambda: workspace_manager.set_view_mode("grid"))
+        workspace_selector.view_list_requested.connect(lambda: workspace_manager.set_view_mode("list"))
+        
+        # Asignar referencias para que switch_view() pueda actualizar el estado
+        file_view_container._workspace_grid_button = workspace_selector._grid_button
+        file_view_container._workspace_list_button = workspace_selector._list_button
+        _apply_visual_separation(window_header, app_header, secondary_header, workspace_selector)
+
+        # Diagnóstico de resize horizontal y parpadeo (no altera comportamiento)
+        try:
+            diag = _ResizeDiagnostics(get_logger(__name__))
+            # Observar widgets clave
+            diag.watch_widget("Sidebar", sidebar)
+            diag.watch_widget("AppHeader", app_header)
+            diag.watch_widget("SecondaryHeader", secondary_header)
+            diag.watch_widget("WorkspaceHeader", workspace_selector)
+            # Conectar splitters
+            diag.connect_splitter_signals(content_splitter, "ContentSplitter")
+            diag.connect_splitter_signals(main_splitter, "MainSplitter")
+            # Header de la vista lista
+            list_header = None
+            try:
+                if hasattr(file_view_container, "_list_view") and file_view_container._list_view:
+                    list_header = file_view_container._list_view.horizontalHeader()
+            except Exception:
+                list_header = None
+            if list_header:
+                list_header.setObjectName("ListHeader")
+                diag.watch_widget("ListHeader", list_header)
+                diag.connect_header_signals(list_header)
+        except Exception:
+            pass  # Comentario: el diagnóstico es opcional y no debe romper la UI
+
+        # Supresión de repintados durante drag de splitters (reversible)
+        try:
+            suppressor_targets = [sidebar, app_header, secondary_header, workspace_selector]
+            if list_header:
+                suppressor_targets.append(list_header)
+            # Comentario: modo opaco temporal activado si no se desactiva por env
+            opaque_bg_enabled = os.environ.get("CLARITY_DIAG_OPAQUE_BG", "1") != "0"
+            suppressor = _SplitterDragSuppressor(suppressor_targets, enable_opaque_bg=opaque_bg_enabled)
+            suppressor.install_on_splitter(content_splitter)
+            suppressor.install_on_splitter(main_splitter)
+        except Exception:
+            pass
+
+        # Prueba: desactivar opaque resize para splitters si se solicita por env
+        try:
+            opaque_resize_enabled = os.environ.get("CLARITY_DIAG_SPLITTER_OPAQUE", "1") != "0"
+            if not opaque_resize_enabled:
+                logger = get_logger(__name__)
+                main_splitter.setOpaqueResize(False)
+                content_splitter.setOpaqueResize(False)
+                logger.info("[DIAG] OpaqueResize desactivado para splitters (prueba de flicker)")
+        except Exception:
+            pass
+
+        return file_view_container, sidebar, window_header, app_header, secondary_header, workspace_selector, history_panel, content_splitter, file_box_panel
+        
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.error(f"Excepción crítica en setup_ui: {e}", exc_info=True)
+        raise

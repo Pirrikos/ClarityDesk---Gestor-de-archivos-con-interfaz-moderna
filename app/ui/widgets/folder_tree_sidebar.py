@@ -8,13 +8,14 @@ Only shows folders that have been opened as Focus.
 import os
 from typing import Optional
 
-from app.core.constants import SIDEBAR_MAX_WIDTH
+from app.core.constants import SIDEBAR_MAX_WIDTH, DEBUG_LAYOUT
 from app.core.logger import get_logger
 from app.services.path_utils import normalize_path
 from app.services.desktop_path_helper import is_system_desktop
 
 logger = get_logger(__name__)
-from PySide6.QtCore import QModelIndex, QPoint, QRect, QSize, Qt, Signal, QTimer
+logger.debug("🚀 Loading folder_tree_sidebar.py")
+from PySide6.QtCore import QModelIndex, QPoint, QRect, QSize, Qt, Signal, QTimer, QElapsedTimer
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QDragMoveEvent, QDropEvent, QMouseEvent, QStandardItem, QPainter, QColor, QFont, QFontMetrics, QPen
 from PySide6.QtWidgets import (
@@ -109,8 +110,14 @@ class FolderTreeSidebar(QWidget):
         self._path_to_item: dict[str, QStandardItem] = {}
         self._state_label_manager = state_label_manager
         self._tab_manager = tab_manager
+        
+        # OPACIDAD ESTRUCTURAL: Usar paleta y AutoFillBackground
+        self.setAutoFillBackground(True)
+        palette = self.palette()
+        palette.setColor(self.backgroundRole(), QColor(SIDEBAR_BG))
+        self.setPalette(palette)
+        
         self.setAcceptDrops(True)
-        self.setAutoFillBackground(False)
         self._setup_model()
         self._setup_ui()
         self._apply_styling()
@@ -480,17 +487,27 @@ class FolderTreeSidebar(QWidget):
                 self._model.dataChanged.emit(parent_index, parent_index, [])
     
     def update_focus_path(self, old_path: str, new_path: str) -> None:
+        """Update focus path in sidebar."""
+
         normalized_old = normalize_path(old_path)
         normalized_new = normalize_path(new_path)
-        
+
+        logger.info(f"   Normalized: '{normalized_old}' -> '{normalized_new}'")
+
         if normalized_old not in self._path_to_item:
+            logger.info(f"   ❌ SKIP: normalized_old not in _path_to_item")
             return
-        
+
         if not os.path.isdir(normalized_new):
+            logger.info(f"   ❌ SKIP: new_path is not a directory")
             return
-        
-        if normalized_old == normalized_new:
+
+        # Compare original paths to detect case-only renames (e.g., "folder" -> "FOLDER")
+        if old_path == new_path:
+            logger.info(f"   ❌ SKIP: old_path == new_path (no change)")
             return
+
+        logger.info(f"   ✅ PROCEEDING with rename in sidebar")
         
         tab_manager = find_tab_manager(self)
         if tab_manager and hasattr(tab_manager, 'get_tabs'):
@@ -523,9 +540,9 @@ class FolderTreeSidebar(QWidget):
         if normalized_old in self._path_to_item:
             # Si todavía está, eliminarlo explícitamente (fallback de seguridad)
             del self._path_to_item[normalized_old]
-        
-        # PASO 4: Crear nuevo item con new_path (ahora es seguro, el viejo está completamente eliminado)
-        new_item = add_focus_path_to_model(self._model, self._path_to_item, normalized_new)
+
+        # PASO 4: Crear nuevo item con new_path original (preserva case correcto)
+        new_item = add_focus_path_to_model(self._model, self._path_to_item, new_path)
         
         if not new_item:
             return
@@ -609,16 +626,6 @@ class FolderTreeSidebar(QWidget):
                 QFont.Weight.Normal
             )
     
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        widget_rect = self.rect().adjusted(0, 0, -1, -1)
-        bg_color = QColor(SIDEBAR_BG)
-        
-        paint_rounded_background(painter, widget_rect, bg_color)
-        
-        painter.end()
     
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -938,3 +945,20 @@ class FolderTreeSidebar(QWidget):
         if hasattr(self, '_click_expand_timer') and self._click_expand_timer.isActive():
             self._click_expand_timer.stop()
         super().closeEvent(event)
+
+    def paintEvent(self, event) -> None:
+        """Pintar fondo sólido de refuerzo para el sidebar con instrumentación."""
+        if not hasattr(self, '_paint_count_debug'): self._paint_count_debug = 0
+        self._paint_count_debug += 1
+        t = QElapsedTimer()
+        t.start()
+
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(SIDEBAR_BG))
+        painter.end()
+        
+        # super().paintEvent(event) NO es necesario si ya pintamos todo
+        
+        elapsed = t.nsecsElapsed() / 1000000.0
+        if DEBUG_LAYOUT:
+            logger.info(f"🎨 [Sidebar] Paint #{self._paint_count_debug} | dur={elapsed:.2f}ms")

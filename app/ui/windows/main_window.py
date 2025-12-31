@@ -6,11 +6,15 @@ Focus Dock replaces the old sidebar navigation system.
 
 import os
 from typing import Optional
-from PySide6.QtCore import Qt, QTimer, QEvent, QPoint, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QObject
-from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut, QPainter, QColor, QCursor, QMouseEvent, QPainterPath
+from PySide6.QtCore import Qt, QTimer, QEvent, QPoint, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QObject, QElapsedTimer
+from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut, QCursor, QMouseEvent, QPainter, QColor, QPaintEvent, QResizeEvent
 from PySide6.QtWidgets import QWidget, QApplication, QToolTip, QDialog, QGraphicsOpacityEffect
 
-from app.core.constants import DEBUG_LAYOUT, FILE_SYSTEM_DEBOUNCE_MS, CENTRAL_AREA_BG, CENTRAL_AREA_BG_LIGHT, RESIZE_EDGE_DETECTION_MARGIN, SIDEBAR_BG
+from app.core.constants import (
+    DEBUG_LAYOUT, FILE_SYSTEM_DEBOUNCE_MS, CENTRAL_AREA_BG,
+    CENTRAL_AREA_BG_LIGHT, RESIZE_EDGE_DETECTION_MARGIN, SIDEBAR_BG,
+    USE_ROUNDED_CORNERS_IN_ROOT
+)
 from app.core.logger import get_logger
 from app.managers.tab_manager import TabManager
 from app.managers.workspace_manager import WorkspaceManager
@@ -36,6 +40,7 @@ from app.ui.windows.error_dialog import ErrorDialog
 from app.ui.windows.confirmation_dialog import ConfirmationDialog
 
 logger = get_logger(__name__)
+logger.debug("🚀 Loading main_window.py")
 
 
 class MainWindow(QWidget):
@@ -45,21 +50,36 @@ class MainWindow(QWidget):
         """Initialize MainWindow with TabManager, WorkspaceManager and optional DesktopWindow."""
         try:
             super().__init__(parent)
-            
+
             self.setWindowFlags(
                 Qt.WindowType.Window |
                 Qt.WindowType.FramelessWindowHint
             )
-            
-            self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
-            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-            self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
-            
+
             self.setWindowTitle("ClarityDesk Pro")
             self.setMinimumSize(1050, 675)
             self.setMouseTracking(True)
+            
+            # ATRIBUTOS MAESTROS PARA ESTABILIDAD VISUAL
+            self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+            # WA_OpaquePaintEvent depende del feature flag de esquinas redondeadas
+            # True (sistema actual): optimización anti-flicker, pero NO esquinas redondeadas
+            # False (sistema antiguo): permite transparencia para esquinas redondeadas
+            if USE_ROUNDED_CORNERS_IN_ROOT:
+                # Sistema antiguo: permite áreas transparentes fuera del QPainterPath
+                self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, False)
+            else:
+                # Sistema actual: fuerza opacidad para anti-flicker
+                self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+            
             self._is_resizing = False
             self._resize_cursor_active = False
+
+            # Asegurar que MainWindow captura eventos del mouse para detección de bordes
+            # Esto es necesario para que el resize funcione correctamente en ventana frameless
+            self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
             
             self._tab_manager = tab_manager
             self._workspace_manager = workspace_manager
@@ -73,7 +93,21 @@ class MainWindow(QWidget):
             self._transition_animation: Optional[QParallelAnimationGroup] = None
             self._fade_out_anim: Optional[QPropertyAnimation] = None
             self._fade_in_anim: Optional[QPropertyAnimation] = None
-            
+            self._resize_edge_overlay = None  # Se inicializa después de setup_ui
+            # Instrumentación de ciclos de resize
+            self._main_resize_in_progress: bool = False
+            self._main_resize_timer: QElapsedTimer = QElapsedTimer()
+            self._main_resize_paint_count: int = 0
+            self._main_resize_coalesce_timer: QTimer = QTimer(self)
+            self._main_resize_coalesce_timer.setSingleShot(True)
+            self._main_resize_coalesce_timer.setInterval(150)
+            self._main_resize_coalesce_timer.timeout.connect(self._finalize_main_resize)
+            # Timer para actualización del overlay con debounce (evitar lag durante resize)
+            self._overlay_update_timer: QTimer = QTimer(self)
+            self._overlay_update_timer.setSingleShot(True)
+            self._overlay_update_timer.setInterval(100)  # 100ms después de terminar resize
+            self._overlay_update_timer.timeout.connect(self._update_overlay_geometry)
+
             self.setObjectName("MainWindow")
             self.setAutoFillBackground(False)
             
@@ -84,51 +118,62 @@ class MainWindow(QWidget):
                 self._central_area_color = CENTRAL_AREA_BG_LIGHT if color_theme == "light" else CENTRAL_AREA_BG
             else:
                 self._central_area_color = CENTRAL_AREA_BG
-            
-            # MainWindow siempre usa el color del sidebar (no pinta el tema)
-            self._main_window_bg_color = SIDEBAR_BG
-            
+
+            # Nota: La pintura del fondo se delega al BackgroundContainer interno
+
             self._tab_manager.set_workspace_manager(workspace_manager)
             self._setup_ui()
+            self._setup_antiflicker_attributes()
+            self._setup_resize_overlay()
             self._connect_signals()
             self._setup_shortcuts()
             self._load_workspace_state()
             self._is_initializing = False
+
+            # TEMPORAL: Ocultar headers para diagnóstico de parpadeo
+            # self._hide_headers_for_diagnosis()  # DESHABILITADO PARA PROBAR SOLUCIÓN
             
         except Exception as e:
             logger.error(f"Excepción crítica en MainWindow.__init__: {e}", exc_info=True)
             raise
 
-    def paintEvent(self, event):
-        """
-        Pintar el fondo de la ventana raíz con esquinas redondeadas.
-        
-        Usa QPainterPath para crear un rectángulo redondeado (radio 12px)
-        que define el área visible de la ventana. El fondo fuera del path
-        queda transparente para lograr esquinas redondeadas reales tipo Finder/macOS.
-        """
-        if DEBUG_LAYOUT:
-            super().paintEvent(event)
-            return
-        
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        p.setClipping(False)
-        
-        rect = self.rect()
-        corner_radius = 12
-        
-        # Crear path con esquinas redondeadas
-        path = QPainterPath()
-        path.addRoundedRect(rect, corner_radius, corner_radius)
-        
-        # Rellenar solo el área del path con el color del sidebar (el tema solo afecta a FileViewContainer)
-        bg_color = QColor(self._main_window_bg_color)
-        p.fillPath(path, bg_color)
-        
-        p.end()
-        
-        super().paintEvent(event)
+    def resizeEvent(self, event):
+        """Manejar resize con repintado fluido estilo aplicaciones profesionales."""
+        # Inicio del ciclo de resize (coalesce)
+        if not self._main_resize_in_progress:
+            try:
+                self._main_resize_timer.start()
+                self._main_resize_paint_count = 0
+            except Exception:
+                pass
+            self._main_resize_in_progress = True
+
+        # Reiniciar coalesce
+        self._main_resize_coalesce_timer.stop()
+        self._main_resize_coalesce_timer.start()
+        super().resizeEvent(event)
+
+        # Programar actualización del overlay con debounce (evita lag durante resize)
+        if hasattr(self, '_overlay_update_timer') and self._overlay_update_timer:
+            self._overlay_update_timer.start()  # Reinicia el timer en cada resize
+
+
+    def _finalize_main_resize(self) -> None:
+        """Finalizar coalesce de resize y registrar métricas."""
+        if self._main_resize_in_progress:
+            try:
+                elapsed_ms = self._main_resize_timer.elapsed() if self._main_resize_timer.isValid() else 0
+                if DEBUG_LAYOUT:
+                    logger.info(f"✅ Fin resize main | duración={elapsed_ms}ms, paints={self._main_resize_paint_count}")
+            except Exception:
+                pass
+            self._main_resize_in_progress = False
+
+    def _update_overlay_geometry(self) -> None:
+        """Actualizar geometría del overlay solo cuando resize ha terminado (debounce)."""
+        if hasattr(self, '_resize_edge_overlay') and self._resize_edge_overlay:
+            self._resize_edge_overlay.setGeometry(self.rect())
+            self._resize_edge_overlay.raise_()
 
     def _setup_ui(self) -> None:
         """Build the UI layout with Focus Dock integrated."""
@@ -136,17 +181,64 @@ class MainWindow(QWidget):
             self, self._tab_manager, self._icon_service, self._workspace_manager, self._state_label_manager
         )
         self._file_box_panel_minimized = False
-        
+
         # Obtener footer desde FileViewContainer
         self._path_footer = getattr(self._file_view_container, '_path_footer', None)
-        
+
         if self._current_file_box_panel:
             self._current_file_box_panel.close_requested.connect(self._close_file_box_panel)
             self._current_file_box_panel.minimize_requested.connect(self._minimize_file_box_panel)
             self._current_file_box_panel.file_open_requested.connect(self._on_file_open)
-        
+
         if self._history_panel:
             self._history_panel.close_requested.connect(self._close_history_panel_only)
+
+    def _setup_antiflicker_attributes(self) -> None:
+        """
+        Configurar atributos de Qt para resize fluido sin parpadeo.
+
+        Ahora que sizeHint() está correctamente implementado en el delegate,
+        estas optimizaciones deberían funcionar sin problemas de pintado.
+        """
+        widgets_to_fix = []
+
+        if hasattr(self, '_app_header') and self._app_header:
+            widgets_to_fix.append(self._app_header)
+        if hasattr(self, '_secondary_header') and self._secondary_header:
+            widgets_to_fix.append(self._secondary_header)
+        if hasattr(self, '_workspace_selector') and self._workspace_selector:
+            widgets_to_fix.append(self._workspace_selector)
+        if hasattr(self, '_sidebar') and self._sidebar:
+            widgets_to_fix.append(self._sidebar)
+        if hasattr(self, '_path_footer') and self._path_footer:
+            widgets_to_fix.append(self._path_footer)
+
+        # Aplicar atributos de optimización solo a headers/sidebar/footer
+        for widget in widgets_to_fix:
+            widget.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+            widget.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+            widget.setAutoFillBackground(False)
+
+        # Optimizaciones para la ventana principal
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+
+    def _setup_resize_overlay(self) -> None:
+        """
+        Crear overlay invisible para captura de eventos en los bordes.
+
+        Este overlay se superpone a toda la ventana pero solo captura eventos
+        en los bordes (definidos por RESIZE_EDGE_DETECTION_MARGIN). El resto
+        es transparente para eventos, permitiendo interacción normal con widgets.
+        """
+        from app.ui.widgets.resize_edge_overlay import ResizeEdgeOverlay
+
+        self._resize_edge_overlay = ResizeEdgeOverlay(self)
+        # Posicionar el overlay para que cubra toda la ventana
+        self._resize_edge_overlay.setGeometry(self.rect())
+        # Elevar el overlay por encima de todos los widgets
+        self._resize_edge_overlay.raise_()
+        self._resize_edge_overlay.show()
 
     def _connect_signals(self) -> None:
         """Connect UI signals to TabManager."""
@@ -187,6 +279,7 @@ class MainWindow(QWidget):
         watcher = self._tab_manager.get_watcher()
         if watcher:
             watcher.folder_renamed.connect(self._sidebar.update_focus_path)
+            watcher.folder_renamed.connect(self._on_watcher_folder_renamed_update_tabs)
             watcher.folder_disappeared.connect(self._on_folder_disappeared)
             watcher.structural_change_detected.connect(self._on_structural_change_detected)
             
@@ -205,7 +298,10 @@ class MainWindow(QWidget):
         self._secondary_header.history_panel_toggle_requested.connect(self._on_history_panel_toggle)
         
         self._workspace_selector.rename_clicked.connect(self._file_view_container._on_rename_clicked)
-        
+
+        # Connect window size change to column adjustment (ONLY on button clicks, not drag resize)
+        self._app_header.window_size_changed.connect(self._on_window_size_changed)
+
         # Set state label manager
         self._workspace_selector.set_state_label_manager(self._state_label_manager)
         self._state_label_manager.labels_changed.connect(self._on_state_labels_changed)
@@ -461,7 +557,18 @@ class MainWindow(QWidget):
     def _on_view_mode_changed(self, view_mode: str) -> None:
         """Handle view mode change from WorkspaceManager - aplicar cambio visual."""
         switch_view(self._file_view_container, view_mode)
-    
+
+    def _on_window_size_changed(self) -> None:
+        """Handle window size change from header buttons - adjust list view columns."""
+        if not hasattr(self, '_file_view_container') or not self._file_view_container:
+            return
+
+        # Solo ajustar columnas de la vista de lista si está activa
+        if hasattr(self._file_view_container, '_list_view') and self._file_view_container._list_view:
+            list_view = self._file_view_container._list_view
+            if hasattr(list_view, '_adjust_columns_to_viewport_width'):
+                list_view._adjust_columns_to_viewport_width()
+
     def _on_workspace_changed(self, workspace_id: str) -> None:
         """Handle workspace change - actualizar UI con nuevo estado."""
         if not self._workspace_manager:
@@ -605,6 +712,46 @@ class MainWindow(QWidget):
         if self._sidebar.has_path(normalized_path):
             self._sidebar.remove_path(normalized_path)
     
+    def _on_watcher_folder_renamed_update_tabs(self, old_path: str, new_path: str) -> None:
+        """
+        Actualizar la lista de tabs cuando el watcher detecta rename de carpeta.
+        
+        Si el tab existe con old_path, reemplazarlo por new_path y emitir tabsChanged.
+        Si el tab activo fue renombrado, reiniciar observación sobre el nuevo path.
+        """
+        try:
+            if not hasattr(self._tab_manager, 'get_tabs'):
+                return
+            tabs = self._tab_manager.get_tabs()
+            if not tabs:
+                return
+            
+            from app.services.path_utils import normalize_path
+            normalized_old = normalize_path(old_path)
+            normalized_new = normalize_path(new_path)
+            
+            # Encontrar índice del tab correspondiente al antiguo path
+            idx = None
+            for i, t in enumerate(tabs):
+                if normalize_path(t) == normalized_old:
+                    idx = i
+                    break
+            if idx is None:
+                return
+            
+            # Reemplazar por el nuevo path preservando posición
+            tabs[idx] = new_path
+            # Asignar directamente y emitir señal de cambio para que UI se sincronice
+            self._tab_manager._tabs = tabs
+            self._tab_manager.tabsChanged.emit(tabs.copy())
+            
+            # Si el tab activo fue renombrado, reiniciar watcher y activeTabChanged
+            if hasattr(self._tab_manager, '_active_index') and self._tab_manager._active_index == idx:
+                if hasattr(self._tab_manager, '_watch_and_emit_internal'):
+                    self._tab_manager._watch_and_emit_internal(new_path)
+        except Exception:
+            pass
+    
     def _schedule_sidebar_sync(self, structural: bool = False) -> None:
         if not hasattr(self, '_sidebar_sync_timer'):
             self._sidebar_sync_timer = QTimer(self)
@@ -619,32 +766,47 @@ class MainWindow(QWidget):
     def mousePressEvent(self, event) -> None:
         """Iniciar resize nativo desde cualquier borde o esquina."""
         if event.button() == Qt.MouseButton.LeftButton:
-            edges = self._detect_resize_edges(event.globalPos())
+            global_pos = event.globalPos()
+            edges = self._detect_resize_edges(global_pos)
+
             if edges and self.windowHandle():
+                # Solo iniciar resize si estamos en los bordes de la ventana
+                # Esto evita interferir con drag and drop de archivos
                 self._is_resizing = True
                 self.windowHandle().startSystemResize(edges)
                 event.accept()
                 return
+
+        # Si no estamos redimensionando, permitir que el evento se propague
+        # para que el drag and drop funcione correctamente
         super().mousePressEvent(event)
     
     def mouseReleaseEvent(self, event) -> None:
         """Restaurar cursor cuando se suelta el botón del ratón."""
         if event.button() == Qt.MouseButton.LeftButton:
+            # Limpiar estado de redimensionamiento
             self._is_resizing = False
             self._clear_resize_cursor()
+            # Actualizar cursor inmediatamente después de soltar para reflejar posición actual
+            if not self.isMaximized():
+                self._update_resize_cursor()
+
         super().mouseReleaseEvent(event)
-    
+
     def showEvent(self, event) -> None:
         """Instalar filtro de eventos global cuando la ventana se muestra."""
         super().showEvent(event)
         QApplication.instance().installEventFilter(self)
-    
+        # Asegurar que el overlay esté por encima después de mostrar
+        if self._resize_edge_overlay:
+            self._resize_edge_overlay.raise_()
+
     def hideEvent(self, event) -> None:
         """Desinstalar filtro de eventos global cuando la ventana se oculta."""
         QApplication.instance().removeEventFilter(self)
         self._clear_resize_cursor()
         super().hideEvent(event)
-    
+
     def leaveEvent(self, event) -> None:
         """Restaurar cursor cuando el ratón sale de la ventana."""
         self._clear_resize_cursor()
@@ -652,9 +814,14 @@ class MainWindow(QWidget):
     
     def _update_resize_cursor(self) -> None:
         """Actualizar cursor según si el mouse está cerca de los bordes."""
+        # Solo actualizar cursor si esta ventana está activa
+        if not self.isActiveWindow():
+            self._clear_resize_cursor()
+            return
+
         global_pos = QCursor.pos()
         edges = self._detect_resize_edges(global_pos)
-        
+
         if edges:
             cursor = self._get_resize_cursor(edges)
             if cursor:
@@ -676,20 +843,39 @@ class MainWindow(QWidget):
         """Detectar bordes de ventana para resize nativo."""
         if not self.windowHandle():
             return Qt.Edges()
-        
+
         geo = self.frameGeometry()
         margin = RESIZE_EDGE_DETECTION_MARGIN
-        
+
+        # Verificar que el cursor está dentro de la geometría de la ventana (con tolerancia extendida)
+        # Permitir un área ligeramente más amplia para capturar bordes externos
+        extended_geo = geo.adjusted(-2, -2, 2, 2)
+        if not extended_geo.contains(global_pos):
+            return Qt.Edges()
+
         edges = Qt.Edges()
-        if abs(global_pos.x() - geo.left()) <= margin:
+
+        # Calcular distancias desde los bordes EXTERIORES de la ventana
+        # Esto es crítico para que la detección funcione con el margen de layout
+        x = global_pos.x()
+        y = global_pos.y()
+
+        left_dist = x - geo.left()
+        right_dist = geo.right() - x
+        top_dist = y - geo.top()
+        bottom_dist = geo.bottom() - y
+
+        # Detectar bordes usando distancias positivas hacia el interior
+        # Esto permite capturar tanto el borde exacto como el área cercana
+        if 0 <= left_dist <= margin:
             edges |= Qt.Edge.LeftEdge
-        if abs(global_pos.x() - geo.right()) <= margin:
+        if 0 <= right_dist <= margin:
             edges |= Qt.Edge.RightEdge
-        if abs(global_pos.y() - geo.top()) <= margin:
+        if 0 <= top_dist <= margin:
             edges |= Qt.Edge.TopEdge
-        if abs(global_pos.y() - geo.bottom()) <= margin:
+        if 0 <= bottom_dist <= margin:
             edges |= Qt.Edge.BottomEdge
-        
+
         return edges
     
     def _get_resize_cursor(self, edges: Qt.Edges):
@@ -769,9 +955,17 @@ class MainWindow(QWidget):
         """Filtrar eventos globales: cursor de bordes y barra espaciadora."""
         # Cursor de bordes: actualizar en cada movimiento de mouse
         if event.type() == QEvent.Type.MouseMove:
+            # Solo actualizar cursor si NO estamos redimensionando y la ventana NO está maximizada
+            # Esto evita interferir con el drag and drop de archivos
             if not self._is_resizing and not self.isMaximized():
-                self._update_resize_cursor()
-        
+                mouse_event = event
+                # Verificar que no hay botones presionados (no hay drag en curso)
+                if mouse_event.buttons() == Qt.MouseButton.NoButton:
+                    self._update_resize_cursor()
+                else:
+                    # Si hay botones presionados, limpiar cursor de resize para no interferir con drag
+                    self._clear_resize_cursor()
+
         if event.type() == QEvent.Type.KeyPress:
             key_event = event
             key = key_event.key()
@@ -1264,3 +1458,98 @@ class MainWindow(QWidget):
         """Handle search results change - update file view with results."""
         # Actualizar resultados en FileViewContainer
         self._file_view_container.set_search_mode(True, results)
+
+    def _hide_headers_for_diagnosis(self) -> None:
+        """
+        TEMPORAL: Ocultar headers, sidebar y footer para diagnóstico de parpadeo.
+
+        Componentes a ocultar:
+        - AppHeader ← CAUSA PARPADEO
+        - SecondaryHeader ← CAUSA PARPADEO
+        - WorkspaceSelector (WorkspaceHeader) ← CAUSA PARPADEO
+        - Header del modo vista de lista (QTableWidget header) ← CAUSA PARPADEO
+        - Sidebar ← CAUSA PARPADEO
+        - Footer (PathFooterWidget) ← CAUSA PARPADEO
+
+        CONFIRMACIÓN FINAL: TODOS OCULTOS PARA VERIFICAR QUE SIN ELLOS NO HAY PARPADEO
+        """
+        # Ocultar AppHeader (CAUSA PARPADEO)
+        if hasattr(self, '_app_header') and self._app_header:
+            self._app_header.hide()
+
+        # Ocultar SecondaryHeader (CAUSA PARPADEO)
+        if hasattr(self, '_secondary_header') and self._secondary_header:
+            self._secondary_header.hide()
+
+        # Ocultar WorkspaceSelector (CAUSA PARPADEO)
+        if hasattr(self, '_workspace_selector') and self._workspace_selector:
+            self._workspace_selector.hide()
+
+        # Ocultar Sidebar (CAUSA PARPADEO)
+        if hasattr(self, '_sidebar') and self._sidebar:
+            self._sidebar.hide()
+
+        # Ocultar Footer (CAUSA PARPADEO)
+        if hasattr(self, '_path_footer') and self._path_footer:
+            self._path_footer.hide()
+
+        # Ocultar header de FileListView (CAUSA PARPADEO)
+        if hasattr(self, '_file_view_container') and self._file_view_container:
+            container = self._file_view_container
+            if hasattr(container, '_list_view') and container._list_view:
+                list_view = container._list_view
+                # Ocultar header horizontal del QTableWidget
+                list_view.horizontalHeader().hide()
+                # Ocultar header vertical también
+                list_view.verticalHeader().hide()
+
+    def paintEvent(self, event) -> None:
+        """
+        Pintar fondo de MainWindow según feature flag.
+
+        Sistema antiguo (USE_ROUNDED_CORNERS_IN_ROOT=True):
+          - Pinta con QPainterPath redondeado directamente en la raíz
+          - Áreas fuera del path quedan transparentes (esquinas redondeadas visibles)
+
+        Sistema actual (USE_ROUNDED_CORNERS_IN_ROOT=False):
+          - Pinta rectángulo sólido completo (sin esquinas redondeadas)
+          - Optimizado para anti-flicker durante resize
+        """
+        if DEBUG_LAYOUT:
+            logger.info(f"🎨 [Main] ENTRY paintEvent | resize_flag={self._main_resize_in_progress}")
+        start_time = QElapsedTimer()
+        start_time.start()
+
+        if DEBUG_LAYOUT:
+            super().paintEvent(event)
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        from app.core.constants import SIDEBAR_BG, ROUNDED_BG_RADIUS
+
+        if USE_ROUNDED_CORNERS_IN_ROOT:
+            # SISTEMA ANTIGUO: Pintar con esquinas redondeadas usando QPainterPath
+            rect = self.rect()
+            corner_radius = ROUNDED_BG_RADIUS
+
+            # Crear path con esquinas redondeadas
+            from PySide6.QtGui import QPainterPath
+            path = QPainterPath()
+            path.addRoundedRect(rect, corner_radius, corner_radius)
+
+            # Rellenar SOLO el área dentro del path (esquinas quedan transparentes)
+            bg_color = QColor(SIDEBAR_BG)
+            painter.fillPath(path, bg_color)
+        else:
+            # SISTEMA ACTUAL: Pintar rectángulo sólido completo (anti-flicker)
+            painter.fillRect(self.rect(), QColor(SIDEBAR_BG))
+
+        painter.end()
+
+        if not hasattr(self, '_paint_count_total'): self._paint_count_total = 0
+        self._paint_count_total += 1
+        elapsed = start_time.nsecsElapsed() / 1000000.0
+        if DEBUG_LAYOUT:
+            logger.info(f"🎨 [Main] Paint #{self._paint_count_total} | dur={elapsed:.2f}ms | resize={self._main_resize_in_progress}")

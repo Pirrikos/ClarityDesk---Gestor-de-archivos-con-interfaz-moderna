@@ -1,8 +1,27 @@
 # MAPA ARQUITECTÓNICO EXHAUSTIVO - ClarityDesk Pro
 
-**Fecha:** 2025-12-29 (Actualizado despues de escaneo estructural)
+**Fecha:** 2025-12-31 (Actualizado después de revisión de código)
 **Objetivo:** Mapa completo del proyecto  
-**Ultima actualizacion:** Escaneo estructural y recuento de modulos
+**Última actualización:** Incorporados cambios recientes y correcciones (ver sección "Cambios recientes")
+
+---
+
+## 🔧 CAMBIOS RECIENTES (2025-12-30)
+
+- Condicionado el log de entrada de `paintEvent` en `app/ui/windows/main_window.py` para que solo registre cuando `DEBUG_LAYOUT=True` (reduce ruido de `Paint #...`).
+- Detectadas y documentadas mejoras en `app/ui/windows/main_window.py`: añadido `ResizeEdgeOverlay` para detección de bordes y cursor de resize más robusto; refinamiento de `_detect_resize_edges`, `_get_resize_cursor`, `eventFilter` y soporte para preview rápido mediante la tecla Barra Espaciadora; ajustada instrumentación de repintado.
+- Añadida lógica para evitar conflictos de drop con `DesktopWindow` y animaciones de fade in/out al mostrar el dock.
+- Detectada una duplicación de definiciones en `main_window.py` (`resizeEvent` está definido dos veces); recomendado consolidar para evitar comportamiento inesperado.
+- Detectados duplicados y discrepancias (recomendar refactor/reubicar):
+  - `tab_manager_init.py` aparece tanto en `app/services/` como en `app/managers/`.
+  - Duplicados en configuraciones de grid layout listados en `widgets`.
+- Pequeñas correcciones de consistencia y conteo de módulos; se recomienda una auditoría adicional para consolidar duplicados e inconsistencias.
+
+---
+
+**Registro de cambios:**
+- 2025-12-31: Reducidos logs ruidosos → `paintEvent` de `main_window.py` ahora registra solo si `DEBUG_LAYOUT=True`.
+- 2025-12-30: Actualizado mapa (fecha, sección "Cambios recientes", conteo de servicios, nota de duplicados).
 
 ---
 
@@ -63,7 +82,7 @@ ClarityDesk_29-11-25/
 │   │   ├── file_box_session.py      # Sesión de FileBox (temporal)
 │   │   └── workspace.py             # Modelo de workspace (tabs, sidebar state)
 │   │
-│   ├── services/                    # 📁 Services - Lógica de negocio (71 archivos)
+│   ├── services/                    # 📁 Services - Lógica de negocio (77 archivos)
 │   │   ├── __init__.py
 │   │   │
 │   │   ├── Tab Management (9 archivos)

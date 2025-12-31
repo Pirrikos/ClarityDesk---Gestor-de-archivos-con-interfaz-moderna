@@ -310,6 +310,12 @@ class SettingsWindow(BaseFramelessDialog):
         color_container_layout.addWidget(self._color_dark_radio)
         color_container_layout.addWidget(self._color_light_radio)
         content_layout.addLayout(color_container_layout)
+
+        # Ocultar temporalmente la opción de tema en Ajustes (sin eliminar lógica)
+        # Deja conectadas las señales pero oculta los controles para evitar interacción.
+        color_title_label.setVisible(False)
+        self._color_dark_radio.setVisible(False)
+        self._color_light_radio.setVisible(False)
         
         content_layout.addStretch()
     

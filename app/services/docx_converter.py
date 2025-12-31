@@ -42,49 +42,45 @@ class DocxConverter:
     def _get_normalized_temp_path(self, original_path: str) -> str:
         """
         Get a temporary copy of the file with normalized extension for docx2pdf.
-        
-        docx2pdf's Path.resolve() returns the actual filename from filesystem,
-        which may have uppercase extension. This creates a temporary copy with
-        lowercase extension so resolve() returns the normalized path.
-        
+
+        CRITICAL: Always creates a temp copy to prevent docx2pdf from creating
+        auxiliary files in the user's workspace directory.
+
         Args:
             original_path: Original file path with potentially uppercase extension.
-        
+
         Returns:
-            Path to temporary copy with normalized extension, or original path if already normalized.
+            Path to temporary copy with normalized extension.
         """
         try:
             path_obj = Path(original_path)
             if path_obj.suffix.lower() != '.docx':
                 return original_path
-            
-            # Only create temp copy if extension has uppercase (not exactly .docx)
-            if path_obj.suffix.lower() == '.docx' and path_obj.suffix == '.docx':
-                # Extension is already normalized, no temp copy needed
-                return original_path
-            
-            # Create temp filename with normalized extension
+
+            # ALWAYS create temp copy (never use original path)
+            # This prevents docx2pdf/Word from creating auxiliary files in user workspace
             file_hash = hashlib.md5(original_path.encode()).hexdigest()
             temp_name = f"{file_hash}.docx"
             temp_path = self._temp_dir / temp_name
-            
+
             # Check if temp file exists and is newer than original
             if temp_path.exists():
                 try:
                     original_mtime = os.path.getmtime(original_path)
                     temp_mtime = os.path.getmtime(str(temp_path))
                     if temp_mtime >= original_mtime:
-                        logger.debug(f"Using existing temp copy: '{temp_path}'")
+                        logger.debug(f"Using cached temp copy: {temp_path}")
                         return str(temp_path)
-                except (OSError, ValueError):
+                except (OSError, ValueError) as e:
+                    logger.debug(f"Error checking temp file mtime: {e}")
                     pass
-            
+
             # Create temp copy with normalized extension
-            logger.debug(f"Creating temp copy: '{original_path}' -> '{temp_path}'")
             shutil.copy2(original_path, temp_path)
+            logger.debug(f"Created temp copy: {original_path} -> {temp_path}")
             return str(temp_path)
         except Exception as e:
-            logger.warning(f"Failed to create temp copy for '{original_path}': {e}")
+            logger.error(f"Failed to create temp copy for DOCX: {e}", exc_info=True)
             # Fallback: return original path (will likely fail with docx2pdf)
             return original_path
     
@@ -116,13 +112,13 @@ class DocxConverter:
     
     def convert_to_pdf(self, docx_path: str) -> str:
         """Convert DOCX to PDF using docx2pdf.
-        
+
         R5: All external access (docx2pdf, file system) is encapsulated in try/except.
         R6: Validates file exists and mtime before/after conversion.
         """
         if not docx_path:
             return ""
-        
+
         try:
             if not os.path.exists(docx_path):
                 logger.debug(f"DOCX file does not exist: {docx_path}")
@@ -130,51 +126,58 @@ class DocxConverter:
         except (OSError, ValueError) as e:
             logger.warning(f"Cannot check DOCX file existence: {docx_path}, error: {e}")
             return ""
-        
+
         # R11: Normalize extension in single entry point
         ext = normalize_extension(docx_path)
         if ext != '.docx':
-            logger.debug(f"File is not DOCX (extension: {ext}): {docx_path}")
             return ""
-        
+
         try:
             from docx2pdf import convert
-        except ImportError:
+        except ImportError as e:
+            logger.error(f"Failed to import docx2pdf: {e}")
             return ""
-        
+
         try:
             self._cleanup_cache_if_needed()
-            
+
             pdf_path = self.get_cached_pdf_path(docx_path)
-            
+
             if pdf_path.exists():
                 try:
                     docx_mtime = os.path.getmtime(docx_path)
                     pdf_mtime = os.path.getmtime(str(pdf_path))
                     if pdf_mtime >= docx_mtime:
+                        logger.debug(f"Using cached PDF for: {docx_path}")
                         return str(pdf_path)
-                except (OSError, ValueError):
+                except (OSError, ValueError) as e:
+                    logger.debug(f"Error checking PDF cache mtime: {e}")
                     pass  # Continue to regenerate
-            
+
             try:
                 # docx2pdf's Path.resolve() returns the actual filename from filesystem,
                 # which may have uppercase extension. Create a temp copy with normalized extension.
                 normalized_docx_path = self._get_normalized_temp_path(docx_path)
-                logger.debug(f"Using path for docx2pdf: '{normalized_docx_path}' (original: '{docx_path}')")
+
+                logger.debug(f"Converting DOCX to PDF: {docx_path}")
                 convert(normalized_docx_path, str(pdf_path))
+                logger.debug(f"DOCX conversion completed: {pdf_path}")
             except Exception as e:
-                logger.warning(f"DOCX conversion failed for '{docx_path}' (normalized: '{normalized_docx_path}'): {type(e).__name__}: {e}", exc_info=True)
+                logger.error(f"DOCX conversion failed: {type(e).__name__}: {e}", exc_info=True)
                 return ""
-            
+
             try:
                 if pdf_path.exists():
                     return str(pdf_path)
-            except (OSError, ValueError):
+                else:
+                    logger.warning(f"PDF does not exist after conversion: {docx_path}")
+            except (OSError, ValueError) as e:
+                logger.warning(f"Error checking PDF existence: {e}")
                 pass
-            
+
             return ""
         except Exception as e:
-            logger.error(f"Exception in convert_to_pdf: {e}", exc_info=True)
+            logger.error(f"DOCX converter exception: {e}", exc_info=True)
             return ""
     
     def _get_cache_size(self) -> int:

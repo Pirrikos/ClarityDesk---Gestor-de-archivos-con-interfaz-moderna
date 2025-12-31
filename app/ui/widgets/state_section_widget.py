@@ -86,6 +86,7 @@ class StateSectionWidget(QWidget):
         self._drag_start_pos: Optional[QPoint] = None
         self._dragged_index: Optional[int] = None
         self._is_expanded: bool = True  # Por defecto expandido
+        self._hover_index: Optional[int] = None  # Índice del estado bajo el cursor para hover
         
         # SOLUCIÓN DEFINITIVA: Widget completamente neutro
         # El widget NO decide su posición, el layout lo hace
@@ -282,14 +283,19 @@ class StateSectionWidget(QWidget):
         
         for i, state in enumerate(self._states):
             item_rect = QRect(0, y, rect.width(), self.ITEM_HEIGHT)
-            
-            # Verificar si está activo
+
+            # Verificar si está activo o en hover
             is_active = (state == self._active_state)
-            
+            is_hover = (i == self._hover_index and not is_active)
+
             # Fondo activo (igual que las carpetas)
             if is_active:
                 bg_color = QColor(35, 38, 45)  # SELECT_BG de folder_tree_styles
                 painter.fillRect(item_rect, bg_color)
+            # Fondo hover suave
+            elif is_hover:
+                hover_color = QColor(255, 255, 255, 8)  # Hover muy sutil
+                painter.fillRect(item_rect, hover_color)
             
             # Círculo de color a la izquierda (donde está el icono de las carpetas)
             color = STATE_COLORS.get(state, QColor(200, 200, 200))
@@ -452,18 +458,32 @@ class StateSectionWidget(QWidget):
             self._dragged_index = clicked_index
     
     def mouseMoveEvent(self, event) -> None:
-        """Manejar movimiento del mouse para iniciar drag."""
+        """Manejar movimiento del mouse para hover y drag."""
+        # Actualizar hover index
+        pos = event.pos()
+        old_hover = self._hover_index
+        self._hover_index = self._get_index_at_position(pos)
+
+        # Solo actualizar si el hover cambió
+        if old_hover != self._hover_index:
+            self.update()
+
+        # Manejar drag si se está arrastrando
         if event.buttons() & Qt.MouseButton.LeftButton and self._drag_start_pos is not None:
             if (event.pos() - self._drag_start_pos).manhattanLength() > 10:  # Threshold para iniciar drag
                 self._start_drag(self._dragged_index)
-            else:
-                self.update()  # Refrescar para mostrar hover
     
     def mouseReleaseEvent(self, event) -> None:
         """Limpiar estado de drag."""
         self._drag_start_pos = None
         self._dragged_index = None
         self.update()
+
+    def leaveEvent(self, event) -> None:
+        """Limpiar hover cuando el mouse sale del widget."""
+        self._hover_index = None
+        self.update()
+        super().leaveEvent(event)
     
     def _get_index_at_position(self, pos: QPoint) -> Optional[int]:
         """Obtener índice del estado en la posición especificada."""

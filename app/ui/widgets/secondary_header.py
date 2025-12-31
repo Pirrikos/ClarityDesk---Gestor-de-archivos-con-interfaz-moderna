@@ -14,6 +14,9 @@ from PySide6.QtWidgets import (
 
 from app.core.constants import DEBUG_LAYOUT, ROUNDED_BG_RADIUS, SEPARATOR_LINE_COLOR, WORKSPACE_BUTTON_HEIGHT
 from app.services.settings_service import SettingsService
+from app.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class SecondaryHeader(QWidget):
@@ -123,24 +126,23 @@ class SecondaryHeader(QWidget):
         self._setup_base_configuration()
         layout = self._create_main_layout()
         # El workspace button se agregará después mediante set_workspace_button
-        # Se insertará en posición 0 y ocupará todo el espacio hasta el campo de búsqueda
+        # Se insertará en posición 0
         self._setup_menu_buttons(layout)
+        layout.addStretch(1)  # Stretch para empujar el campo de búsqueda a la derecha
         self._setup_search_field(layout)
     
     def set_workspace_button(self, workspace_button: QPushButton) -> None:
         """Set workspace button from WorkspaceSelector to display in this header."""
         if self._workspace_button:
             return  # Ya está configurado
-        
+
         self._workspace_button = workspace_button
         layout = self.layout()
         if layout and workspace_button:
-            # Quitar ancho fijo para que se expanda
-            workspace_button.setMaximumWidth(16777215)  # Qt máximo permitido
-            workspace_button.setMinimumWidth(220)  # Ancho mínimo
-            # Insertar al inicio (posición 0) y hacer que ocupe todo el espacio disponible
-            # hasta el campo de búsqueda (stretch factor 1)
-            layout.insertWidget(0, workspace_button, 1)  # stretch factor 1 para expandirse
+            # Mantener ancho fijo original
+            workspace_button.setFixedWidth(220)
+            # Insertar al inicio (posición 0) sin stretch factor
+            layout.insertWidget(0, workspace_button, 0)
 
     def _setup_base_configuration(self) -> None:
         """Configure base header properties."""
@@ -331,12 +333,12 @@ class SecondaryHeader(QWidget):
         if DEBUG_LAYOUT:
             super().paintEvent(event)
             return
-        
+
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         rect = self.rect()
         radius = ROUNDED_BG_RADIUS
-        
+
         # Crear path con esquinas redondeadas solo inferiores (sin redondeo superior para juntar con AppHeader)
         path = QPainterPath()
         path.moveTo(rect.left(), rect.top())
@@ -348,9 +350,19 @@ class SecondaryHeader(QWidget):
         # Esquina inferior izquierda: arco desde 270° (abajo) hacia -90° (arriba, igual que la derecha)
         path.arcTo(rect.left(), rect.bottom() - 2 * radius, 2 * radius, 2 * radius, 270, -90)
         path.closeSubpath()
-        
+
         p.fillPath(path, QColor("#1A1D22"))
-        
+
+        # Pintar borde morado suave estilo Raycast alrededor del workspace button
+        if self._workspace_button:
+            button_rect = self._workspace_button.geometry()
+            if button_rect.isValid():
+                # Offset visual: borde morado suave
+                offset_rect = button_rect.adjusted(-1, -1, 1, 1)
+                p.setPen(QColor(157, 78, 221, 60))  # Morado suave con transparencia
+                p.setBrush(QColor(0, 0, 0, 0))  # Sin relleno
+                p.drawRoundedRect(offset_rect, 8, 8)
+
         p.end()
         super().paintEvent(event)
 

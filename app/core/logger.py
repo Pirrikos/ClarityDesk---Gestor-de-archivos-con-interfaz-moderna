@@ -106,8 +106,8 @@ def get_logger(name: Optional[str] = None, level: Optional[int] = None) -> loggi
             name = 'claritydesk'
     
     if level is None:
-        # Usar DEBUG para módulos de preview y main_window para diagnóstico
-        if 'preview' in name.lower() or 'quick_preview' in name.lower() or 'main_window' in name.lower():
+        # Usar DEBUG para módulos de UI (widgets, windows) para diagnóstico profundo
+        if any(x in name.lower() for x in ['preview', 'window', 'widget', 'view']):
             level = logging.DEBUG
         else:
             level = logging.INFO

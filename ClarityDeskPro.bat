@@ -1,25 +1,34 @@
 @echo off
 setlocal EnableExtensions
 
-rem Directorio del proyecto (donde está este .bat)
+rem 1. Fijar directorio de trabajo en raiz del proyecto
+rem    %~dp0 obtiene el directorio donde esta el .bat
 set "APPDIR=%~dp0"
-pushd "%APPDIR%"
+cd /d "%APPDIR%"
 
-rem Verificación: debe existir pythonw.exe del entorno (.venv)
-if not exist ".venv\Scripts\pythonw.exe" (
-  powershell -NoProfile -WindowStyle Hidden -Command ^
-    "$ws=New-Object -ComObject WScript.Shell; $ws.Popup('No se encontró el entorno .venv.\nCree el entorno y instale dependencias:\n  python -m venv .venv\n  .venv\\Scripts\\pip install -r requirements.txt','ClarityDesk Pro',0,16)" >nul 2>&1
-  popd
-  exit /b 1
+rem 2. Verificar que existe el virtualenv
+if not exist ".venv\Scripts\python.exe" (
+    echo ERROR: No se encontro el entorno virtual .venv
+    echo.
+    echo Cree el entorno con:
+    echo   python -m venv .venv
+    echo   .venv\Scripts\pip install -r requirements.txt
+    echo.
+    pause
+    exit /b 1
 )
 
-rem Activar el entorno virtual en silencio
-call ".venv\Scripts\activate.bat" >nul 2>&1
+rem 3. Activar el virtualenv explicitamente
+rem    Replica exactamente el entorno de desarrollo
+call ".venv\Scripts\activate.bat"
 
-rem Lanzar la app con pythonw (sin consola) y cerrar este .bat
-powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass ^
-  -Command "Start-Process -FilePath '.venv\\Scripts\\pythonw.exe' -WorkingDirectory '%APPDIR%' -ArgumentList 'main.py'"
+rem 4. Ejecutar la aplicacion usando python.exe (CON consola)
+rem    Permite ver errores en stdout/stderr si fallan imports o excepciones
+python main.py
 
-popd
-exit /b 0
+rem 5. Pausa para ver errores antes de cerrar
+rem    Solo se ejecuta si python termina (incluso con error)
+echo.
+echo La aplicacion se ha cerrado.
+pause
 
