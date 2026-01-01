@@ -84,7 +84,6 @@ class ListViewDelegate(QStyledItemDelegate):
         opt.state &= ~QStyle.StateFlag.State_HasFocus
         opt.state &= ~QStyle.StateFlag.State_KeyboardFocusChange
         opt.showDecorationSelected = False
-
         is_selected = bool(opt.state & QStyle.StateFlag.State_Selected)
         current_row = index.row()
         is_hovered = current_row == self._get_hovered_row()
@@ -95,7 +94,7 @@ class ListViewDelegate(QStyledItemDelegate):
 
         # ───── Background handling ─────
         if self._is_widget_column:
-            # Checkbox / state columns: NEVER paint hover
+            # Checkbox / state columns: NEVER paint hover/selection full-row
             painter.fillRect(opt.rect, base_color)
 
         elif self._is_name_column and is_hovered and not is_selected:
@@ -239,7 +238,7 @@ class ListViewDelegate(QStyledItemDelegate):
         if not model:
             return QRect()
 
-        first_col = 1  # Columna Nombre (inicio del hover)
+        first_col = 0  # Incluir checkbox para cubrir barras verticales
         first_index = model.index(row, first_col)
         if not first_index.isValid():
             return QRect()
@@ -247,7 +246,6 @@ class ListViewDelegate(QStyledItemDelegate):
         first_rect = self._table_widget.visualRect(first_index)
         if not first_rect.isValid():
             return QRect()
-
         # Hover termina en columna 3 (Fecha), SIN incluir columna 4 (Estado)
         last_col = 3
         last_index = model.index(row, last_col)

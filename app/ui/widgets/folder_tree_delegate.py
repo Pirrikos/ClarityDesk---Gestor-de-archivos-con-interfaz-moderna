@@ -291,16 +291,16 @@ class FolderTreeSectionDelegate(QStyledItemDelegate):
                 feedback_rect = QRect(left, top, right - left, bottom - top)
             
             if option.state & QStyle.State.State_Selected and feedback_rect:
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(QBrush(self._selected_bg))
-                painter.drawRect(feedback_rect)
+                painter.drawRoundedRect(feedback_rect.adjusted(1, 1, -1, -1), 8, 8)
             
             if option.state & QStyle.State.State_MouseOver and feedback_rect:
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(QBrush(self._hover_bg))
-                painter.drawRect(feedback_rect)
+                painter.drawRoundedRect(feedback_rect.adjusted(1, 1, -1, -1), 8, 8)
             
             separator_y = option.rect.bottom()
             horizontal_right = viewport_width - pad_x_right

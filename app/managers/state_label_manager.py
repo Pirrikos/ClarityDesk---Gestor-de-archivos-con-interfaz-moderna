@@ -102,6 +102,9 @@ class StateLabelManager(QObject):
         new_label = new_label.strip()
         if not new_label:
             return False, "El nombre de la etiqueta no puede estar vacío."
+        # Validate length <= 15 (including spaces)
+        if len(new_label) > 15:
+            return False, "El nombre de la etiqueta debe tener como máximo 15 caracteres."
         
         # Check for duplicate labels (case-insensitive)
         current_labels = self.get_all_labels()
@@ -207,4 +210,3 @@ class StateLabelManager(QObject):
         
         logger.info(f"State order updated: {new_order}")
         return True
-

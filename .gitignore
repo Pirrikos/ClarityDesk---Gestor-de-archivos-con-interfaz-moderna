@@ -1,53 +1,39 @@
-# OS
-Thumbs.db
-Desktop.ini
-.DS_Store
-
 # Python
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.Python
+.pytest_cache/
+.coverage
+
+# Virtual env
 env/
 venv/
 .venv/
-pip-log.txt
-pip-delete-this-directory.txt
+
+# Build artifacts
+build/
+dist/
+BUILD_FINAL/
+BACKUP_*/
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
 .idea/
 
-# Build/Dist
-build/
-dist/
-
-# Qt / PySide artifacts
-*.qm
-*.qrc
-*.qhc
-
 # Logs
 *.log
 
-# Test caches
-.pytest_cache/
-.coverage
-
-# App runtime storage (user data, large caches)
+# Local storage runtime data
+storage/claritydesk.db
 storage/dock_files/
 storage/trash/
-storage/*.db
 storage/tabs.json
-backups/
-arbol.txt
-output.log
-# Artifacts y data generada fuera de código fuente
-BACKUP_*/
-BUILD_FINAL/
+
+# Tooling/cache
 .claude/
 INFORMES/
-
-# Evitar error por nombre reservado en Windows que no debe indexarse
 nul

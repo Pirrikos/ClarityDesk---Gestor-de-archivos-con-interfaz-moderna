@@ -8,7 +8,7 @@ import os
 from typing import Optional
 from PySide6.QtCore import Qt, QTimer, QEvent, QPoint, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QObject, QElapsedTimer
 from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragMoveEvent, QDropEvent, QKeySequence, QShortcut, QCursor, QMouseEvent, QPainter, QColor, QPaintEvent, QResizeEvent
-from PySide6.QtWidgets import QWidget, QApplication, QToolTip, QDialog, QGraphicsOpacityEffect
+from PySide6.QtWidgets import QWidget, QApplication, QToolTip, QDialog, QGraphicsOpacityEffect, QGraphicsBlurEffect
 
 from app.core.constants import (
     DEBUG_LAYOUT, FILE_SYSTEM_DEBOUNCE_MS, CENTRAL_AREA_BG,
@@ -385,7 +385,7 @@ class MainWindow(QWidget):
         pass
     
     def _on_show_desktop_requested(self) -> None:
-        """Ocultar MainWindow y mostrar DesktopWindow con animación elegante tipo macOS."""
+        """Ocultar MainWindow y mostrar DesktopWindow sin animaciones."""
         # Usar DesktopWindow inyectado o buscar como fallback
         desktop_window = self._desktop_window
         if not desktop_window:
@@ -399,79 +399,27 @@ class MainWindow(QWidget):
             logger.warning("DesktopWindow no encontrada al intentar mostrar dock de escritorio")
             return
         
-        # Cancelar animación anterior si existe
+        # Cancelar cualquier animación/effecto anterior
         if self._transition_animation:
-            self._transition_animation.stop()
-            self._transition_animation.deleteLater()
-            self._transition_animation = None
-        
-        # Verificar si DesktopWindow ya está completamente visible
-        is_already_visible = desktop_window.isVisible() and desktop_window.windowOpacity() >= 0.99
-        
-        if is_already_visible:
-            # Si ya está visible, solo ocultar MainWindow sin animación
-            self.hide()
-            desktop_window.raise_()
-            desktop_window.activateWindow()
-            return
-        
-        # Asegurar que DesktopWindow esté visible y reconocido por Qt ANTES de ocultar MainWindow
-        # Solo llamar a show() si no está visible
-        if not desktop_window.isVisible():
-            desktop_window.setWindowOpacity(0.01)  # Opacidad mínima pero visible para Qt
-            desktop_window.show()
-            desktop_window.raise_()
-            desktop_window.activateWindow()
-            QApplication.processEvents()
-        else:
-            # Si ya está visible pero con opacidad baja, solo ajustar opacidad
-            current_opacity = desktop_window.windowOpacity()
-            if current_opacity < 0.01:
-                desktop_window.setWindowOpacity(0.01)
-        
-        # Crear efectos de opacidad
-        main_opacity_effect = QGraphicsOpacityEffect(self)
-        self.setGraphicsEffect(main_opacity_effect)
-        main_opacity_effect.setOpacity(1.0)
-        
-        # Animación de fade out para MainWindow
-        fade_out = QPropertyAnimation(main_opacity_effect, b"opacity", self)
-        fade_out.setDuration(280)
-        fade_out.setStartValue(1.0)
-        fade_out.setEndValue(0.0)
-        fade_out.setEasingCurve(QEasingCurve.Type.OutCubic)
-        
-        # Animación de fade in para DesktopWindow usando windowOpacity (más confiable)
-        current_desktop_opacity = desktop_window.windowOpacity()
-        fade_in = QPropertyAnimation(desktop_window, b"windowOpacity", desktop_window)
-        fade_in.setDuration(300)
-        fade_in.setStartValue(current_desktop_opacity)  # Empezar desde opacidad actual
-        fade_in.setEndValue(1.0)
-        fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
-        
-        # Guardar referencias para evitar garbage collection
-        self._fade_out_anim = fade_out
-        self._fade_in_anim = fade_in
-        
-        # Callbacks al finalizar
-        def on_fade_out_finished():
-            self.hide()
-            self.setGraphicsEffect(None)
-            self._fade_out_anim = None
-        
-        def on_fade_in_finished():
-            desktop_window.activateWindow()
-            self._fade_in_anim = None
-            if self._transition_animation:
+            try:
+                self._transition_animation.stop()
                 self._transition_animation.deleteLater()
-                self._transition_animation = None
-        
-        fade_out.finished.connect(on_fade_out_finished)
-        fade_in.finished.connect(on_fade_in_finished)
-        
-        # Iniciar fade out primero, luego fade in con pequeño delay (efecto escalonado elegante)
-        fade_out.start()
-        QTimer.singleShot(40, fade_in.start)
+            except Exception:
+                pass
+            self._transition_animation = None
+        try:
+            self.setGraphicsEffect(None)
+            desktop_window.setGraphicsEffect(None)
+        except Exception:
+            pass
+
+        # Mostrar DesktopWindow inmediatamente
+        if not desktop_window.isVisible():
+            desktop_window.show()
+        desktop_window.raise_()
+        desktop_window.activateWindow()
+        # Ocultar MainWindow sin animación
+        self.hide()
 
     def _load_app_state(self) -> None:
         """Load complete application state and restore UI."""
@@ -1436,6 +1384,12 @@ class MainWindow(QWidget):
         if hasattr(container, '_list_view') and container._list_view:
             list_view = container._list_view
             list_view._get_label_callback = callback
+            try:
+                delegate = getattr(list_view, '_state_delegate', None)
+                if delegate and hasattr(delegate, 'set_get_label_callback'):
+                    delegate.set_get_label_callback(callback)
+            except Exception:
+                pass
             list_view.viewport().update()
     
     def _on_state_labels_changed(self) -> None:

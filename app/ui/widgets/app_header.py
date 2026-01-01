@@ -25,12 +25,23 @@ class ClickableIconLabel(QLabel):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setMouseTracking(True)
+        self._hover_bg = "rgba(255, 255, 255, 0.12)"
+        self._normal_bg = "transparent"
     
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Emitir señal cuando se hace clic."""
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
+
+    def enterEvent(self, event) -> None:
+        self.setStyleSheet(f"background-color: {self._hover_bg}; border-radius: 8px;")
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self.setStyleSheet(f"background-color: {self._normal_bg}; border-radius: 8px;")
+        super().leaveEvent(event)
 
 
 class AppHeader(QWidget):
@@ -44,6 +55,13 @@ class AppHeader(QWidget):
         QWidget#AppHeader {
             background-color: #1A1D22;
             border-bottom: 1px solid #2A2E36;
+        }
+        QLabel#DesktopIcon, QLabel#SettingsIcon {
+            border-radius: 8px;
+            background-color: transparent;
+        }
+        QLabel#DesktopIcon:hover, QLabel#SettingsIcon:hover {
+            background-color: rgba(255, 255, 255, 0.08);
         }
         QPushButton#CloseButton {
             background-color: transparent;
@@ -111,9 +129,11 @@ class AppHeader(QWidget):
             desktop_pixmap = render_svg_icon("generic.svg", QSize(icon_size, icon_size))
         
         self._desktop_icon_label = ClickableIconLabel(self)
+        self._desktop_icon_label.setObjectName("DesktopIcon")
         self._desktop_icon_label.setFixedSize(icon_size, icon_size)
         self._desktop_icon_label.setPixmap(desktop_pixmap)
         self._desktop_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._desktop_icon_label.setMouseTracking(True)
         self._desktop_icon_label.clicked.connect(self.show_desktop_requested.emit)
         
         # Sombra similar al dock
@@ -131,9 +151,11 @@ class AppHeader(QWidget):
             settings_pixmap = render_svg_icon("generic.svg", QSize(icon_size, icon_size))
         
         self._settings_icon_label = ClickableIconLabel(self)
+        self._settings_icon_label.setObjectName("SettingsIcon")
         self._settings_icon_label.setFixedSize(icon_size, icon_size)
         self._settings_icon_label.setPixmap(settings_pixmap)
         self._settings_icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._settings_icon_label.setMouseTracking(True)
         self._settings_icon_label.clicked.connect(self.show_settings_requested.emit)
         
         # Sombra similar al dock
@@ -487,4 +509,3 @@ class AppHeader(QWidget):
 
         p.end()
         super().paintEvent(event)
-

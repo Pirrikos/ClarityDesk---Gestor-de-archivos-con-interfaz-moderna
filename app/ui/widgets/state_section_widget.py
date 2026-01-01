@@ -288,14 +288,23 @@ class StateSectionWidget(QWidget):
             is_active = (state == self._active_state)
             is_hover = (i == self._hover_index and not is_active)
 
-            # Fondo activo (igual que las carpetas)
-            if is_active:
+            # Área de feedback limitada para no invadir controles derechos
+            viewport_width = rect.width()
+            left = 0
+            right = viewport_width - self.CONTROLS_AREA_PAD_X_RIGHT
+            feedback_rect = QRect(left, item_rect.top(), max(0, right - left), item_rect.height())
+
+            # Fondo activo y hover con esquinas redondeadas
+            if is_active and feedback_rect.width() > 0:
                 bg_color = QColor(35, 38, 45)  # SELECT_BG de folder_tree_styles
-                painter.fillRect(item_rect, bg_color)
-            # Fondo hover suave
-            elif is_hover:
-                hover_color = QColor(255, 255, 255, 8)  # Hover muy sutil
-                painter.fillRect(item_rect, hover_color)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(bg_color))
+                painter.drawRoundedRect(feedback_rect.adjusted(1, 1, -1, -1), 8, 8)
+            elif is_hover and feedback_rect.width() > 0:
+                hover_color = QColor(255, 255, 255, 20)  # Hover sutil
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(hover_color))
+                painter.drawRoundedRect(feedback_rect.adjusted(1, 1, -1, -1), 8, 8)
             
             # Círculo de color a la izquierda (donde está el icono de las carpetas)
             color = STATE_COLORS.get(state, QColor(200, 200, 200))
@@ -562,4 +571,3 @@ class StateSectionWidget(QWidget):
         self._refresh_states()
         
         event.acceptProposedAction()
-

@@ -199,7 +199,9 @@ def setup_ui(view: QTableWidget, checkbox_changed_callback: Callable[[str, int],
     # Delegate específico para la columna Estado (pintado sin widgets incrustados)
     from app.ui.widgets.list_state_delegate import ListStateDelegate
     get_label_cb = getattr(view, '_get_label_callback', None)
-    view.setItemDelegateForColumn(4, ListStateDelegate(view, get_label_callback=get_label_cb))
+    state_delegate = ListStateDelegate(view, get_label_callback=get_label_cb)
+    setattr(view, '_state_delegate', state_delegate)
+    view.setItemDelegateForColumn(4, state_delegate)
     
     view.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
     view.setShowGrid(False)
