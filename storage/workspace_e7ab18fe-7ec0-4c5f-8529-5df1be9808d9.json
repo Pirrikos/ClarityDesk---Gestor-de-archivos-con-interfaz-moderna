@@ -1,17 +1,33 @@
 {
   "tabs": [
     "C:/Users/pirri/OneDrive/Documentos/MEGA/probando",
-    "C:/Users/pirri/OneDrive/Documentos/MEGA/probando\\NUEVA CARPETA"
+    "C:/Users/pirri/OneDrive/Documentos/MEGA/probando\\NUEVA CARPETA",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA\\GLOBAL",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\SUBIDA NOTA",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA\\RECUPERACION",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA\\SUBIDA DE NOTA",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA\\1 PARCIAL"
   ],
-  "active_tab": "C:/Users/pirri/OneDrive/Documentos/MEGA/probando",
+  "active_tab": "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA\\GLOBAL",
   "focus_tree_paths": [
-    "C:/Users/pirri/OneDrive/Documentos/MEGA/probando"
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia",
+    "C:/Users/pirri/OneDrive/Documentos/MEGA/probando",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA\\1 PARCIAL",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA\\GLOBAL",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA\\RECUPERACION",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA\\SUBIDA DE NOTA",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\SUBIDA NOTA"
   ],
   "expanded_nodes": [
-    "C:/Users/pirri/OneDrive/Documentos/MEGA/probando"
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia",
+    "C:/Users/pirri/OneDrive/Escritorio/CONFORME A PAU - copia\\2 EVA"
   ],
   "root_folders_order": [
+    "c:\\users\\pirri\\onedrive\\escritorio\\conforme a pau - copia",
     "c:\\users\\pirri\\onedrive\\documentos\\mega\\probando"
   ],
-  "view_mode": "list"
+  "view_mode": "grid"
 }

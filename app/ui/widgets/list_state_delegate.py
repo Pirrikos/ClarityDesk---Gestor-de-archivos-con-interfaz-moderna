@@ -36,6 +36,14 @@ class ListStateDelegate(QStyledItemDelegate):
 
         # Obtener estado
         state = index.data(STATE_ROLE)
+
+        # DEBUG: Log para diagnosticar por qué no se muestran estados
+        from app.core.logger import get_logger
+        logger = get_logger(__name__)
+        row = index.row()
+        if row < 5:  # Solo primeras 5 filas para no saturar logs
+            logger.debug(f"ListStateDelegate.paint - Row {row}: state='{state}', in STATE_COLORS={state in STATE_COLORS}")
+
         if state not in STATE_COLORS:
             painter.restore()
             return

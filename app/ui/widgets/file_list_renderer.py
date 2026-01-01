@@ -185,6 +185,15 @@ def setup_ui(view: QTableWidget, checkbox_changed_callback: Callable[[str, int],
     """)
     
     header.setVisible(True)
+    # Desactivar sorting interno; usaremos orden propio determinista
+    view.setSortingEnabled(False)
+    header.setSortIndicatorShown(True)
+    try:
+        # Conectar click de header para alternar orden/columna
+        # FileListView implementa _on_sort_column_clicked
+        header.sectionClicked.connect(lambda idx: getattr(view, '_on_sort_column_clicked', lambda _i: None)(idx))
+    except Exception:
+        pass
     vheader = view.verticalHeader()
     vheader.setVisible(False)
     vheader.setDefaultSectionSize(56)
@@ -259,12 +268,90 @@ def refresh_table(
     workspace_manager: Optional['WorkspaceManager'] = None
 ) -> None:
     """Reconstruir filas de la tabla a partir de la lista de archivos."""
+    from app.core.logger import get_logger
+    logger = get_logger(__name__)
+
+    logger.debug(f"▶▶▶ refresh_table LLAMADO con {len(files)} archivos")
+    for idx, f in enumerate(files[:5]):  # Primeros 5
+        logger.debug(f"      [{idx}] {os.path.basename(f)}")
+
     _ensure_column_count(view, 5)
 
     # Eliminado el "Soft reveal" que ocultaba el viewport.
     # Esto evita que se vea el escritorio a través de la transparencia del padre durante la navegación.
 
+    # NO filtrar aquí - TabManager.get_files() es la única fuente de verdad.
+    # El filtrado adicional causaba inconsistencias al cambiar entre contextos
+    # (navegación por carpeta vs navegación por estado).
+
+    # Aplicar ordenamiento SOLO si el usuario lo ha solicitado (haciendo clic en un header)
+    # Si _sort_column es None, usar el orden natural de TabManager.get_files()
+    header = view.horizontalHeader()
+    sort_section = getattr(view, '_sort_column', None)
+    sort_order = getattr(view, '_sort_order', None)
+
+    logger.debug(f"▶▶▶ Estado de ordenamiento: sort_section={sort_section}, sort_order={sort_order}")
+
+    # Solo ordenar si hay preferencias de ordenamiento activas
+    if sort_section is not None and sort_order is not None:
+        try:
+            if sort_section == 1:
+                files = sorted(
+                    files,
+                    key=lambda p: os.path.splitext(os.path.basename(p))[0].lower(),
+                    reverse=sort_order == Qt.SortOrder.DescendingOrder
+                )
+            elif sort_section == 2:
+                files = sorted(
+                    files,
+                    key=lambda p: os.path.splitext(os.path.basename(p))[1].lower(),
+                    reverse=sort_order == Qt.SortOrder.DescendingOrder
+                )
+            elif sort_section == 3:
+                def _mtime(path: str) -> float:
+                    try:
+                        return os.path.getmtime(path)
+                    except Exception:
+                        return 0.0
+                files = sorted(
+                    files,
+                    key=lambda p: _mtime(p),
+                    reverse=sort_order == Qt.SortOrder.DescendingOrder
+                )
+            elif sort_section == 4 and state_manager:
+                def _state(path: str) -> str:
+                    try:
+                        s = state_manager.get_file_state(path)
+                        return (s or "").lower()
+                    except Exception:
+                        return ""
+                files = sorted(
+                    files,
+                    key=lambda p: _state(p),
+                    reverse=sort_order == Qt.SortOrder.DescendingOrder
+                )
+        except Exception:
+            pass
+
+        # DEBUG: Mostrar archivos después del ordenamiento
+        logger.debug(f"▶▶▶ Después del ordenamiento: {len(files)} archivos")
+        for idx, f in enumerate(files[:5]):  # Primeros 5
+            logger.debug(f"      [{idx}] {os.path.basename(f)}")
+    else:
+        logger.debug(f"▶▶▶ Sin ordenamiento activo - usando orden natural")
+
+    # CRÍTICO: Deshabilitar sorting ANTES de reconstruir la tabla
+    # setSortingEnabled(True) causa que Qt reordene automáticamente durante setItem(),
+    # lo cual corrompe los datos de STATE_ROLE al mezclar filas
+    view.setSortingEnabled(False)
+    
+    # CRÍTICO: Limpiar tabla completamente ANTES de establecer nuevas filas
+    # Esto previene que filas antiguas permanezcan visibles por bug de renderizado
+    view.clearContents()
+    view.setRowCount(0)
     view.setRowCount(len(files))
+
+    logger.debug(f"▶▶▶ Tabla limpiada y redimensionada. Creando {len(files)} filas")
     for row, file_path in enumerate(files):
         create_row(
             view,
@@ -278,6 +365,9 @@ def refresh_table(
             tab_manager,
             workspace_manager
         )
+    
+    # Rehabilitar sorting DESPUÉS de crear todas las filas
+    view.setSortingEnabled(True)
 
     # OPTIMIZACIÓN: No ajustar columnas automáticamente para evitar recálculos costosos
     # Los anchos iniciales ya están definidos en setup_ui() (líneas 147-150)
@@ -287,9 +377,33 @@ def refresh_table(
     # Solo asegurar que la columna 0 (checkbox) mantenga su ancho mínimo fijo
     view.setColumnWidth(0, 16)
 
+    # Actualizar indicador visual de ordenamiento
+    # Solo mostrar si hay ordenamiento activo
+    try:
+        if sort_section is not None and sort_order is not None:
+            header.setSortIndicatorShown(True)
+            header.setSortIndicator(sort_section, sort_order)
+        else:
+            # Sin ordenamiento activo - ocultar indicador
+            header.setSortIndicatorShown(False)
+    except Exception:
+        pass
+    
     # Actualizar estado del checkbox del header después de refrescar
     if hasattr(view, '_update_header_checkbox_state'):
         view._update_header_checkbox_state()
+
+    # VERIFICACIÓN VISUAL: Mostrar mensaje verde en el header para confirmar código actualizado
+    try:
+        from app.ui.widgets.app_header import AppHeader
+        main_window = view.window()
+        if main_window:
+            # Buscar el AppHeader en la ventana principal
+            app_header = main_window.findChild(AppHeader)
+            if app_header:
+                app_header.show_verification_message(f"✓ BUILD OK - {len(files)} files", 2000)
+    except Exception:
+        pass  # Silenciosamente ignorar si no se encuentra el header
 
 
 def create_row(
@@ -326,6 +440,13 @@ def create_row(
     view.setItem(row, 3, create_date_cell(file_path, font))
 
     state = state_manager.get_file_state(file_path) if state_manager else None
+    
+    # DEBUG: Log estado obtenido
+    from app.core.logger import get_logger
+    logger = get_logger(__name__)
+    if row < 5:  # Solo primeras 5 filas
+        logger.debug(f"create_row Row {row}: file='{os.path.basename(file_path)}', state='{state}'")
+    
     state_item = create_state_item(state, font)
     view.setItem(row, 4, state_item)
     view.setRowHeight(row, 56)

@@ -46,23 +46,25 @@ def setup_logger(
     
     # Handler para archivo
     if log_to_file:
-        log_dir = _get_log_directory()
-        log_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Archivo de log con fecha
-        log_file = log_dir / f'claritydesk_{datetime.now().strftime("%Y%m%d")}.log'
-        
-        file_handler = logging.FileHandler(log_file, encoding='utf-8')
-        file_handler.setLevel(level)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+        try:
+            log_dir = _get_log_directory()
+            log_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Archivo de log con fecha
+            log_file = log_dir / f'claritydesk_{datetime.now().strftime("%Y%m%d")}.log'
+            
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            file_handler.setLevel(level)
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        except Exception as e:
+            print(f"Warning: Could not setup file logging: {e}")
     
-    # Handler para consola (solo en desarrollo o si se especifica)
-    if log_to_console:
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(level)
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
+    # Handler para consola - SIEMPRE activado para ver logs en PowerShell
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
     
     return logger
 
@@ -106,11 +108,13 @@ def get_logger(name: Optional[str] = None, level: Optional[int] = None) -> loggi
             name = 'claritydesk'
     
     if level is None:
-        # Usar DEBUG para módulos de UI (widgets, windows) para diagnóstico profundo
-        if any(x in name.lower() for x in ['preview', 'window', 'widget', 'view']):
-            level = logging.DEBUG
+        # Respetar override por variable de entorno CLARITY_LOG_LEVEL
+        env_level = os.getenv('CLARITY_LOG_LEVEL')
+        if env_level:
+            level = getattr(logging, env_level.upper(), logging.INFO)
         else:
-            level = logging.INFO
+            # Priorizar DEBUG solo para módulos de búsqueda si se necesitara
+            level = logging.DEBUG if 'search' in name.lower() else logging.INFO
     
     return setup_logger(name, level=level)
 

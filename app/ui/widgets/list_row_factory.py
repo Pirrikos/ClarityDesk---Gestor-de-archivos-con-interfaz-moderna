@@ -76,6 +76,7 @@ def create_name_cell(
 
     name_item = QTableWidgetItem()
     name_item.setText(display_name)
+    # Sorting usa el texto por defecto; ya es estable en "YYYY-MM-DD" y nombre
     name_item.setFont(font)
     icon = _get_file_icon(file_path, icon_service)
     if icon:
@@ -135,6 +136,7 @@ def create_extension_cell(file_path: str, font: QFont) -> QTableWidgetItem:
         else:
             ext_item = QTableWidgetItem("")
     
+    # Sorting por extensión usa el texto mostrado
     ext_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     ext_item.setFont(font)
     return ext_item
@@ -148,6 +150,7 @@ def create_date_cell(file_path: str, font: QFont) -> QTableWidgetItem:
         date_item = QTableWidgetItem(date_str)
     except (OSError, ValueError):
         date_item = QTableWidgetItem("")
+    # Sorting por fecha usa el texto "YYYY-MM-DD HH:MM"
     date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
     date_item.setFont(font)
     return date_item
@@ -155,6 +158,12 @@ def create_date_cell(file_path: str, font: QFont) -> QTableWidgetItem:
 
 def create_state_item(state: Optional[str], font: QFont) -> QTableWidgetItem:
     """Crear item de la columna Estado con datos para el delegate."""
+    # DEBUG: Log para diagnosticar estados
+    from app.core.logger import get_logger
+    logger = get_logger(__name__)
+    if state:
+        logger.debug(f"create_state_item: state='{state}' (type={type(state).__name__})")
+
     item = QTableWidgetItem("")
     item.setData(STATE_ROLE, state)
     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)

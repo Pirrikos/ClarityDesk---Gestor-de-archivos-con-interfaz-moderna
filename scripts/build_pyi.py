@@ -11,9 +11,9 @@ from pathlib import Path
 
 
 def main() -> int:
-    # Obtener directorios seguros en LOCALAPPDATA (no sincronizados)
-    local_appdata = os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))
-    base = Path(local_appdata) / "ClarityDesk" / "pyinstaller"
+    # Rutas de build dentro del proyecto para evitar dispersión de ejecutables
+    project_root = Path(__file__).resolve().parents[1]
+    base = project_root / "BUILD_FINAL"
     dist = base / "dist"
     work = base / "build"
     dist.mkdir(parents=True, exist_ok=True)

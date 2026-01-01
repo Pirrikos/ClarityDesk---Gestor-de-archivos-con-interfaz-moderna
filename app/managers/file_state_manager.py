@@ -95,16 +95,23 @@ class FileStateManager(QObject):
         Returns:
             State constant or None if no state assigned.
         """
+        from app.core.logger import get_logger
+        logger = get_logger(__name__)
+        
         file_id = self._get_file_id(file_path)
         if not file_id:
+            logger.debug(f"get_file_state: NO file_id for '{file_path}'")
             return None
         
         # Check cache first
         if file_id in self._state_cache:
-            return self._state_cache[file_id]
+            cached_state = self._state_cache[file_id]
+            logger.debug(f"get_file_state: CACHED state='{cached_state}' for '{os.path.basename(file_path)}' (id={file_id})")
+            return cached_state
         
         # Fallback to DB lookup (for files not in cache)
         state = get_state_by_path(file_path)
+        logger.debug(f"get_file_state: DB LOOKUP state='{state}' for '{os.path.basename(file_path)}' (id={file_id})")
         if state and file_id:
             self._state_cache[file_id] = state
         return state

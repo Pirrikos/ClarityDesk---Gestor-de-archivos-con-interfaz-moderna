@@ -86,7 +86,7 @@ class MainWindow(QWidget):
             self._icon_service = IconService()
             self._preview_service = PreviewPdfService(self._icon_service)
             self._state_label_manager = StateLabelManager()
-            self._search_manager = SearchManager(workspace_manager)
+            self._search_manager = SearchManager(workspace_manager, tab_manager)
             self._current_preview_window = None
             self._is_initializing = True
             self._transition_animation: Optional[QParallelAnimationGroup] = None
@@ -1404,12 +1404,16 @@ class MainWindow(QWidget):
     def _on_search_mode_changed(self, enabled: bool) -> None:
         """Handle search mode change."""
         if not enabled:
-            # Limpiar modo búsqueda
-            self._file_view_container.set_search_mode(False)
+            # Limpiar modo búsqueda y restaurar vista normal
+            self._file_view_container.set_search_mode(False, [])
+        else:
+            logger.info("search mode enabled")
     
     def _on_search_results_changed(self, results: list) -> None:
         """Handle search results change - update file view with results."""
-        # Actualizar resultados en FileViewContainer
+        # Siempre actualizar (incluso con lista vacía si está en modo búsqueda)
+        # Esto muestra resultados encontrados o lista vacía si no hay coincidencias
+        logger.info(f"search results received | count={len(results)}")
         self._file_view_container.set_search_mode(True, results)
 
     def _hide_headers_for_diagnosis(self) -> None:

@@ -7,6 +7,8 @@ MainWindow opens only when user requests it.
 
 import sys
 import traceback
+import logging
+import os
 
 from PySide6.QtCore import QtMsgType, QTimer, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication
@@ -34,6 +36,12 @@ def qt_message_handler(msg_type, context, message):
 
 def main() -> int:
     """Application entry point."""
+    # Configurar nivel root según variable de entorno (default INFO)
+    debug_enabled = os.getenv("CLARITY_DEBUG", "0") in ("1", "true", "True")
+    logging.root.setLevel(logging.DEBUG if debug_enabled else logging.INFO)
+    if debug_enabled:
+        print("=== CLARITYDESK DEBUG MODE ENABLED ===")
+    
     # Instalar handler personalizado para capturar mensajes de Qt
     qInstallMessageHandler(qt_message_handler)
     

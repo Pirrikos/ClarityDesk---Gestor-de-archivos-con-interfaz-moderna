@@ -82,6 +82,12 @@ class FileListView(QTableWidget):
         self._finalize_resize_timer.timeout.connect(self._finalize_resize)
 
         self._resize_timer: QElapsedTimer = QElapsedTimer()
+        # Estado de ordenamiento: None indica "sin ordenamiento (usar orden natural)"
+        # Solo se activa cuando el usuario hace clic en un header
+        self._sort_column: Optional[int] = None
+        self._sort_order: Optional[Qt.SortOrder] = None
+        self._current_folder: Optional[str] = None  # Para rastrear cambios de carpeta
+        self._update_generation: int = 0  # Counter para invalidar actualizaciones obsoletas
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -91,18 +97,123 @@ class FileListView(QTableWidget):
     def update_files(self, file_list: list) -> None:
         """
         Update displayed files or stacks.
-        
+
         Args:
             file_list: List of file paths OR FileStack objects.
                       Stacks are automatically expanded to show individual files.
         """
+        # Incrementar generación para invalidar actualizaciones obsoletas pendientes
+        self._update_generation += 1
+        current_generation = self._update_generation
+        
+        # CRÍTICO: Siempre reemplazar completamente _files con la nueva lista
+        # NO confiar en el contenido previo de _files
+        from app.core.logger import get_logger
+        import os
+        logger = get_logger(__name__)
+
+        # DEBUG: Mostrar qué recibimos ANTES de expand_stacks_to_files
+        logger.debug(f">>> update_files LLAMADO (gen={current_generation}): recibiendo {len(file_list)} items")
+        for idx, item in enumerate(file_list[:5]):  # Primeros 5
+            if hasattr(item, 'files'):
+                logger.debug(f"  [{idx}] FileStack con {len(item.files)} archivos")
+            else:
+                logger.debug(f"  [{idx}] {os.path.basename(item)}")
+
         self._files = expand_stacks_to_files(file_list)
+        logger.debug(f">>> Después de expand_stacks_to_files: {len(self._files)} archivos")
+
+        # Detectar cambio de carpeta y cargar preferencias de ordenamiento
+        current_folder = None
+        if self._tab_manager and not self._tab_manager.has_state_context():
+            current_folder = self._tab_manager.get_active_folder()
+
+            # DEBUG: Logging para diagnosticar el problema
+            logger.debug(f"update_files: current_folder={current_folder}, prev_folder={self._current_folder}, files_count={len(self._files)}")
+
+            if current_folder != self._current_folder:
+                # Cambio de carpeta detectado - incrementar generación para cancelar updates obsoletas
+                self._update_generation += 1
+                current_generation = self._update_generation
+                self._current_folder = current_folder
+                self._load_folder_sort_preferences()
+                logger.debug(f"Cambio de carpeta detectado (nueva gen={current_generation}). sort_column={self._sort_column}, sort_order={self._sort_order}")
+
+        # CRÍTICO: SIEMPRE validar que _files solo contiene archivos de la carpeta actual
+        # Esto previene que archivos de navegaciones previas se mezclen al ordenar
+        # Debe ejecutarse siempre, no solo cuando cambia la carpeta
+        if current_folder and self._files:
+            from app.services.path_utils import normalize_path
+            import os
+            from app.core.logger import get_logger
+            logger = get_logger(__name__)
+
+            base = normalize_path(current_folder)
+
+            # DEBUG: Mostrar archivos ANTES del filtrado con PATH COMPLETO
+            logger.debug(f"========================================")
+            logger.debug(f"INICIO FILTRADO DEFENSIVO")
+            logger.debug(f"  Base normalizada: '{base}'")
+            logger.debug(f"  Archivos a filtrar: {len(self._files)}")
+            logger.debug(f"========================================")
+
+            for idx, f in enumerate(self._files[:10]):  # Solo primeros 10
+                parent = os.path.dirname(f)
+                logger.debug(f"  [{idx}] {os.path.basename(f)}")
+                logger.debug(f"       Path completo: {f}")
+                logger.debug(f"       Parent dir: {parent}")
+
+            # Filtrar archivos: solo mantener los que están DIRECTAMENTE en current_folder
+            # No confundir con subcarpetas (las carpetas/archivos dentro de subcarpetas deben excluirse)
+            validated_files = []
+            excluded_count = 0
+            for f in self._files:
+                try:
+                    normalized_file = normalize_path(f)
+                    parent_dir = os.path.dirname(normalized_file)
+                    # Solo incluir si el padre directo coincide exactamente con current_folder
+                    if parent_dir == base:
+                        validated_files.append(f)
+                    else:
+                        excluded_count += 1
+                        if excluded_count <= 10:  # Solo mostrar primeros 10 excluidos
+                            logger.warning(f"❌ EXCLUIDO [{excluded_count}]: {os.path.basename(f)}")
+                            logger.warning(f"   Path normalizado: {normalized_file}")
+                            logger.warning(f"   Parent dir: '{parent_dir}'")
+                            logger.warning(f"   Base dir:   '{base}'")
+                            logger.warning(f"   ¿Coinciden? {parent_dir == base}")
+                except Exception as e:
+                    logger.error(f"Error normalizando '{f}': {e}")
+                    continue
+
+            # DEBUG: Resultado del filtrado
+            logger.debug(f"========================================")
+            logger.debug(f"RESULTADO FILTRADO:")
+            logger.debug(f"  Antes: {len(self._files)} archivos")
+            logger.debug(f"  Después: {len(validated_files)} archivos")
+            logger.debug(f"  Excluidos: {excluded_count} archivos")
+            logger.debug(f"========================================")
+
+            if excluded_count > 0:
+                logger.warning(f"⚠️ Se excluyeron {excluded_count} archivos que NO pertenecen a la carpeta actual")
+
+            # IMPORTANTE: Reemplazar completamente _files, no modificar in-place
+            self._files = validated_files
+
+        # Verificar que esta actualización sigue siendo válida (no fue supersedida por navegación)
+        if current_generation != self._update_generation:
+            logger.warning(f"⚠️ Actualización obsoleta detectada (gen={current_generation} vs actual={self._update_generation}). Abortando refresh.")
+            return
+
         self._refresh_table()
 
     def _refresh_table(self) -> None:
         """Rebuild table rows from file list."""
         # Remove checked paths that no longer exist in the current file list
         self._checked_paths = {path for path in self._checked_paths if path in self._files}
+
+        # TabManager.get_files() es la única fuente de verdad - no se filtra aquí
+        # self._files contiene exactamente los archivos que deben mostrarse
 
         refresh_table(
             self, self._files, self._icon_service,
@@ -368,11 +479,76 @@ class FileListView(QTableWidget):
     
     def row_from_path(self, file_path: str) -> int:
         """Get row index for a given file path."""
+        from app.services.path_utils import normalize_path
+        target = normalize_path(file_path)
         for row in range(self.rowCount()):
             item = self.item(row, 1)
-            if item and item.data(Qt.ItemDataRole.UserRole) == file_path:
-                return row
+            if item:
+                path = item.data(Qt.ItemDataRole.UserRole)
+                if path and normalize_path(path) == target:
+                    return row
         return -1
+
+    def _load_folder_sort_preferences(self) -> None:
+        """Cargar preferencias de ordenamiento para la carpeta actual."""
+        if not self._current_folder:
+            # Sin carpeta activa, resetear a sin ordenamiento
+            self._sort_column = None
+            self._sort_order = None
+            return
+
+        from app.services.folder_sort_storage import get_folder_sort
+        preferences = get_folder_sort(self._current_folder)
+
+        if preferences:
+            self._sort_column, self._sort_order = preferences
+            # Actualizar indicador visual
+            header = self.horizontalHeader()
+            header.setSortIndicatorShown(True)
+            header.setSortIndicator(self._sort_column, self._sort_order)
+        else:
+            # Sin preferencias guardadas: MANTENER el ordenamiento actual
+            # NO resetear a None - el usuario puede tener ordenamiento activo
+            # que quiere aplicar a todas las carpetas
+            if self._sort_column is not None and self._sort_order is not None:
+                # Mantener ordenamiento actual y actualizar indicador
+                header = self.horizontalHeader()
+                header.setSortIndicatorShown(True)
+                header.setSortIndicator(self._sort_column, self._sort_order)
+            else:
+                # Si no hay ordenamiento activo, no hacer nada
+                header = self.horizontalHeader()
+                header.setSortIndicatorShown(False)
+
+    def _save_folder_sort_preferences(self) -> None:
+        """Guardar preferencias de ordenamiento para la carpeta actual."""
+        if not self._current_folder or self._sort_column is None or self._sort_order is None:
+            return
+
+        from app.services.folder_sort_storage import set_folder_sort
+        set_folder_sort(self._current_folder, self._sort_column, self._sort_order)
+
+    def _on_sort_column_clicked(self, logical_index: int) -> None:
+        if logical_index < 1 or logical_index > 4:
+            return
+        if logical_index == self._sort_column:
+            self._sort_order = (
+                Qt.SortOrder.DescendingOrder
+                if self._sort_order == Qt.SortOrder.AscendingOrder
+                else Qt.SortOrder.AscendingOrder
+            )
+        else:
+            self._sort_column = logical_index
+            self._sort_order = Qt.SortOrder.AscendingOrder
+
+        header = self.horizontalHeader()
+        header.setSortIndicatorShown(True)
+        header.setSortIndicator(self._sort_column, self._sort_order)
+
+        # Guardar preferencias para esta carpeta
+        self._save_folder_sort_preferences()
+
+        self._refresh_table()
 
     def get_selected_paths(self) -> list[str]:
         """Get paths of currently selected files via checkboxes or traditional selection."""

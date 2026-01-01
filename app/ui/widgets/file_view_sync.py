@@ -36,9 +36,8 @@ def update_files(container: 'FileViewContainer') -> None:
         container._list_view.update_files(file_paths)
         return
 
-    if not hasattr(container, '_cached_is_desktop'):
-        container._cached_is_desktop = _check_if_desktop_window(container)
-    use_stacks = container._cached_is_desktop
+    # Calcular si usar stacks en cada actualización para evitar desajustes por caché
+    use_stacks = _check_if_desktop_window(container)
 
     items = container._tab_manager.get_files(use_stacks=use_stacks)
 
@@ -48,14 +47,10 @@ def update_files(container: 'FileViewContainer') -> None:
     container._grid_view.update_files(items)
     container._list_view.update_files(items)
 
-    if container._state_manager:
-        file_paths = []
-        for item in items:
-            if hasattr(item, 'files'):
-                file_paths.extend(item.files)
-            else:
-                file_paths.append(item)
-        container._state_manager.cleanup_missing_files(set(file_paths))
+    # NOTA: NO llamamos a cleanup_missing_files aquí porque eliminaría estados
+    # de archivos que no están en la carpeta actual pero sí existen en otras carpetas.
+    # cleanup_missing_files solo debe llamarse cuando se eliminan archivos físicamente,
+    # no durante la navegación normal entre carpetas.
 
 
 def _update_workspace_view_buttons(container: 'FileViewContainer', is_grid: bool) -> None:
@@ -258,4 +253,3 @@ def _filter_office_temp_files_from_items(items: list) -> list:
     else:
         # Simple list of file paths
         return _filter_office_temp_files(items)
-

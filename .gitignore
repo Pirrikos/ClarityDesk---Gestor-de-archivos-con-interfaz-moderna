@@ -27,13 +27,24 @@ Thumbs.db
 # Logs
 *.log
 
-# Local storage runtime data
+# Local storage runtime data (excluir datos de desarrollo, incluir schemas)
 storage/claritydesk.db
 storage/dock_files/
 storage/trash/
 storage/tabs.json
+storage/workspace_*.json
+storage/state_view_modes.json
+storage/state_labels.json
+storage/folder_sort_preferences.json
 
 # Tooling/cache
 .claude/
 INFORMES/
 nul
+
+# PyInstaller intermediate artifacts
+BUILD_FINAL/build/
+BUILD_FINAL/dist/
+
+# Mantener estructura de BUILD_FINAL pero excluir binarios
+BUILD_FINAL/_internal/

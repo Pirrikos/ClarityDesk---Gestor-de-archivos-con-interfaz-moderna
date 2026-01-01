@@ -404,7 +404,21 @@ class FileViewContainer(QWidget):
     def _refresh_after_rename(self) -> None:
         """Refresh file views after rename operation."""
         update_files(self)
-        QTimer.singleShot(UPDATE_DELAY_MS, lambda: update_files(self))
+        # Capturar generación actual antes de crear el timer
+        # para que la actualización retrasada se valide
+        if hasattr(self._list_view, '_update_generation'):
+            current_gen = self._list_view._update_generation
+            QTimer.singleShot(UPDATE_DELAY_MS, lambda: self._delayed_update_if_valid(current_gen))
+        else:
+            QTimer.singleShot(UPDATE_DELAY_MS, lambda: update_files(self))
+    
+    def _delayed_update_if_valid(self, expected_generation: int) -> None:
+        """Execute delayed update only if generation is still valid."""
+        if hasattr(self._list_view, '_update_generation'):
+            if self._list_view._update_generation == expected_generation:
+                update_files(self)
+        else:
+            update_files(self)
     
     def _show_rename_error(self, error_msg: str) -> None:
         """Show user-friendly error message for rename failures."""
@@ -437,7 +451,12 @@ class FileViewContainer(QWidget):
             
             if item_exists != will_match_filter:
                 self._force_full_refresh()
-                QTimer.singleShot(0, lambda: update_files(self))
+                # Validar generación antes de actualizar con delay
+                if hasattr(self._list_view, '_update_generation'):
+                    current_gen = self._list_view._update_generation
+                    QTimer.singleShot(0, lambda: self._delayed_update_if_valid(current_gen))
+                else:
+                    QTimer.singleShot(0, lambda: update_files(self))
             elif item_exists:
                 self._update_item_visual(file_path, state)
         else:
@@ -482,7 +501,12 @@ class FileViewContainer(QWidget):
                     break
         
         if needs_full_refresh:
-            QTimer.singleShot(0, lambda: update_files(self))
+            # Validar generación antes de actualizar con delay
+            if hasattr(self._list_view, '_update_generation'):
+                current_gen = self._list_view._update_generation
+                QTimer.singleShot(0, lambda: self._delayed_update_if_valid(current_gen))
+            else:
+                QTimer.singleShot(0, lambda: update_files(self))
         else:
             for file_path, new_state in changes:
                 if self._item_exists_in_current_view(file_path):
@@ -568,12 +592,14 @@ class FileViewContainer(QWidget):
             self._search_results = []
             self._file_to_workspace = {}
         
-        if enabled and self._search_results:
-            # Mostrar resultados de búsqueda
+        if enabled:
+            # Mostrar resultados de búsqueda (incluso si está vacío)
             file_paths = [result.file_path for result in self._search_results]
+            logger.info(f"search view set | results={len(file_paths)}")
             self._grid_view.update_files(file_paths)
             self._list_view.update_files(file_paths)
         elif not enabled and was_search_mode:
+            logger.info("search view cleared")
             # Restaurar vista normal solo si estábamos en modo búsqueda
             # Si estamos navegando, NO recargar aquí - la navegación lo hará
             # Si NO estamos navegando (ej: borrar texto de búsqueda), restaurar la vista

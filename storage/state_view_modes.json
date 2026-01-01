@@ -2,7 +2,7 @@
   "view_modes": {
     "delivered": "list",
     "review": "list",
-    "corrected": "list",
+    "corrected": "grid",
     "pending": "list"
   },
   "version": 1

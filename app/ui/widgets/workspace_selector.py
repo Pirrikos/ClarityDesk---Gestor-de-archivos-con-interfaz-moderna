@@ -600,7 +600,8 @@ class WorkspaceSelector(QWidget):
         
         self._refresh_state_menu()
         
-        button.setMenu(self._state_menu)
+        # No usar setMenu() porque sobrescribe la posición personalizada
+        # button.setMenu(self._state_menu)
         
         if button.receivers("clicked()") > 0:
             button.clicked.disconnect()
@@ -650,11 +651,37 @@ class WorkspaceSelector(QWidget):
         rename_action.triggered.connect(self.rename_state_requested.emit)
     
     def _show_state_menu_at_position(self, button: QPushButton, menu: QMenu) -> None:
-        """Show state menu at correct position below button."""
-        button_rect = button.geometry()
-        y_local = button_rect.bottom()
-        menu_pos = button.mapToGlobal(QPoint(button_rect.left(), y_local))
+        """Show state menu at correct position below button (centered)."""
+        # Ocultar overlay de resize mientras el menú está abierto
+        main_window = self.window()
+        overlay_was_visible = False
+        if main_window and hasattr(main_window, '_resize_edge_overlay'):
+            overlay = main_window._resize_edge_overlay
+            if overlay and overlay.isVisible():
+                overlay_was_visible = True
+                overlay.hide()
+
+        # Calcular posición global del botón
+        button_global_pos = button.mapToGlobal(button.rect().topLeft())
+
+        # Obtener ancho del menú
+        menu_width = menu.sizeHint().width()
+
+        # Alinear borde derecho del menú con borde derecho del botón
+        menu_x = button_global_pos.x() + button.width() - menu_width
+
+        # Posición Y justo debajo del botón
+        menu_y = button_global_pos.y() + button.height()
+
+        menu_pos = QPoint(menu_x, menu_y)
         menu.exec(menu_pos)
+
+        # Restaurar overlay después de cerrar el menú
+        if overlay_was_visible and main_window and hasattr(main_window, '_resize_edge_overlay'):
+            overlay = main_window._resize_edge_overlay
+            if overlay:
+                overlay.show()
+                overlay.raise_()
     
     def _create_state_action(self, menu: QMenu, label: str, state: Optional[str]) -> None:
         """Create and connect a state menu action."""

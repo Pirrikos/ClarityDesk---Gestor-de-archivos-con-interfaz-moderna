@@ -23,8 +23,8 @@ def get_storage_dir() -> Path:
     Get application storage directory.
 
     Behavior:
-        - Development mode: uses 'storage/' relative to main.py (cwd)
-        - Executable mode: uses 'storage/' next to .exe
+        - Both development and executable modes use: %APPDATA%/ClarityDesk/storage/
+        - This ensures consistent data location regardless of execution mode
 
     Returns:
         Path to storage directory (creates if missing).
@@ -39,14 +39,13 @@ def get_storage_dir() -> Path:
         return _storage_dir_cache
 
     try:
-        if getattr(sys, 'frozen', False):
-            # Ejecutable empaquetado (.exe)
-            base_dir = Path(sys.executable).parent
-            logger.debug(f"Running as executable, base_dir: {base_dir}")
-        else:
-            # Desarrollo: usar directorio de trabajo (donde está main.py)
-            base_dir = Path.cwd()
-            logger.debug(f"Running in development, base_dir: {base_dir}")
+        # Usar AppData para ambos modos (desarrollo y ejecutable)
+        appdata = os.environ.get('APPDATA')
+        if not appdata:
+            raise RuntimeError("APPDATA environment variable not found")
+        
+        base_dir = Path(appdata) / "ClarityDesk"
+        logger.debug(f"Using AppData storage, base_dir: {base_dir}")
 
         storage_dir = base_dir / "storage"
 
