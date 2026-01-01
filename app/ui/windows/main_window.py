@@ -40,7 +40,6 @@ from app.ui.windows.error_dialog import ErrorDialog
 from app.ui.windows.confirmation_dialog import ConfirmationDialog
 
 logger = get_logger(__name__)
-logger.debug("🚀 Loading main_window.py")
 
 
 class MainWindow(QWidget):

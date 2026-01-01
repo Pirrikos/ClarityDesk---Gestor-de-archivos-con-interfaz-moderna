@@ -64,9 +64,9 @@ def setup_layout(tile: 'FileTile') -> None:
 def add_text_band(tile: 'FileTile', layout: QVBoxLayout) -> None:
     is_grid = is_grid_view(tile)
     is_list_view = not is_grid and not tile._dock_style
-    
+
     name_label = _create_and_configure_name_label(tile)
-    
+
     if is_list_view:
         bottom_band = _create_bottom_band_with_badge(tile, name_label)
         layout.addWidget(bottom_band, 0, Qt.AlignmentFlag.AlignHCenter)

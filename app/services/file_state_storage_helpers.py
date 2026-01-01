@@ -7,31 +7,34 @@ Database path, connection, and file ID computation utilities.
 import hashlib
 import sqlite3
 from pathlib import Path
+import os
+
+from app.services.storage_path_service import get_storage_file
+from app.models.path_utils import normalize_path
 
 # Database file location
-DB_PATH = Path("storage/claritydesk.db")
+DB_PATH = get_storage_file("claritydesk.db")
 
 
 def get_db_path() -> Path:
-    """Get database file path, creating storage directory if needed."""
-    db_path = Path(DB_PATH)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    return db_path
+    """Get database file path."""
+    return DB_PATH
 
 
 def compute_file_id(path: str, size: int, modified: int) -> str:
     """
-    Compute unique file identifier from path, size, and modification time.
+    Calcular identificador único de archivo/carpeta.
     
-    Args:
-        path: Full file path.
-        size: File size in bytes.
-        modified: File modification timestamp.
-    
-    Returns:
-        SHA256 hash string as file_id.
+    Regla clave:
+    - Para carpetas: usar SOLO el path normalizado para evitar cambios de ID por mtime/size.
+    - Para archivos: usar path + size + modified para detectar cambios reales de contenido.
     """
-    content = f"{path}|{size}|{modified}".encode('utf-8')
+    normalized_path = normalize_path(path)
+    if os.path.isdir(normalized_path):
+        # Comentario: las carpetas cambian mtime con operaciones internas; no debe invalidar el estado
+        content = normalized_path.encode('utf-8')
+    else:
+        content = f"{normalized_path}|{size}|{modified}".encode('utf-8')
     return hashlib.sha256(content).hexdigest()
 
 

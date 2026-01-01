@@ -48,7 +48,7 @@ class FileTile(QWidget, HoverAnimationMixin):
     ):
         """
         Initialize file tile.
-        
+
         Args:
             file_path: Full path to the file.
             parent_view: Parent FileGridView instance.

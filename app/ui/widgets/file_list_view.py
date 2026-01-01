@@ -131,18 +131,15 @@ class FileListView(QTableWidget):
         Returns:
             True si se encontró la fila y se actualizó, False si no existe.
         """
+        from app.ui.widgets.list_state_delegate import STATE_ROLE
         for row in range(self.rowCount()):
             name_item = self.item(row, 1)
             if name_item and name_item.data(Qt.ItemDataRole.UserRole) == file_path:
-                container = self.cellWidget(row, 4)
-                if container and container.layout():
-                    item = container.layout().itemAt(0)
-                    if item:
-                        from app.ui.widgets.list_state_cell import ListStateCell
-                        cell = item.widget()
-                        if isinstance(cell, ListStateCell):
-                            cell.set_state(new_state)
-                            return True
+                state_item = self.item(row, 4)
+                if state_item:
+                    state_item.setData(STATE_ROLE, new_state)
+                    self.viewport().update()
+                    return True
         return False
     
     def refresh_state_labels(self, state_id: Optional[str]) -> None:
@@ -155,15 +152,8 @@ class FileListView(QTableWidget):
         Args:
             state_id: ID del estado cuyo label cambió (o None para refrescar todos).
         """
-        from app.ui.widgets.list_state_cell import ListStateCell
-        
-        # Iterar sobre todas las filas y refrescar los widgets de estado
-        for row in range(self.rowCount()):
-            state_widget = self.cellWidget(row, 4)
-            if isinstance(state_widget, ListStateCell):
-                current_state = getattr(state_widget, '_state', None)
-                if state_id is None or current_state == state_id:
-                    state_widget.update()
+        # Con delegate: basta forzar repaint del viewport; opcionalmente filtrar por state_id
+        self.viewport().update()
 
     def startDrag(self, supported_actions) -> None:
         """Handle drag start for file copy or move using checkbox selection."""

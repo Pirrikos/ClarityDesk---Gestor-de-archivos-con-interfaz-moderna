@@ -37,6 +37,9 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
+    # Añadir árboles de datos con exclusiones para evitar warnings de GLib
+    Tree('assets', prefix='assets', excludes=['poppler-glib.dll']),
+    Tree('storage', prefix='storage', excludes=['**/poppler-glib.dll']),
     strip=False,
     upx=True,
     upx_exclude=[],

@@ -13,7 +13,6 @@ from app.core.constants import DEBUG_LAYOUT, CENTRAL_AREA_BG
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
-logger.debug("🚀 Loading path_footer_widget.py")
 
 
 class PathFooterWidget(QWidget):

@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.core.logger import get_logger
 from app.core.constants import (
     APP_HEADER_BG,
     APP_HEADER_BORDER,
@@ -52,6 +53,8 @@ from app.core.constants import (
 from app.services.file_box_utils import FILE_BOX_SCROLLBAR_STYLES
 from app.services.rename_service import RenameService
 from app.ui.windows.error_dialog import ErrorDialog
+
+logger = get_logger(__name__)
 
 
 class BulkRenameDialog(QDialog):
@@ -695,6 +698,7 @@ class BulkRenameDialog(QDialog):
                 self._pattern_input.setText(name_without_ext)
         else:
             # Modo: Nuevo
+            logger.info(f"_current_name_label = {self._current_name_label!r}")
             self._current_name_label.hide()
             self._pattern_input.clear()
         

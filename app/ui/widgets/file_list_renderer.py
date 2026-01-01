@@ -20,7 +20,7 @@ from app.ui.widgets.list_row_factory import (
     create_date_cell,
     create_extension_cell,
     create_name_cell,
-    create_state_cell,
+    create_state_item,
 )
 from app.ui.widgets.list_styles import LIST_VIEW_STYLESHEET
 from app.core.constants import CENTRAL_AREA_BG
@@ -196,7 +196,10 @@ def setup_ui(view: QTableWidget, checkbox_changed_callback: Callable[[str, int],
     view.setItemDelegateForColumn(1, ListNameDelegate(view))  # Custom delegate for workspace text
     view.setItemDelegateForColumn(2, ListViewDelegate(view, column_index=2))
     view.setItemDelegateForColumn(3, ListViewDelegate(view, column_index=3))
-    view.setItemDelegateForColumn(4, ListViewDelegate(view, column_index=4))
+    # Delegate específico para la columna Estado (pintado sin widgets incrustados)
+    from app.ui.widgets.list_state_delegate import ListStateDelegate
+    get_label_cb = getattr(view, '_get_label_callback', None)
+    view.setItemDelegateForColumn(4, ListStateDelegate(view, get_label_callback=get_label_cb))
     
     view.setAttribute(Qt.WidgetAttribute.WA_MacShowFocusRect, False)
     view.setShowGrid(False)
@@ -321,6 +324,6 @@ def create_row(
     view.setItem(row, 3, create_date_cell(file_path, font))
 
     state = state_manager.get_file_state(file_path) if state_manager else None
-    state_widget = create_state_cell(state, font, view, get_label_callback)
-    view.setCellWidget(row, 4, state_widget)
+    state_item = create_state_item(state, font)
+    view.setItem(row, 4, state_item)
     view.setRowHeight(row, 56)

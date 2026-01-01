@@ -1,27 +1,49 @@
 # MAPA ARQUITECTÓNICO EXHAUSTIVO - ClarityDesk Pro
 
-**Fecha:** 2025-12-31 (Actualizado después de revisión de código)
-**Objetivo:** Mapa completo del proyecto  
-**Última actualización:** Incorporados cambios recientes y correcciones (ver sección "Cambios recientes")
+**Fecha:** 2026-01-01 (Actualizado después de revisión de código)
+**Objetivo:** Mapa completo del proyecto
+**Última actualización:** Sincronización con estado actual del repositorio
 
 ---
 
-## 🔧 CAMBIOS RECIENTES (2025-12-30)
+## 🔧 CAMBIOS RECIENTES (2026-01-01)
 
-- Condicionado el log de entrada de `paintEvent` en `app/ui/windows/main_window.py` para que solo registre cuando `DEBUG_LAYOUT=True` (reduce ruido de `Paint #...`).
-- Detectadas y documentadas mejoras en `app/ui/windows/main_window.py`: añadido `ResizeEdgeOverlay` para detección de bordes y cursor de resize más robusto; refinamiento de `_detect_resize_edges`, `_get_resize_cursor`, `eventFilter` y soporte para preview rápido mediante la tecla Barra Espaciadora; ajustada instrumentación de repintado.
-- Añadida lógica para evitar conflictos de drop con `DesktopWindow` y animaciones de fade in/out al mostrar el dock.
-- Detectada una duplicación de definiciones en `main_window.py` (`resizeEvent` está definido dos veces); recomendado consolidar para evitar comportamiento inesperado.
-- Detectados duplicados y discrepancias (recomendar refactor/reubicar):
-  - `tab_manager_init.py` aparece tanto en `app/services/` como en `app/managers/`.
-  - Duplicados en configuraciones de grid layout listados en `widgets`.
-- Pequeñas correcciones de consistencia y conteo de módulos; se recomienda una auditoría adicional para consolidar duplicados e inconsistencias.
+### Últimos commits aplicados:
+- **035184b** - chore(ui): subir cambios y ajustes recientes (iconos, tema oculto, header redondeado)
+- **4748f21** - Fase B: congelación funcional + contratos de arquitectura + tests defensivos T1T5 + lanzador ClarityDeskPro.bat
+- **4cccf35** - Subida del proyecto y limpieza segura: sincronización con GitHub
+- **3ae1363** - Subir proyecto completo: configuración, código, assets y storage controlado
+- **1e70f28** - Implementación del contrato visual oficial para todos los diálogos
+
+### Arquitectura de diálogos actualizada:
+- **BaseFramelessDialog** - Clase base centralizada para todos los diálogos personalizados
+- Reemplazo completo de QMessageBox y QInputDialog con diálogos personalizados
+- Diálogos implementados:
+  - `base_frameless_dialog.py` - Clase base con contrato visual
+  - `confirmation_dialog.py` - Confirmaciones
+  - `input_dialog.py` - Entrada de texto
+  - `error_dialog.py` - Errores
+  - `bulk_rename_dialog.py` - Renombrado masivo
+  - `trash_delete_dialog.py` - Confirmación de eliminación
+  - `reorder_workspaces_dialog.py` - Reordenamiento de workspaces
+
+### Mejoras en SettingsWindow:
+- Añadida sección de tema (oscuro/claro)
+- Mejoras visuales en checkboxes
+- Eliminación de líneas blancas
+
+### Mejoras técnicas:
+- Logs de `paintEvent` condicionados a `DEBUG_LAYOUT=True`
+- `ResizeEdgeOverlay` para detección de bordes
+- Soporte para preview rápido con tecla Barra Espaciadora
+- Animaciones fade in/out para el dock
 
 ---
 
 **Registro de cambios:**
-- 2025-12-31: Reducidos logs ruidosos → `paintEvent` de `main_window.py` ahora registra solo si `DEBUG_LAYOUT=True`.
-- 2025-12-30: Actualizado mapa (fecha, sección "Cambios recientes", conteo de servicios, nota de duplicados).
+- 2026-01-01: Actualizado mapa con commits recientes, nueva arquitectura de diálogos y estado actual del repositorio
+- 2025-12-31: Reducidos logs ruidosos → `paintEvent` de `main_window.py` ahora registra solo si `DEBUG_LAYOUT=True`
+- 2025-12-30: Actualizado mapa (fecha, sección "Cambios recientes", conteo de servicios, nota de duplicados)
 
 ---
 
@@ -362,9 +384,15 @@ ClarityDesk_29-11-25/
 │           │   ├── quick_preview_styles.py  # Estilos
 │           │   └── quick_preview_constants.py # Constantes
 │           │
-│           └── Diálogos (2 archivos)
+│           └── Diálogos (7 archivos)
+│               ├── base_frameless_dialog.py # Clase base para todos los diálogos
+│               ├── confirmation_dialog.py   # Diálogo de confirmación
+│               ├── input_dialog.py         # Diálogo de entrada de texto
+│               ├── error_dialog.py         # Diálogo de error
 │               ├── bulk_rename_dialog.py   # Diálogo de renombrado masivo
-│               └── trash_delete_dialog.py   # Diálogo de confirmación de eliminación
+│               ├── trash_delete_dialog.py  # Diálogo de confirmación de eliminación
+│               ├── reorder_workspaces_dialog.py # Diálogo de reordenamiento de workspaces
+│               └── preview_coordination.py # Coordinación de previews
 │
 ├── assets/                          # 📁 Recursos globales
 │   ├── icons/                       # Iconos SVG genéricos
@@ -633,7 +661,15 @@ ClarityDesk_29-11-25/
 
 **QuickPreviewWindow (11 archivos)** - ✅ **BUEN DISEÑO** - Separación clara.
 
-**Diálogos (2 archivos)** - ✅ **NECESARIO** - Diálogos bien separados.
+**Diálogos (8 archivos)** - ✅ **BUEN DISEÑO** - Sistema de diálogos con clase base centralizada:
+- `base_frameless_dialog.py` - Clase base con contrato visual
+- `confirmation_dialog.py` - Confirmaciones
+- `input_dialog.py` - Entrada de texto
+- `error_dialog.py` - Errores
+- `bulk_rename_dialog.py` - Renombrado masivo
+- `trash_delete_dialog.py` - Confirmación de eliminación
+- `reorder_workspaces_dialog.py` - Reordenamiento de workspaces
+- `preview_coordination.py` - Coordinación de previews
 
 **Evaluación Windows:** ✅ **BUEN DISEÑO** - Separación clara.
 
@@ -730,13 +766,14 @@ ClarityDesk_29-11-25/
 
 ## 📊 ESTADÍSTICAS FINALES
 
-- **Total archivos Python (repo, excluye backups/build/dist):** 339 archivos
+- **Total archivos Python (app/):** 243 archivos
 - **Models:** 5 archivos
-- **Services:** 77 archivos (incluye query/state/search a?adidos)
+- **Services:** 77 archivos
 - **Managers:** 15 archivos
 - **UI Widgets:** 98 archivos
-- **UI Windows:** 28 archivos
-- **Core:** 4 archivos
+- **UI Windows:** 35+ archivos (incluyendo diálogos y QuickPreview)
+- **UI Windows - Diálogos:** 8 archivos
+- **Core:** 3 archivos
 
 ### **Problemas Detectados:**
 - ⚠️ Duplicados: 1 archivo (`tab_manager_init.py` en services/ y managers/ - responsabilidades distintas)

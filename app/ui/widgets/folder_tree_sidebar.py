@@ -14,7 +14,6 @@ from app.services.path_utils import normalize_path
 from app.services.desktop_path_helper import is_system_desktop
 
 logger = get_logger(__name__)
-logger.debug("🚀 Loading folder_tree_sidebar.py")
 from PySide6.QtCore import QModelIndex, QPoint, QRect, QSize, Qt, Signal, QTimer, QElapsedTimer
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QDragMoveEvent, QDropEvent, QMouseEvent, QStandardItem, QPainter, QColor, QFont, QFontMetrics, QPen

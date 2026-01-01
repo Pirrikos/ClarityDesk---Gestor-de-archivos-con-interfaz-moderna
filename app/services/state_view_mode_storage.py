@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from app.core.logger import get_logger
+from app.services.storage_path_service import get_storage_file
 
 logger = get_logger(__name__)
 
 # Storage file path
-_STORAGE_FILE = Path("storage") / "state_view_modes.json"
+_STORAGE_FILE = get_storage_file("state_view_modes.json")
 
 # Cache para evitar lecturas repetidas del archivo
 _view_modes_cache: Optional[Dict[str, str]] = None
@@ -26,8 +27,6 @@ _DEFAULT_VIEW_MODE = "grid"
 
 def _get_storage_path() -> Path:
     """Get path to state view modes storage file."""
-    storage_dir = _STORAGE_FILE.parent
-    storage_dir.mkdir(parents=True, exist_ok=True)
     return _STORAGE_FILE
 
 

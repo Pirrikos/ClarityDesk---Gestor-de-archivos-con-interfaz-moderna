@@ -16,6 +16,7 @@ from app.services.icon_service import IconService
 from app.services.icon_render_service import IconRenderService
 from app.ui.widgets.list_checkbox import CustomCheckBox
 from app.ui.widgets.list_state_cell import ListStateCell
+from app.ui.widgets.list_state_delegate import STATE_ROLE
 
 LIST_ROW_ICON_SIZE = QSize(28, 28)
 # Offset para alinear widget de estado con el título del header
@@ -152,11 +153,10 @@ def create_date_cell(file_path: str, font: QFont) -> QTableWidgetItem:
     return date_item
 
 
-def create_state_cell(state: Optional[str], font: QFont, parent: Optional[QWidget] = None, get_label_callback=None) -> QWidget:
-    """Create state cell widget centered vertically in the row."""
-    state_widget = ListStateCell(state, parent, get_label_callback=get_label_callback)
-    container = _create_centered_container(state_widget, parent)
-    # Desplazar widget para alinearlo con el título del header
-    container.layout().setContentsMargins(STATE_CELL_LEFT_OFFSET, 0, -STATE_CELL_LEFT_OFFSET, 0)
-    return container
-
+def create_state_item(state: Optional[str], font: QFont) -> QTableWidgetItem:
+    """Crear item de la columna Estado con datos para el delegate."""
+    item = QTableWidgetItem("")
+    item.setData(STATE_ROLE, state)
+    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+    item.setFont(font)
+    return item

@@ -43,3 +43,11 @@ storage/tabs.json
 backups/
 arbol.txt
 output.log
+# Artifacts y data generada fuera de código fuente
+BACKUP_*/
+BUILD_FINAL/
+.claude/
+INFORMES/
+
+# Evitar error por nombre reservado en Windows que no debe indexarse
+nul

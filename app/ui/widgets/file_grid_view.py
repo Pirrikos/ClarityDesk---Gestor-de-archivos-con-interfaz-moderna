@@ -89,7 +89,7 @@ class FileGridView(QWidget):
     ):
         """
         Initialize FileGridView with empty file list.
-        
+
         Args:
             icon_service: Service for icon generation.
             filesystem_service: Deprecated, kept for compatibility.
