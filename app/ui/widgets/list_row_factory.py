@@ -55,7 +55,8 @@ def _create_centered_container(widget: QWidget, parent: Optional[QWidget] = None
 def create_name_cell(
     file_path: str,
     icon_service: IconService,
-    font: QFont
+    font: QFont,
+    workspace_name: Optional[str] = None
 ) -> QTableWidgetItem:
     filename = os.path.basename(file_path)
 
@@ -67,7 +68,13 @@ def create_name_cell(
     else:
         display_name = filename
 
-    name_item = QTableWidgetItem(display_name)
+    # Si navegamos por estado y hay workspace_name, agregarlo al texto
+    # El ListNameDelegate se encargará de renderizar con color gris
+    if workspace_name:
+        display_name = f"{display_name} (Workspace: {workspace_name})"
+
+    name_item = QTableWidgetItem()
+    name_item.setText(display_name)
     name_item.setFont(font)
     icon = _get_file_icon(file_path, icon_service)
     if icon:

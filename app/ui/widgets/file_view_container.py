@@ -537,10 +537,14 @@ class FileViewContainer(QWidget):
     def set_workspace_manager(self, workspace_manager) -> None:
         """
         Inyectar WorkspaceManager para resolver workspace_name en UI.
-        
+
         Necesario para mostrar el nombre del workspace en resultados de búsqueda.
         """
         self._workspace_manager = workspace_manager
+
+        # También inyectar en FileListView si existe
+        if hasattr(self, '_list_view') and self._list_view:
+            self._list_view._workspace_manager = workspace_manager
     
     def set_search_mode(self, enabled: bool, results: List = None) -> None:
         """

@@ -42,7 +42,7 @@ def create_file_tile(
     state = None
     if state_manager and not dock_style:
         state = state_manager.get_file_state(file_path)
-    
+
     get_label_callback = getattr(parent_view, '_get_label_callback', None)
     tile = FileTile(
         file_path, parent_view, icon_service,
@@ -50,11 +50,11 @@ def create_file_tile(
         initial_state=state,
         get_label_callback=get_label_callback
     )
-    
+
     # Soft reveal para tiles no-dock: crear ocultos, revelar en siguiente ciclo
     if not dock_style:
         soft_reveal(tile)
-    
+
     return tile
 
 

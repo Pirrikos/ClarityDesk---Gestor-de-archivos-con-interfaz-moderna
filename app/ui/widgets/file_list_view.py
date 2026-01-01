@@ -1,11 +1,11 @@
 """
-FileListView - List/table view for displaying files.
+FileListView - Vista de lista/tabla para mostrar archivos.
 
-Shows files in a table with filename, extension, and modified date.
-Emits signal on double-click to open file.
+Muestra archivos en una tabla con nombre, extensión y fecha de modificación.
+Emite una señal en doble clic para abrir el archivo.
 """
 
-from typing import Optional
+from typing import Optional, Callable
 
 from PySide6.QtCore import Qt, Signal, QEvent, QTimer, QElapsedTimer
 from PySide6.QtGui import QContextMenuEvent, QMouseEvent, QResizeEvent
@@ -30,7 +30,7 @@ from app.ui.widgets.file_view_utils import create_refresh_callback
 from app.core.constants import DEBUG_LAYOUT
 from app.core.logger import get_logger
 logger = get_logger(__name__)
-logger.debug("🚀 Loading file_list_view.py")
+from app.managers.workspace_manager import WorkspaceManager
 
 
 class FileListView(QTableWidget):
@@ -46,24 +46,27 @@ class FileListView(QTableWidget):
         icon_service: Optional[IconService] = None,
         parent=None,
         tab_manager: Optional[TabManager] = None,
-        state_manager=None,
-        get_label_callback: Optional = None
+        state_manager: Optional[FileStateManager] = None,
+        get_label_callback: Optional[Callable] = None,
+        workspace_manager: Optional[WorkspaceManager] = None
     ):
         """
-        Initialize FileListView with empty file list.
+        Inicializa FileListView con lista de archivos vacía.
 
         Args:
-            icon_service: Optional IconService instance.
-            parent: Parent widget.
-            tab_manager: Optional TabManager instance.
-            state_manager: Optional FileStateManager instance.
-            get_label_callback: Optional callback to get state labels.
+            icon_service: Instancia Opcional de IconService.
+            parent: Widget padre.
+            tab_manager: Instancia Opcional de TabManager.
+            state_manager: Instancia Opcional de FileStateManager.
+            get_label_callback: Callback opcional para obtener labels de estado.
+            workspace_manager: Instancia Opcional de WorkspaceManager.
         """
         super().__init__(parent)
         self.setAutoFillBackground(False)
         self._files: list[str] = []
         self._icon_service = icon_service or IconService()
         self._tab_manager = tab_manager
+        self._workspace_manager = workspace_manager
         self._checked_paths: set[str] = set()
         self._state_manager = state_manager or (FileStateManager() if FileStateManager else None)
         self._get_label_callback = get_label_callback
@@ -104,7 +107,7 @@ class FileListView(QTableWidget):
         refresh_table(
             self, self._files, self._icon_service,
             self._state_manager, self._checked_paths, self._on_checkbox_changed,
-            self._get_label_callback
+            self._get_label_callback, self._tab_manager, self._workspace_manager
         )
         try:
             from app.core.logger import get_logger

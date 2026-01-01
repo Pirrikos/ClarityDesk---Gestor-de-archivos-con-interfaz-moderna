@@ -1,60 +1,19 @@
 """
-PathUtils - Basic path normalization utilities.
+PathUtils (Service) - Utilidades de rutas para servicios.
 
-Pure utility functions for path normalization.
-No dependencies on other app modules to avoid circular imports.
+Centraliza funciones relacionadas con rutas usadas por servicios.
+normalize_path e is_virtual_path se importan desde app.models.path_utils para
+evitar duplicación y respetar separación de capas.
 """
 
 import os
 from typing import List, Optional
+from app.models.path_utils import normalize_path, is_virtual_path
 
 
-def is_virtual_path(path: str) -> bool:
-    """
-    Check if path is virtual (does not exist in filesystem).
-    
-    Virtual paths include Desktop Focus, Trash Focus, and state contexts.
-    Only checks known strings to avoid recursion. Does not verify if a real path is Desktop.
-    
-    Args:
-        path: String to check.
-        
-    Returns:
-        True if known virtual path, False otherwise.
-    """
-    if not path or not isinstance(path, str):
-        return False
-    
-    if path.startswith("@state://"):
-        return True
-    
-    # No llamar a is_desktop_focus() aquí porque causa recursión (necesita normalize_path)
-    if path == "__CLARITY_DESKTOP__" or path == "__CLARITY_TRASH__":
-        return True
-    
-    return False
-
-
-def normalize_path(path: str) -> str:
-    """
-    Normalize path using normcase and normpath.
-    
-    Ensures consistent path comparison regardless of case or trailing slashes.
-    Virtual paths are not normalized and returned as-is.
-    
-    Args:
-        path: Path string to normalize.
-        
-    Returns:
-        Normalized path string, or empty string if input is empty/invalid.
-    """
-    if not path:
-        return ""
-    
-    if is_virtual_path(path):
-        return path
-    
-    return os.path.normcase(os.path.normpath(path))
+#
+# normalize_path e is_virtual_path ahora provienen de app.models.path_utils
+#
 
 
 def is_state_context_path(path: str) -> bool:

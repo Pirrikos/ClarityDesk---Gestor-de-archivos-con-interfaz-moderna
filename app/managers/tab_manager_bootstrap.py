@@ -26,7 +26,7 @@ def initialize_tab_manager(
     manager._active_index: int = -1
     history_manager = TabHistoryManager()
 
-    from app.services.tab_manager_init import get_storage_path, setup_watcher_and_timer
+    from app.services.tab_state_initializer import get_storage_path, setup_watcher_and_timer
     
     storage_path_obj = get_storage_path(storage_path)
     state_manager = TabStateManager(storage_path_obj)

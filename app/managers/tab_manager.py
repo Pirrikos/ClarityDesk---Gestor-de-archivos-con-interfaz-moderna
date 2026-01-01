@@ -30,7 +30,7 @@ from app.managers.tab_manager_actions import (
     activate_tab as action_activate_tab
 )
 from app.managers.tab_manager_signals import on_folder_changed, watch_and_emit as signal_watch_and_emit
-from app.managers.tab_manager_init import initialize_tab_manager
+from app.managers.tab_manager_bootstrap import initialize_tab_manager
 from app.managers.tab_manager_restore import restore_tab_manager_state
 from app.services.state_view_mode_storage import get_view_mode, set_view_mode
 

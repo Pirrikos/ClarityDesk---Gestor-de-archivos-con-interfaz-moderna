@@ -20,7 +20,6 @@ from app.ui.widgets.focus_header_panel import FocusHeaderPanel
 from app.ui.widgets.path_footer_widget import PathFooterWidget
 
 logger = get_logger(__name__)
-logger.debug("🚀 Loading file_view_setup.py")
 
 def setup_ui(container: "FileViewContainer") -> None:
     """Build the UI layout with view switcher."""
@@ -70,7 +69,7 @@ def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
                 break
             parent = parent.parent()
     
-    container._stacked = QStackedWidget()
+    container._stacked = QStackedWidget(container)
     container._stacked.setAutoFillBackground(False)
     # Asegurar que el stacked expanda para rellenar el alto disponible
     from PySide6.QtWidgets import QSizePolicy
@@ -116,7 +115,8 @@ def _setup_views(container: "FileViewContainer", layout: QVBoxLayout) -> None:
         parent=container,
         tab_manager=container._tab_manager,
         state_manager=container._state_manager,
-        get_label_callback=container._get_label_callback
+        get_label_callback=container._get_label_callback,
+        workspace_manager=container._workspace_manager
     )
 
     container._stacked.addWidget(container._grid_view)
